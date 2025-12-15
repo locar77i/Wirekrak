@@ -1,0 +1,420 @@
+#pragma once
+
+#include <string>
+#include <atomic>
+#include <iostream>
+
+#include <simdjson.h>
+
+#include "wirekrak/schema/trade/SubscribeAck.hpp"
+#include "wirekrak/schema/trade/Response.hpp"
+#include "wirekrak/schema/trade/UnsubscribeAck.hpp"
+#include "wirekrak/core/types.hpp"
+#include "wirekrak/core/symbol.hpp"
+#include "lcr/log/logger.hpp"
+#include "lcr/lockfree/spsc_ring.hpp"
+
+namespace wirekrak {
+
+
+class Parser {
+    constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
+
+public:
+    Parser(std::atomic<uint64_t>& heartbeat_total,
+           lcr::lockfree::spsc_ring<schema::trade::Response, 4096>& trade_ring,
+           lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, 16>& trade_subscribe_ring,
+           lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, 16>& trade_unsubscribe_ring)
+        : heartbeat_total_(heartbeat_total)
+        , trade_ring_(trade_ring)
+        , trade_subscribe_ring_(trade_subscribe_ring)
+        , trade_unsubscribe_ring_(trade_unsubscribe_ring)
+    {
+    }
+
+
+    inline void parse_and_route(const std::string& raw_msg) noexcept {
+        using namespace simdjson;
+        dom::element root;
+        // Parse JSON message
+        auto error = parser_.parse(raw_msg).get(root);
+        if (error) {
+            WK_WARN("[PARSER] JSON parse error: " << error << " in message: " << raw_msg);
+            return;
+        }
+        // 1) METHOD DISPATCH
+        auto method_field = root["method"];
+        if (!method_field.error()) {
+            std::string_view method_sv;
+            if (!method_field.get(method_sv)) {
+                Method method = to_method_enum_fast(method_sv);
+                if (method != Method::Unknown) {
+                    if (!parse_method_message_(method, root)) {
+                        WK_WARN("[PARSER] Failed to parse method message: " << raw_msg);
+                    }
+                }
+                else {
+                    WK_WARN("[PARSER] Unknown method: " << method_sv);
+                }
+            }
+            else {
+                WK_WARN("[PARSER] 'method' is not a string");
+            }
+            return; // ACK/NACK messages do not go into rings, they are just control messages
+        }
+        // 2) CHANNEL DISPATCH
+        auto channel_field = root["channel"];
+        if (!channel_field.error()) { // channel exists
+            std::string_view channel_sv;
+            if (!channel_field.get(channel_sv)) {
+                Channel channel = to_channel_enum_fast(channel_sv);
+                if (channel != Channel::Unknown) {
+                    if (!parse_channel_message_(channel, root)) {
+                        WK_WARN("[PARSER] Failed to parse channel message: " << raw_msg);
+                    }
+                }
+                else {
+                    WK_WARN("[PARSER] Unknown channel: " << channel_sv);
+                }
+            }
+            else {
+                WK_WARN("[PARSER] 'channel' not a string");
+            }
+        }
+        else {
+            WK_WARN("[PARSER] 'channel' missing");
+        }
+    }
+
+
+private:
+    std::atomic<uint64_t>& heartbeat_total_;
+    lcr::lockfree::spsc_ring<schema::trade::Response, 4096>& trade_ring_;
+    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, 16>& trade_subscribe_ring_;
+    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, 16>& trade_unsubscribe_ring_;
+    simdjson::dom::parser parser_;
+
+private:
+
+    // =========================================================================
+    // Parse helpers for method messages
+    // =========================================================================
+
+    [[nodiscard]] inline bool parse_method_message_(Method m, const simdjson::dom::element& root) noexcept {
+        using namespace simdjson;
+        // Result object
+        auto result_field = root["result"];
+        if (result_field.error()) {
+            WK_WARN("[PARSER] Field 'result' missing in <method> message -> ignore message.");
+            return false;
+        }
+        dom::element result = result_field.value();
+        // Channel field
+        std::string_view channel_sv;
+        auto channel_field = result["channel"];
+        if (channel_field.error() || channel_field.get(channel_sv)) {
+            WK_WARN("[PARSER] Field 'channel' missing or invalid in <method> message -> ignore message.");
+            return false; // missing or invalid
+        }
+        Channel channel = to_channel_enum_fast(channel_sv);
+        if (channel == Channel::Unknown) {
+            WK_WARN("[PARSER] Unknown channel in <method> message -> ignore message.");
+            return false; // reject unknown channels
+        }
+        switch (m) {
+            case Method::Subscribe:
+                return parse_subscribe_ack(channel, root);
+            case Method::Unsubscribe:
+                return parse_unsubscribe_ack(channel, root);
+            default:
+                WK_WARN("[PARSER] Unhandled method -> ignore");
+        }
+        return false;
+    }
+
+    // SUBSCRIBE ACK PARSER
+    [[nodiscard]] inline bool parse_subscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
+        switch (channel) {
+            case Channel::Trade: {
+                schema::trade::SubscribeAck resp;
+                if (parse_(root, resp)) {
+                    if (!trade_subscribe_ring_.push(std::move(resp))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] trade_subscribe_ring_ full, dropping.");
+                    }
+                    return true;
+                }
+            } break;
+            default:
+                WK_WARN("[PARSER] Subscription ACK parsing not implemented for channel '" << to_string(channel) << "'");
+                break;
+        }
+        return false;
+    }
+
+    // UNSUBSCRIBE ACK PARSER
+    [[nodiscard]] inline bool parse_unsubscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
+        switch (channel) {
+            case Channel::Trade: {
+                schema::trade::UnsubscribeAck resp;
+                if (parse_(root, resp)) {
+                    if (!trade_unsubscribe_ring_.push(std::move(resp))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] trade_unsubscribe_ring_ full, dropping.");
+                    }
+                    return true;
+                }
+            } break;
+            default:
+                WK_WARN("[PARSER] Unsubscription ACK parsing not implemented for channel '" << to_string(channel) << "'");
+                break;
+        }
+        return false;
+    }
+
+
+    // ========================================================================
+    // Parse helpers for channel messages
+    // ========================================================================
+
+    [[nodiscard]] inline bool parse_channel_message_(Channel channel, const simdjson::dom::element& root) noexcept {
+        bool result = false;
+        switch (channel) {
+            case Channel::Trade: {
+                schema::trade::Response response;
+                result = parse_(root, response);
+                if (!trade_ring_.push(std::move(response))) { // TODO: handle backpressure
+                    WK_WARN("[PARSER] trade_ring_ full, dropping.");
+                }
+            } break;
+            case Channel::Ticker:
+                result = parse_ticker_(root);
+                break;
+            case Channel::Book:
+                result = parse_book_(root);
+                break;
+            case Channel::Heartbeat:
+                heartbeat_total_.fetch_add(1, std::memory_order_relaxed);
+                result = true;
+                break;
+            case Channel::Status:
+                result = parse_status_(root);
+                break;
+            default:
+                WK_WARN("[PARSER] Unhandled channel -> ignore");
+                break;
+        }
+        return result;
+    }
+
+    // TRADE PARSER
+    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, schema::trade::Response& out) noexcept {
+        using namespace simdjson;
+        dom::array arr;
+        if (root["data"].get(arr)) {
+            WK_WARN("[PARSER] Field 'data' missing in trade::Response -> ignore message.");
+            return false;
+        }
+        // Iterate over trade entries
+        for (dom::element item : arr) {
+            if (auto v = item["symbol"].get_string(); !v.error()) {
+                out.symbol = Symbol(v.value());
+            }
+            if (auto v = item["side"].get_string(); !v.error()) {
+                out.side = to_side_enum_fast(v.value());
+            }
+            if (auto v = item["price"].get_double(); !v.error()) {
+                out.price = v.value();
+            }
+            if (auto v = item["qty"].get_double(); !v.error()) {
+                out.qty = v.value();
+            }
+            if (auto v = item["trade_id"].get_uint64(); !v.error()) {
+                out.trade_id = v.value();
+            }
+            if (auto v = item["timestamp"].get_string(); !v.error()) {
+                if (!parse_rfc3339(v.value(), out.timestamp)) {
+                    out.timestamp = Timestamp{};
+                }
+            }
+            if (auto v = item["ord_type"].get_string(); !v.error()) {
+                out.ord_type = to_order_type_enum_fast(v.value());
+            }
+        }
+        return true;
+    };
+
+    // TICKER PARSER
+    [[nodiscard]] inline bool parse_ticker_(const simdjson::dom::element& root) noexcept {
+        using namespace simdjson;
+        WK_WARN("[PARSER] Unhandled channel 'ticker' -> ignore");
+        // TODO
+        return false;
+    };
+
+    // BOOK PARSER
+    [[nodiscard]] inline bool parse_book_(const simdjson::dom::element& root) noexcept {
+        using namespace simdjson;
+        WK_WARN("[PARSER] Unhandled channel 'book' -> ignore");
+        // TODO
+        return false;
+    };
+
+    // STATUS PARSER
+    [[nodiscard]] inline bool parse_status_(const simdjson::dom::element& root) noexcept {
+        using namespace simdjson;
+        WK_WARN("[PARSER] Unhandled channel 'status' -> ignore");
+        // TODO
+        return false;
+    };
+
+
+
+
+
+    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, schema::trade::SubscribeAck& out) noexcept {
+        using namespace simdjson;
+        // required: success (boolean)
+        {
+            auto success_field = root["success"];
+            if (success_field.error() || success_field.get(out.success)) {
+                WK_WARN("[PARSER] Field 'success' missing in trade::SubscribeAck -> ignore message.");
+                return false;  // required
+            }
+        }
+        // -------- SUCCESS CASE --------
+        if (out.success) {
+            auto result_field = root["result"];
+            if (result_field.error()) {
+                WK_WARN("[PARSER] Field 'result' missing in trade::SubscribeAck -> ignore message.");
+                return false;
+            }
+            dom::element result = result_field.value();
+            // required: symbol
+            std::string_view sv;
+            if (result["symbol"].get(sv)) {
+                WK_WARN("[PARSER] Field 'symbol' missing in trade::SubscribeAck -> ignore message.");
+                return false;  // required field missing
+            }
+            out.symbol.assign(sv);
+            // optional: snapshot
+            bool snapshot_val = false;
+            auto snap_field = result["snapshot"];
+            if (!snap_field.error() && !snap_field.get(snapshot_val)) {
+                out.snapshot = snapshot_val;
+            }
+            // optional: warnings[]
+            auto warnings_field = result["warnings"];
+            if (!warnings_field.error()) {
+                dom::array arr;
+                if (!warnings_field.get(arr)) {
+                    std::vector<std::string> warnings_vec;
+                    for (auto w : arr) {
+                        std::string_view sv;
+                        if (!w.get(sv))
+                            warnings_vec.emplace_back(sv);
+                    }
+                    out.warnings = std::move(warnings_vec);
+                }
+            }
+        }
+        else { // -------- FAILURE CASE --------
+            std::string_view sv;
+            auto err_field = root["error"];
+            if (!err_field.error() && !err_field.get(sv)) {
+                out.error = std::string(sv);
+            }
+        }
+        // optional: req_id
+        uint64_t req_id_val = 0;
+        auto req_field = root["req_id"];
+        if (!req_field.error() && !req_field.get(req_id_val)) {
+            out.req_id = req_id_val;
+        }
+        // timestamps (optional)
+        std::string_view time_sv;
+        auto tin = root["time_in"];
+        if (!tin.error() && !tin.get(time_sv)) {
+            wirekrak::Timestamp ts;
+            if (wirekrak::parse_rfc3339(time_sv, ts)) {
+                out.time_in = ts;
+            }
+        }
+        auto tout = root["time_out"];
+        if (!tout.error() && !tout.get(time_sv)) {
+            wirekrak::Timestamp ts;
+            if (wirekrak::parse_rfc3339(time_sv, ts)) {
+                out.time_out = ts;
+            }
+        }
+        return true;
+    }
+
+
+
+    inline bool parse_(const simdjson::dom::element& root, schema::trade::UnsubscribeAck& out) noexcept {
+        using namespace simdjson;
+        out = {};
+        // success (required)
+        {
+            auto f = root["success"];
+            if (f.error() || f.get(out.success)) {
+                WK_WARN("[PARSER] Field 'success' missing in trade::UnsubscribeAck -> ignore message.");
+                return false;
+            }
+        }
+        // -------- SUCCESS CASE --------
+        auto result_field = root["result"];
+        if (result_field.error()) {
+            WK_WARN("[PARSER] Field 'result' missing in trade::UnsubscribeAck -> ignore message.");
+            return false;
+        }
+        dom::element result = result_field.value();
+        // Extract symbol (required)
+        {
+            std::string_view sv;
+            if (result["symbol"].get(sv)) {
+                WK_WARN("[PARSER] Field 'symbol' missing in trade::UnsubscribeAck -> ignore message.");
+                return false;
+            }
+            out.symbol.assign(sv);
+        }
+        // -------- FAILURE CASE --------
+        if (!out.success) {
+            if (auto ef = root["error"]; !ef.error()) {
+                std::string_view sv;
+                if (!ef.get(sv)) {
+                    out.error_msg = std::string(sv);
+                }
+            }
+        }
+        // req_id (optional)
+        if (auto f = root["req_id"]; !f.error()) {
+            auto r = f.get_uint64();
+            if (!r.error()) {
+                out.req_id = r.value();
+            }
+        }
+        // timestamps (optional)
+        if (auto f = root["time_in"]; !f.error()) {
+            std::string_view sv;
+            if (!f.get(sv)) {
+                wirekrak::Timestamp ts;
+                if (wirekrak::parse_rfc3339(sv, ts)) {
+                    out.time_in = ts;
+                }
+            }
+        }
+        if (auto f = root["time_out"]; !f.error()) {
+            std::string_view sv;
+            if (!f.get(sv)) {
+                wirekrak::Timestamp ts;
+                if (wirekrak::parse_rfc3339(sv, ts)) {
+                    out.time_out = ts;
+                }
+            }
+        }
+        return true;
+    }
+
+};
+
+} // namespace wirekrak
