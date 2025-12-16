@@ -93,6 +93,24 @@ int main() {
 
 ---
 
+## ✨ Liveness Detection
+
+WireKrak uses dual liveness detection: protocol heartbeats and real message flow.
+Reconnection only occurs when both signals stop, preventing false reconnects during quiet markets.”
+
+### Heartbeats monitoring
+
+WireKrak actively monitors protocol heartbeats.
+If heartbeats stop beyond a configurable timeout, the client
+assumes the connection is unhealthy and signal it to reconnect.
+
+### Messages monitoring
+
+WireKrak actively monitors protocol messages. If last received message timestamp is greather than
+a configurable timeout, the client assumes the connection is unhealthy and and signal it to reconnect.
+
+---
+
 ## 🧪 Replay & Backtesting
 
 WireKrak supports **deterministic replay** of recorded WebSocket sessions:

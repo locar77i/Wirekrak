@@ -14,5 +14,8 @@ target_include_directories(test_controller PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
+# Compile definitions
+target_compile_definitions(test_controller PRIVATE WK_UNIT_TEST)
+
 # Register the test with CTest
 add_test(NAME RecorderControllerTest COMMAND test_controller)

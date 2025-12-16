@@ -21,13 +21,40 @@
 
 namespace wirekrak {
 
+// WireKrak uses a state-machine-driven reconnection model.
+//
+// Transport failures are detected at the WebSocket layer and handled deterministically in the client poll loop.
+// All subscriptions are replayed automatically with exponential backoff.”
+//
+// The current design achieves:
+// - Transport failure detection
+// - Automatic reconnection
+// - Subscription replay preserved
+// - Exponential backoff implemented
+// - Heartbeat-based liveness detection
+// - Clean transport boundary
+// - Deterministic poll-driven design
+// - No extra threads (beyond the WebSocket's own receive thread)
+//
+// This is exactly how modern low-latency SDKs work.
+//
+// Besides, the heartbeats count is used as deterministic liveness signal that drives reconnection.
+// Heartbeat timeout is NOT a transport concern. It is a protocol / client liveness concern.
 template<transport::WebSocket WS>
 class Client {
+    static constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(10);
+    static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15);
+
 public:
     Client()
-        : parser_(heartbeat_total_, trade_ring_, trade_subscribe_ring_, trade_unsubscribe_ring_) {
+        : parser_(heartbeat_total_, last_heartbeat_ts_, trade_ring_, trade_subscribe_ring_, trade_unsubscribe_ring_) {
+        last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+        last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         ws_.set_message_callback([this](const std::string& msg){
-            parser_.parse_and_route(msg);
+            on_message_received_(msg);
+        });
+        ws_.set_close_callback([this]() {
+            on_transport_closed_();
         });
     }
 
@@ -37,6 +64,7 @@ public:
 
     [[nodiscard]] inline bool connect(const std::string& url) {
         last_url_ = url;
+        state_ = ConnState::Connecting;
         ParsedUrl parsed_url;
         try {
             parsed_url = parse_url_(url);
@@ -47,9 +75,12 @@ public:
         }
         WK_INFO("Connecting to: " << parsed_url.scheme << "://" << parsed_url.host << ":" << parsed_url.port << parsed_url.path);
         if (!ws_.connect(parsed_url.host, parsed_url.port, parsed_url.path)) {
+            state_ = ConnState::Disconnected;
             WK_ERROR("Connection failed.");
             return false;
         }
+        state_ = ConnState::Connected;
+        retry_attempts_ = 0;
         WK_INFO("Connected successfully.");
         return true;
     }
@@ -142,7 +173,7 @@ public:
 */
 
     template<class RequestT, class Callback>
-    void subscribe(const RequestT& req, Callback&& cb) {
+    inline void subscribe(const RequestT& req, Callback&& cb) {
         using ResponseT = typename channel_traits<RequestT>::response_type;
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
         // 1) Store callback safely once
@@ -161,6 +192,33 @@ public:
 
     // Main thread polling
     inline void poll() {
+        auto now = std::chrono::steady_clock::now();
+        // === Heartbeat liveness check ===
+        if (state_ == ConnState::Connected) {
+            auto last_msg = last_message_ts_.load(std::memory_order_relaxed);
+            bool message_stale   = (now - last_msg) > MESSAGE_TIMEOUT;
+            auto last_hb  = last_heartbeat_ts_.load(std::memory_order_relaxed);
+            bool heartbeat_stale = (now - last_hb)  > HEARTBEAT_TIMEOUT;
+            // Conservative: only reconnect if BOTH are stale
+            if (message_stale && heartbeat_stale) {
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_hb);
+                WK_WARN("Heartbeat timeout (" << duration.count() << " ms). Forcing reconnect.");
+                // Force transport failure → triggers reconnection
+                ws_.close();
+            }
+        }
+        // === Reconnection logic ===
+        if (state_ == ConnState::WaitingReconnect && now >= next_retry_) {
+            WK_INFO("Attempting reconnection...");
+            if (reconnect_()) {
+                WK_INFO("Reconnected successfully");
+                state_ = ConnState::Connected;
+            } else {
+                retry_attempts_++;
+                next_retry_ = now + backoff_(retry_attempts_);
+            }
+        }
+        // === Process rings ===
         { // === Process trade subscribe ring ===
         schema::trade::SubscribeAck ack;
         while (trade_subscribe_ring_.pop(ack)) {
@@ -189,34 +247,35 @@ public:
     }
 
     // Accessor to the heartbeat counter
-    [[nodiscard]] inline uint64_t heartbeat_total() const noexcept {
+    [[nodiscard]]
+    inline uint64_t heartbeat_total() const noexcept {
         return heartbeat_total_.load(std::memory_order_relaxed);
     }
 
     // Accessor to the subscription manager
-    const channel::Manager& trade_subscriptions() const noexcept {
+    [[nodiscard]]
+    inline const channel::Manager& trade_subscriptions() const noexcept {
         return trade_channel_manager_;
     }
 
-    bool reconnect() {
-        // 1) Close old WS
-        ws_.close();
-        // 2) Clear runtime state
-        dispatcher_.clear();
-        trade_channel_manager_.clear_all();
-        // 3) Attempt reconnection
-        if (!connect(last_url_)) {
-            return false;
-        }
-        WK_INFO("Connection re-established with server '" << last_url_ << "'. Replaying active subscriptions...");
-        // 4) Replay all subscriptions
-        auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
-        for (const auto& subscription : trade_subscriptions) {
-            subscribe(subscription.request(), subscription.callback());
-        }
-        return true;
+    [[nodiscard]]
+    inline bool reconnect() {
+        return reconnect_();
     }
 
+#ifdef WK_UNIT_TEST
+    void force_last_message(std::chrono::steady_clock::time_point ts) {
+        last_message_ts_.store(ts, std::memory_order_relaxed);
+    }
+
+    void force_last_heartbeat(std::chrono::steady_clock::time_point ts) {
+        last_heartbeat_ts_.store(ts, std::memory_order_relaxed);
+    }
+
+    WS& ws() {
+        return ws_;
+    }
+#endif // WK_UNIT_TEST
 
 private:
     std::string last_url_;
@@ -224,7 +283,21 @@ private:
 
     lcr::sequence req_id_seq_{};
 
+    // The kraken heartbeats count is used as deterministic liveness signal that drives reconnection.
+    // If no heartbeat is received for N seconds:
+    // - Assume the connection is unhealthy (even if TCP is still “up”)
+    // - Force-close the WebSocket
+    // - Let the existing reconnection state machine recover
+    // - Replay subscriptions automatically
+    //
+    // Benefits:
+    // - Simple liveness detection
+    // - Decouples transport health from protocol health
+    // - No threads. No timers. Poll-driven.
     std::atomic<uint64_t> heartbeat_total_;
+    std::atomic<std::chrono::steady_clock::time_point> last_heartbeat_ts_;
+    std::atomic<std::chrono::steady_clock::time_point> last_message_ts_;
+
     lcr::lockfree::spsc_ring<schema::trade::Response, 4096> trade_ring_{};
     lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, 16> trade_subscribe_ring_{};
     lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, 16> trade_unsubscribe_ring_{};
@@ -235,6 +308,18 @@ private:
     channel::Manager trade_channel_manager_;
 
     replay::Database replay_db_;
+
+private:
+    enum class ConnState {
+        Disconnected,
+        Connecting,
+        Connected,
+        WaitingReconnect
+    };
+
+    ConnState state_ = ConnState::Disconnected;
+    std::chrono::steady_clock::time_point next_retry_;
+    int retry_attempts_ = 0;
 
 private:
     struct ParsedUrl {
@@ -280,6 +365,48 @@ private:
         // 4) Path
         out.path = (slash == std::string::npos) ? "/" : url.substr(slash);
         return out;
+    }
+
+    inline void on_message_received_(const std::string& msg) { // Placeholder for user-defined behavior on message receipt
+        last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+        parser_.parse_and_route(msg);
+    }
+
+    inline void on_transport_closed_() { // Placeholder for user-defined behavior on transport closure
+        WK_WARN("WebSocket closed");
+        if (state_ == ConnState::Connected) {
+            state_ = ConnState::WaitingReconnect;
+            retry_attempts_++;
+            next_retry_ = std::chrono::steady_clock::now() + backoff_(retry_attempts_);
+        }
+    }
+
+    [[nodiscard]]
+    inline bool reconnect_() {
+        // 1) Close old WS
+        ws_.close();
+        // 2) Clear runtime state
+        dispatcher_.clear();
+        trade_channel_manager_.clear_all();
+        // 3) Attempt reconnection
+        if (!connect(last_url_)) {
+            return false;
+        }
+        WK_INFO("Connection re-established with server '" << last_url_ << "'. Replaying active subscriptions...");
+        // 4) Replay all subscriptions
+        auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
+        for (const auto& subscription : trade_subscriptions) {
+            subscribe(subscription.request(), subscription.callback());
+        }
+        return true;
+    }
+
+    inline std::chrono::milliseconds backoff_(int attempt) {
+        using namespace std::chrono;
+        return std::min(
+            milliseconds(100 * (1 << attempt)),
+            milliseconds(5000)
+        );
     }
 
     template<class RequestT, class Callback>

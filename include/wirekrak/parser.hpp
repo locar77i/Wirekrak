@@ -22,10 +22,12 @@ class Parser {
 
 public:
     Parser(std::atomic<uint64_t>& heartbeat_total,
+           std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts,
            lcr::lockfree::spsc_ring<schema::trade::Response, 4096>& trade_ring,
            lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, 16>& trade_subscribe_ring,
            lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, 16>& trade_unsubscribe_ring)
         : heartbeat_total_(heartbeat_total)
+        , last_heartbeat_ts_(last_heartbeat_ts)
         , trade_ring_(trade_ring)
         , trade_subscribe_ring_(trade_subscribe_ring)
         , trade_unsubscribe_ring_(trade_unsubscribe_ring)
@@ -89,6 +91,7 @@ public:
 
 private:
     std::atomic<uint64_t>& heartbeat_total_;
+    std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts_;
     lcr::lockfree::spsc_ring<schema::trade::Response, 4096>& trade_ring_;
     lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, 16>& trade_subscribe_ring_;
     lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, 16>& trade_unsubscribe_ring_;
@@ -193,6 +196,7 @@ private:
                 break;
             case Channel::Heartbeat:
                 heartbeat_total_.fetch_add(1, std::memory_order_relaxed);
+                last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
                 result = true;
                 break;
             case Channel::Status:

@@ -73,7 +73,8 @@ int main() {
         // Force a disconnect after 10 seconds
         if (!forced_disconnect && elapsed_time > reconnect_delay) {
             std::cout << "\n[wirekrak] FORCING SOCKET CLOSE" << std::endl;
-            client.reconnect();   // <— important
+            bool result = client.reconnect();   // <— important
+            (void)result; // ignore result here
             forced_disconnect = true;
         }
         // Unsubscribe after test_duration - 2 seconds
