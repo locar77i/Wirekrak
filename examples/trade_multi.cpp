@@ -28,11 +28,6 @@ bool enable_ansi_colors() {
 
 
 int main() {
-#ifdef _WIN32
-    lcr::log::Logger::instance().enable_color(enable_ansi_colors());
-#else
-    lcr::log::Logger::instance().enable_color(true);
-#endif
 
     winhttp::WinClient client;
     if (!client.connect("wss://ws.kraken.com/v2")) {

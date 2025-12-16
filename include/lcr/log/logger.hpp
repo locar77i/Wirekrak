@@ -82,14 +82,14 @@ private:
     // ANSI color mappings
     static constexpr const char* color_code(Level lvl) {
         switch (lvl) {
-            case Level::Trace: return "\033[37m";     // light gray
+            case Level::Trace: return "\033[90m";     // gray
             case Level::Debug: return "\033[36m";     // cyan
             case Level::Info:  return "\033[32m";     // green
             case Level::Warn:  return "\033[33m";     // yellow
             case Level::Error: return "\033[31m";     // red
             case Level::Fatal: return "\033[1;31m";   // bold bright red
         }
-        return "\033[0m";
+        return "\033[0m"; // reset
     }
 
     // Timestamp generation

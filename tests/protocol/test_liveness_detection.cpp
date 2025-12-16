@@ -24,12 +24,19 @@ namespace wirekrak {
 struct MockWebSocket {
     using MessageCallback = std::function<void(const std::string&)>;
     using CloseCallback   = std::function<void()>;
+    using ErrorCallback   = std::function<void(unsigned long)>;
 
     MessageCallback on_msg;
     CloseCallback   on_close;
+    ErrorCallback   on_error;
 
-    bool connected = false;
-    int close_count = 0;
+    bool connected   = false;
+    int  close_count = 0;
+    int  error_count = 0;
+
+    // ---------------------------------------------------------------------
+    // transport::WebSocket API
+    // ---------------------------------------------------------------------
 
     bool connect(const std::string&, const std::string&, const std::string&) {
         connected = true;
@@ -44,7 +51,9 @@ struct MockWebSocket {
         if (!connected) return;
         connected = false;
         close_count++;
-        if (on_close) on_close();
+        if (on_close) {
+            on_close();
+        }
     }
 
     void set_message_callback(MessageCallback cb) {
@@ -55,11 +64,28 @@ struct MockWebSocket {
         on_close = std::move(cb);
     }
 
+    void set_error_callback(ErrorCallback cb) {
+        on_error = std::move(cb);
+    }
+
+    // ---------------------------------------------------------------------
     // Test helpers
+    // ---------------------------------------------------------------------
+
     void emit_message(const std::string& msg) {
-        if (on_msg) on_msg(msg);
+        if (on_msg) {
+            on_msg(msg);
+        }
+    }
+
+    void emit_error(unsigned long code = 1) {
+        error_count++;
+        if (on_error) {
+            on_error(code);
+        }
     }
 };
+
 
 
 void test_liveness_detection() {

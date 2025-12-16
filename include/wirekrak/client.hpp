@@ -258,11 +258,6 @@ public:
         return trade_channel_manager_;
     }
 
-    [[nodiscard]]
-    inline bool reconnect() {
-        return reconnect_();
-    }
-
 #ifdef WK_UNIT_TEST
     void force_last_message(std::chrono::steady_clock::time_point ts) {
         last_message_ts_.store(ts, std::memory_order_relaxed);
