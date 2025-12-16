@@ -18,4 +18,4 @@ target_include_directories(test_liveness_detection PRIVATE
 target_compile_definitions(test_liveness_detection PRIVATE WK_UNIT_TEST)
 
 # Register the test with CTest
-add_test(NAME ConnectionLivenessTest COMMAND test_liveness_detection)
+add_test(NAME LivenessTest COMMAND test_liveness_detection)

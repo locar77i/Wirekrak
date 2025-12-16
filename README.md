@@ -140,6 +140,80 @@ client.authenticate(api_key, api_secret);
 
 ---
 
+## 🧪 Running Tests
+
+WireKrak uses **CMake Presets** and **CTest** for building and running tests.
+All test configuration is handled automatically via presets.
+
+### Prerequisites
+- CMake ≥ 3.23
+- Ninja
+- A C++20-compatible compiler
+
+### Configure
+
+**Debug**
+```bash
+cmake --preset ninja-debug
+```
+
+```bash
+cmake --preset ninja-release
+```
+
+This generates build directories under:
+
+- build/debug
+- build/release
+
+### Build
+
+```
+cmake --build --preset debug
+```
+
+```
+cmake --build --preset release
+```
+
+###  Run Tests
+
+```
+ctest --preset test-debug
+```
+
+
+```
+ctest --preset test-release
+```
+
+By default, test output is shown only on failure.
+
+### Verbose Test Output
+
+```
+ctest --preset test-debug --verbose
+```
+
+or:
+
+```
+ctest --preset test-debug -VV
+```
+
+### Run a Specific Test
+
+```
+ctest --preset test-debug -R LivenessTest
+```
+
+### Notes
+
+- Tests are enabled via the WK_UNIT_TEST=ON preset option.
+- Unit tests cover client liveness detection, heartbeat and message timeouts, and automatic reconnection behavior.
+- No external test frameworks are required.
+---
+
 ## 🧠 Why This Matters
 
 Traditional WebSocket examples focus on connectivity.
