@@ -1,108 +1,151 @@
-# ⚡ Wirekrak C++ SDK
-### *Ultra-fast, reliable, real-time WebSocket SDK for crypto trading systems*
+# WireKrak ⚡  
+**A High-Performance WebSocket SDK for Real-Time Kraken Trading**
 
-Wirekrak is a high-performance C++20 SDK designed to consume real-time market data from cryptocurrency exchanges with **minimum latency**, **maximum reliability**, and **clean extensibility**.  
-It is engineered using:
+WireKrak is a modern C++ WebSocket SDK designed for **low-latency, real-time trading applications** on the Kraken exchange.  
+It is built with **production-grade architecture**, focusing on reliability, determinism, and extensibility.
 
-- **Boost.Beast** (WebSocket engine)  
-- **Boost.Asio** (event loop, async I/O)  
-- **simdjson** (ultra-fast JSON parsing)  
-- **spdlog** (high-performance logging)  
-- **Windows SChannel TLS** (native, zero-dependency wss:// support)
-
-Wirekrak is built to integrate seamlessly into high-frequency trading systems and matching engines — including **FlashStrike**, your custom low-latency matching engine.
+> 🚀 Built for the **Kraken Forge Hackathon**
 
 ---
 
-## 🚀 Features
+## ✨ Key Features
 
-### ⚡ Zero-lag WebSocket Streaming
-Handles:
-- Real-time trades  
-- Orderbook updates  
-- Tickers  
-- Heartbeats  
-- Channel subscriptions  
+- **Schema-first design**  
+  Strongly typed request/response and event models (no fragile string-based JSON handling).
 
-### 🛡 Automatic Reconnection
-- Reconnects on failure  
-- Restores subscriptions  
-- Keeps state consistent  
+- **Transport abstraction**  
+  Clean separation between WebSocket transport and protocol logic, enabling portability and testability.
 
-### 🧠 Efficient JSON Pipeline (simdjson)
-Gigabytes-per-second parsing throughput.
+- **Write-Ahead Logging (WAL)**  
+  Persist incoming events for **auditability, recovery, and deterministic replay**.
 
-### 🔧 Windows-native TLS (SChannel)
-No OpenSSL needed; zero external crypto dependencies.
+- **Deterministic Replay Engine**  
+  Replay historical WebSocket sessions for backtesting, debugging, and simulation.
+
+- **Low-latency focus**  
+  Designed with trading workloads in mind: minimal allocations, predictable execution paths.
+
+- **Extensible architecture**  
+  Easily adaptable to additional exchanges or protocols.
 
 ---
 
-## 📁 Project Structure
+## 🧱 Architecture Overview
 
 ```
 wirekrak/
-├── include/wirekrak/
-├── src/
-├── examples/
-├── tests/
-├── docs/
-└── CMakeLists.txt
+├── core/transport/     # Protocol-agnostic WebSocket interfaces
+├── winhttp/            # Windows WebSocket transport implementation
+├── protocol/kraken/    # Kraken-specific protocol handling
+├── schema/             # Strongly typed Kraken message schemas
+├── wal/                # Write-ahead logging & persistence
+├── replay/             # Deterministic replay engine
+└── examples/           # Usage examples
 ```
+
+**Design principles:**
+- Clear separation of concerns
+- No transport-specific leakage into domain logic
+- Deterministic, replayable event streams
 
 ---
 
-## 🛠 Building Wirekrak
+## 🚀 Getting Started
 
 ### Prerequisites
-- CMake ≥ 3.25  
-- MinGW-w64 (GCC 15.x)  
-- vcpkg with installed packages:
-  - boost-asio:x64-mingw-dynamic  
-  - boost-beast:x64-mingw-dynamic  
-  - simdjson:x64-mingw-dynamic  
-  - spdlog:x64-mingw-dynamic  
 
-### Configure & Build
+- C++20 compatible compiler
+- CMake ≥ 3.20
+- Windows (WinHTTP transport)
 
-```
-cmake -B build -G "MinGW Makefiles" ^
-  -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg-2024.11.16/scripts/buildsystems/vcpkg.cmake ^
-  -DVCPKG_TARGET_TRIPLET=x64-mingw-dynamic
+### Build
 
+```bash
+git clone https://github.com/<your-org>/wirekrak.git
+cd wirekrak
+cmake -S . -B build
 cmake --build build
 ```
 
 ---
 
-## 🧪 Example: Connect & Receive Messages
+## 📡 Example Usage
 
-```
+```cpp
 #include <wirekrak/client.hpp>
-#include <iostream>
+
+using namespace wirekrak;
 
 int main() {
-    Client client;
+    Client client({
+        .on_trade = [](const trade::Event& trade) {
+            std::cout << trade.symbol << " @ " << trade.price << std::endl;
+        },
+        .on_error = [](Error err) {
+            std::cerr << err.message() << std::endl;
+        }
+    });
 
-    // Subscribe to BTC/USD trades
-    client.subscribe(schema::trade::Subscribe{.symbols = {"BTC/USD"}},
-                     [](const schema::trade::Response& msg) {
-                        std::cout << " -> [BTC/USD] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
-                     }
-    );
-
-    client.connect("wss://ws.kraken.com/v2");
+    client.subscribe_trades("BTC/USD");
     client.run();
 }
 ```
 
 ---
 
-## 📈 Why Wirekrak?
+## 🧪 Replay & Backtesting
 
-- Designed for high-frequency trading  
-- Low-latency, stable, high-throughput  
-- Clean API and modular architecture  
-- Works seamlessly with FlashStrike matching engine  
+WireKrak supports **deterministic replay** of recorded WebSocket sessions:
+
+- Record live market data via WAL
+- Replay offline with identical event ordering
+- Ideal for:
+  - Strategy backtesting
+  - Incident analysis
+  - Debugging race conditions
+
+```bash
+wirekrak-replay --input wal.bin --speed 1.0
+```
+
+---
+
+## 🔐 Authentication
+
+Private feeds use Kraken WebSocket authentication:
+- API key & secret never leave the client
+- Nonce and signature generation handled internally
+
+```cpp
+client.authenticate(api_key, api_secret);
+```
+
+---
+
+## 🧠 Why This Matters
+
+Traditional WebSocket examples focus on connectivity.
+
+WireKrak focuses on:
+- **Correctness under failure**
+- **Recoverability**
+- **Deterministic behavior**
+- **Production trading constraints**
+
+This makes it suitable for:
+- Algo trading systems
+- Market data pipelines
+- Trading dashboards
+- Simulation & research environments
+
+---
+
+## 🏁 Hackathon Highlights
+
+- Schema-driven protocol layer
+- WAL-backed market data ingestion
+- Deterministic replay for backtesting
+- Production-inspired SDK design
 
 ---
 
@@ -112,8 +155,11 @@ MIT License
 
 ---
 
-## 🤝 Contributions
+## 🤝 Contributing
 
-PRs welcome.  
-Developed for the Kraken Forge Hackathon.
+Contributions are welcome!  
+Please open an issue or submit a pull request.
 
+---
+
+**Built with ❤️ for real-time trading**

@@ -24,18 +24,23 @@ int main() {
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     // send ping-like JSON if desired (Kraken uses subscriptions; this is just a placeholder)
-    ws.send(R"({"method":"ping"})");
+    if (!ws.send(R"({"method":"ping"})")) {
+        return 2;
+    }
 
     std::this_thread::sleep_for(std::chrono::seconds(5));
 
     // Subscribe to TRADE channel
-    ws.send(R"({
+    bool result = ws.send(R"({
         "method": "subscribe",
         "params": {
             "channel": "trade",
             "symbol": ["BTC/USD"]
         }
     })");
+    if (!result) {
+        return 3;
+    }
 
     // Keep running forever
     std::cout << "Subscribed. Waiting for messages...\n";

@@ -210,11 +210,12 @@ public:
         }
         WK_INFO("Connection re-established with server '" << last_url_ << "'. Replaying active subscriptions...");
         // 4) Replay all subscriptions
-        for (const auto& subscription : replay_db_.take_subscriptions<schema::trade::Subscribe>()) {
-            subscribe_with_ack_(subscription.request(), subscription.callback());
+        auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
+        for (const auto& subscription : trade_subscriptions) {
+            subscribe(subscription.request(), subscription.callback());
         }
         return true;
-}
+    }
 
 
 private:
@@ -294,7 +295,10 @@ private:
         StoredCallback cb_copy = std::forward<Callback>(cb);
         replay_db_.add(req, cb_copy);
         // 3) Send JSON BEFORE moving req.symbols
-        ws_.send(req.to_json());
+        if (!ws_.send(req.to_json())) {
+            WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
+            return;
+        }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         trade_channel_manager_.register_subscription(
             std::move(req.symbols),
@@ -312,7 +316,10 @@ private:
         // 2) Register in replay DB (no callback needed for unsubscription)
         replay_db_.remove(req);
         // 3) Send JSON BEFORE moving req.symbols
-        ws_.send(req.to_json());
+        if (!ws_.send(req.to_json())) {
+            WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
+            return;
+        }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         trade_channel_manager_.register_unsubscription(
             std::move(req.symbols),

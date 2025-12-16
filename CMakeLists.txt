@@ -69,17 +69,14 @@ endif()
 add_executable(wirekrak_connect examples/winhttp/connect.cpp)
 target_link_libraries(wirekrak_connect PRIVATE wirekrak winhttp)
 
-add_executable(wirekrak_trade_single examples/winhttp/trade_single.cpp)
+add_executable(wirekrak_trade_single examples/trade_single.cpp)
 target_link_libraries(wirekrak_trade_single PRIVATE wirekrak winhttp)
 
-add_executable(wirekrak_trade_multi examples/winhttp/trade_multi.cpp)
+add_executable(wirekrak_trade_multi examples/trade_multi.cpp)
 target_link_libraries(wirekrak_trade_multi PRIVATE wirekrak winhttp)
 
-#add_executable(wirekrak_trade examples/trade_stream.cpp)
-#target_link_libraries(wirekrak_trade wirekrak)
-
-#add_executable(wirekrak_orderbook examples/orderbook_stream.cpp)
-#target_link_libraries(wirekrak_orderbook wirekrak)
+add_executable(wirekrak_reconnect examples/reconnect.cpp)
+target_link_libraries(wirekrak_reconnect PRIVATE wirekrak winhttp)
 
 # -------------------------------------------------------------
 # Tests (optional, enable if Catch2 installed)
