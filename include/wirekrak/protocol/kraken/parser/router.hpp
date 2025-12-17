@@ -12,6 +12,7 @@
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
 #include "wirekrak/protocol/kraken/parser/book/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/parser/book/unsubscribe_ack.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
@@ -175,6 +176,13 @@ private:
                     if (!trade_unsubscribe_ring_.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_unsubscribe_ring_ full, dropping.");
                     }
+                    return true;
+                }
+            } break;
+            case Channel::Book: {
+                kraken::book::UnsubscribeAck resp;
+                if (book::unsubscribe_ack::parse(root, resp)) {
+                    // TODO: push to book_unsubscribe_ring_
                     return true;
                 }
             } break;
