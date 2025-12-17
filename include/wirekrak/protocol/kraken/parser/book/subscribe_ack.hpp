@@ -16,23 +16,9 @@ namespace parser {
 namespace book {
 
 struct subscribe_ack {
-    static bool parse(const simdjson::dom::element& root, kraken::book::SubscribeAck& out) noexcept {
-        if (!parser::detail::parse_book_ack_common(root, "subscribe", out))
-            return false;
-
-        // subscribe-only fields
-        auto snapshot = root["result"]["snapshot"].get_bool();
-        if (snapshot.error())
-            return false;
-        out.snapshot = snapshot.value();
-
-        auto warnings = root["result"]["warnings"];
-        if (!warnings.error()) {
-            for (auto w : warnings.get_array())
-                out.warnings.emplace_back(std::string(w.get_string().value()));
-        }
-
-        return true;
+    [[nodiscard]]
+    static inline bool parse(const simdjson::dom::element& root, kraken::book::SubscribeAck& out) noexcept {
+        return parser::detail::parse_book_ack_common(root, "subscribe", out);
     }
 };
 

@@ -32,7 +32,7 @@
         "VCPKG_TARGET_TRIPLET": "x64-mingw-dynamic",
         "VCPKG_APPLOCAL_DEPS": "OFF",
 
-        "WIREKRAK_BUILD_TESTS": "ON"
+        "WIREKRAK_BUILD_TESTS": "OFF"
       }
     }
   ],

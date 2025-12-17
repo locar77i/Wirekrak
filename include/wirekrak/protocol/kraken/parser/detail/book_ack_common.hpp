@@ -59,7 +59,24 @@ inline bool parse_book_ack_common(const simdjson::dom::element& root, std::strin
             out.error = std::string(err.value());
     }
 
-    // timestamps
+    // snapshot (subscribe-only)
+    if constexpr (requires { out.snapshot; }) {
+        auto snapshot = result.value()["snapshot"].get_bool();
+        if (snapshot.error())
+            return false;
+        out.snapshot = snapshot.value();
+    }
+
+    // warnings (subscribe-only)
+    if constexpr (requires { out.warnings; }) {
+        auto warnings = result.value()["warnings"];
+        if (!warnings.error()) {
+            for (auto w : warnings.get_array())
+                out.warnings.emplace_back(std::string(w.get_string().value()));
+        }
+    }
+
+    // timestamps (optional)
     std::string_view sv;
     auto tin = root["time_in"];
     if (!tin.error() && !tin.get(sv)) {
@@ -82,6 +99,7 @@ inline bool parse_book_ack_common(const simdjson::dom::element& root, std::strin
 
     return true;
 }
+
 
 } // namespace detail
 } // namespace parser
