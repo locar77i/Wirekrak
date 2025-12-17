@@ -17,7 +17,7 @@ namespace book {
 
 struct subscribe_ack {
     static bool parse(const simdjson::dom::element& root, kraken::book::SubscribeAck& out) noexcept {
-        if (!detail::parse_book_ack_common(root, "subscribe", out))
+        if (!parser::detail::parse_book_ack_common(root, "subscribe", out))
             return false;
 
         // subscribe-only fields

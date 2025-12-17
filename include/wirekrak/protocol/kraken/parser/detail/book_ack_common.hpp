@@ -9,7 +9,11 @@
 #include "simdjson.h"
 
 
-namespace wirekrak::protocol::kraken::parser::detail {
+namespace wirekrak {
+namespace protocol {
+namespace kraken {
+namespace parser {
+namespace detail {
 
 template<typename Ack>
 [[nodiscard]]
@@ -79,4 +83,8 @@ inline bool parse_book_ack_common(const simdjson::dom::element& root, std::strin
     return true;
 }
 
-} // namespace wirekrak::protocol::kraken::parser::detail
+} // namespace detail
+} // namespace parser
+} // namespace kraken
+} // namespace protocol
+} // namespace wirekrak

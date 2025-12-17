@@ -12,6 +12,8 @@
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
 #include "wirekrak/protocol/kraken/parser/book/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/parser/book/snapshot.hpp"
+#include "wirekrak/protocol/kraken/parser/book/update.hpp"
 #include "wirekrak/protocol/kraken/parser/book/unsubscribe_ack.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/log/logger.hpp"
@@ -22,6 +24,20 @@ namespace wirekrak {
 namespace protocol {
 namespace kraken {
 namespace parser {
+
+    // Payload type enum
+    enum class PayloadType : uint8_t {
+        Snapshot,
+        Update,
+        Unknown
+    };
+    // Determine payload type from string
+    [[nodiscard]] inline constexpr PayloadType to_payload_type(std::string_view s) noexcept {
+        if (s == "snapshot") return PayloadType::Snapshot;
+        if (s == "update")   return PayloadType::Update;
+        return PayloadType::Unknown;
+    }
+
 
 class Router {
     constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
@@ -212,8 +228,7 @@ private:
                 result = parse_ticker_(root);
                 break;
             case Channel::Book:
-                result = parse_book_(root);
-                break;
+                return parse_book_(root);
             case Channel::Heartbeat:
                 heartbeat_total_.fetch_add(1, std::memory_order_relaxed);
                 last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
@@ -281,8 +296,33 @@ private:
     // BOOK PARSER
     [[nodiscard]] inline bool parse_book_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
-        WK_WARN("[PARSER] Unhandled channel 'book' -> ignore");
-        // TODO
+        // type field
+        auto type = root["type"].get_string();
+        if (type.error()) {
+            WK_WARN("[PARSER] book message missing type -> ignore");
+            return false;
+        }
+        // route based on type
+        switch (to_payload_type(type.value())) {
+            case PayloadType::Snapshot: {
+                kraken::book::Snapshot snapshot;
+                if (parser::book::snapshot::parse(root, snapshot)) {
+                    // push snapshot (ring / callback / reducer)
+                    return true;
+                }
+            } break;
+            case PayloadType::Update: {
+                kraken::book::Update update;
+                if (parser::book::update::parse(root, update)) {
+                    // push update (ring / reducer)
+                    return true;
+                }
+            } break;
+            default:
+                WK_WARN("[PARSER] Unknown book type -> ignore");
+                break;
+        }
+
         return false;
     };
 

@@ -1,46 +1,11 @@
 # tests/protocol/kraken/parser/book/CMakeLists.txt
 
-###################################################
-# Unit test : test_subscribe_ack_parse
-###################################################
-add_executable(test_subscribe_ack_parse
-    test_subscribe_ack_parse.cpp
-)
-
-# Link the main Wirekrak SDK
-target_link_libraries(test_subscribe_ack_parse PRIVATE wirekrak)
-
-# The include path is already provided by linking wirekrak,
-# but we can make it explicit:
-target_include_directories(test_subscribe_ack_parse PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-)
-
-# Compile definitions
-target_compile_definitions(test_subscribe_ack_parse PRIVATE WK_UNIT_TEST)
-
-# Register the test with CTest
-add_test(NAME BookSubscribeAckParse COMMAND test_subscribe_ack_parse)
+include(${PROJECT_SOURCE_DIR}/cmake/Wirekrak.TestHelpers.cmake)
 
 
-###################################################
-# Unit test : test_unsubscribe_ack_parse
-###################################################
-add_executable(test_unsubscribe_ack_parse
-    test_unsubscribe_ack_parse.cpp
-)
+file(GLOB BOOK_PARSER_TESTS test_*.cpp)
 
-# Link the main Wirekrak SDK
-target_link_libraries(test_unsubscribe_ack_parse PRIVATE wirekrak)
-
-# The include path is already provided by linking wirekrak,
-# but we can make it explicit:
-target_include_directories(test_unsubscribe_ack_parse PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-)
-
-# Compile definitions
-target_compile_definitions(test_unsubscribe_ack_parse PRIVATE WK_UNIT_TEST)
-
-# Register the test with CTest
-add_test(NAME BookUnubscribeAckParse COMMAND test_unsubscribe_ack_parse)
+foreach(test_src ${BOOK_PARSER_TESTS})
+    get_filename_component(test_name ${test_src} NAME_WE)
+    wirekrak_add_parser_test(${test_name} ${test_src})
+endforeach()
