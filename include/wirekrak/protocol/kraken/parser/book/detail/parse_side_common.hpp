@@ -11,7 +11,7 @@ namespace detail {
 
 template<typename Levels>
 [[nodiscard]]
-inline bool parse_book_levels(const simdjson::dom::object& book, std::string_view field, Levels& out_levels, bool& present) noexcept {
+inline bool parse_side_common(const simdjson::dom::object& book, std::string_view field, Levels& out_levels, bool& present) noexcept {
     present = false;
 
     auto levels = book[field];

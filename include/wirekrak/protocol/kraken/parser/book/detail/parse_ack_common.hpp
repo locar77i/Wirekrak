@@ -17,7 +17,7 @@ namespace detail {
 
 template<typename Ack>
 [[nodiscard]]
-inline bool parse_book_ack_common(const simdjson::dom::element& root, std::string_view expected_method, Ack& out) noexcept {
+inline bool parse_ack_common(const simdjson::dom::element& root, std::string_view expected_method, Ack& out) noexcept {
     // method
     auto method = root["method"].get_string();
     if (method.error() || method.value() != expected_method)
