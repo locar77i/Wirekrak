@@ -8,6 +8,8 @@
 #include "wirekrak/replay/subscription.hpp"
 #include "lcr/log/logger.hpp"
 
+using namespace wirekrak::protocol::kraken;
+
 
 namespace wirekrak {
 namespace replay {

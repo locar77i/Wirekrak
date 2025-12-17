@@ -1,12 +1,14 @@
 #pragma once
 
-#include "wirekrak/schema/trade/Subscribe.hpp"
-#include "wirekrak/schema/trade/Response.hpp"
-//#include "wirekrak/schema/ticker/Subscribe.hpp"
-//#include "wirekrak/schema/ticker/Response.hpp"
-//#include "wirekrak/schema/book/Subscribe.hpp"
-//#include "wirekrak/schema/book/Response.hpp"
+#include "wirekrak/protocol/kraken/trade/Subscribe.hpp"
+#include "wirekrak/protocol/kraken/trade/Response.hpp"
+//#include "wirekrak/protocol/kraken/ticker/Subscribe.hpp"
+//#include "wirekrak/protocol/kraken/ticker/Response.hpp"
+//#include "wirekrak/protocol/kraken/book/Subscribe.hpp"
+//#include "wirekrak/protocol/kraken/book/Response.hpp"
 #include "wirekrak/replay/Table.hpp"
+
+using namespace wirekrak::protocol::kraken;
 
 
 namespace wirekrak {
@@ -59,9 +61,9 @@ public:
     }
 
 private:
-    Table<schema::trade::Subscribe> trade_;
-    // Table<schema::ticker::Subscribe> ticker_;
-    // Table<schema::book::Subscribe> book_;
+    Table<protocol::kraken::trade::Subscribe> trade_;
+    // Table<protocol::kraken::ticker::Subscribe> ticker_;
+    // Table<protocol::kraken::book::Subscribe> book_;
 
 private:
     // Helpers to get the correct handler table for a response type

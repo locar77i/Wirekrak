@@ -32,6 +32,15 @@ It is built with **production-grade architecture**, focusing on reliability, det
 
 ## 🧱 Architecture Overview
 
+WireKrak is structured in three independent layers:
+
+• Transport — WebSocket connectivity and failure signaling  
+• Client Policy — reconnection, liveness, and subscription management  
+• Protocol — Kraken-specific message schemas and routing  
+
+This separation allows deterministic testing, clean failure handling,
+and future support for additional exchanges or transports.
+
 ```
 wirekrak/
 ├── core/transport/     # Protocol-agnostic WebSocket interfaces

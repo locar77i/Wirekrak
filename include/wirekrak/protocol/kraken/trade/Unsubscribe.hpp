@@ -10,7 +10,8 @@
 
 
 namespace wirekrak {
-namespace schema {
+namespace protocol {
+namespace kraken {
 namespace trade {
 
 struct Unsubscribe {
@@ -49,5 +50,6 @@ struct Unsubscribe {
 };
 
 } // namespace trade
-} // namespace schema
+} // namespace kraken
+} // namespace protocol
 } // namespace wirekrak

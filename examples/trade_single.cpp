@@ -3,13 +3,15 @@
 #include <chrono>
 
 #include "wirekrak/winhttp/client.hpp"
-#include "wirekrak/schema/trade/Subscribe.hpp"
-#include "wirekrak/schema/trade/Unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/trade/Subscribe.hpp"
+#include "wirekrak/protocol/kraken/trade/Unsubscribe.hpp"
 
 using namespace wirekrak;
+using namespace lcr::log;
 
 
 int main() {
+    Logger::instance().set_level(Level::Info);
 
     winhttp::WinClient client;
     if (!client.connect("wss://ws.kraken.com/v2")) {
@@ -17,8 +19,8 @@ int main() {
     }
 
     // Subscribe to BTC/USD trades
-    client.subscribe(schema::trade::Subscribe{.symbols = {"BTC/USD"}},
-                     [](const schema::trade::Response& msg) {
+    client.subscribe(protocol::kraken::trade::Subscribe{.symbols = {"BTC/USD"}},
+                     [](const protocol::kraken::trade::Response& msg) {
                         std::cout << " -> [BTC/USD] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
                      }
     );
@@ -31,7 +33,7 @@ int main() {
     }
     
     // Unsubscribe from BTC/USD trades
-    client.unsubscribe(schema::trade::Unsubscribe{.symbols = {"BTC/USD"}});
+    client.unsubscribe(protocol::kraken::trade::Unsubscribe{.symbols = {"BTC/USD"}});
     end_time = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while ((client.trade_subscriptions().has_pending() || client.trade_subscriptions().has_active()) && std::chrono::steady_clock::now() < end_time) {
         client.poll();

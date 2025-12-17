@@ -30,6 +30,9 @@ errors, close frames, and message delivery.
 This approach mirrors production-grade trading SDKs, where transport logic is
 unit-tested independently from OS and network behavior, ensuring fast, reliable,
 and CI-safe tests.
+
+All transport tests are designed to pass identically in Debug and Release,
+avoiding timing assumptions and relying only on observable transport invariants.
 ================================================================================
 */
 

@@ -5,9 +5,11 @@
 #include <string>
 #include <functional>
 
-#include "wirekrak/schema/trade/Response.hpp"
+#include "wirekrak/protocol/kraken/trade/Response.hpp"
+#include "wirekrak/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/core/symbol/intern.hpp"
-#include "wirekrak/core/channel_traits.hpp"
+
+using namespace wirekrak::protocol::kraken;
 
 
 namespace wirekrak {
@@ -53,7 +55,7 @@ public:
     }
 
 private:
-    std::unordered_map<SymbolId, std::vector<Callback<schema::trade::Response>>> trade_handlers_;
+    std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::trade::Response>>> trade_handlers_;
 
 private:
     // Helpers to get the correct handler table for a response type

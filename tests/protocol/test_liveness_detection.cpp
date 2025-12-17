@@ -19,7 +19,8 @@
     } while (0)
 
 
-namespace wirekrak {
+using namespace wirekrak;
+
 
 struct MockWebSocket {
     using MessageCallback = std::function<void(const std::string&)>;
@@ -130,10 +131,8 @@ void test_liveness_detection() {
     std::cout << "[TEST] Liveness detection PASSED!" << std::endl;
 }
 
-} // namespace wirekrak
-
 
 int main() {
-    wirekrak::test_liveness_detection();
+    test_liveness_detection();
     return 0;
 }

@@ -10,7 +10,8 @@
 
 
 namespace wirekrak{ 
-namespace schema {
+namespace protocol {
+namespace kraken {
 namespace trade {
 
 
@@ -57,5 +58,6 @@ struct Subscribe {
 };
 
 } // namespace trade
-} // namespace schema
+} // namespace kraken
+} // namespace protocol
 } // namespace wirekrak

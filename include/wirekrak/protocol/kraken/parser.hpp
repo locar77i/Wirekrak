@@ -6,16 +6,18 @@
 
 #include <simdjson.h>
 
-#include "wirekrak/schema/trade/SubscribeAck.hpp"
-#include "wirekrak/schema/trade/Response.hpp"
-#include "wirekrak/schema/trade/UnsubscribeAck.hpp"
+#include "wirekrak/protocol/kraken/trade/SubscribeAck.hpp"
+#include "wirekrak/protocol/kraken/trade/Response.hpp"
+#include "wirekrak/protocol/kraken/trade/UnsubscribeAck.hpp"
 #include "wirekrak/core/types.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 
-namespace wirekrak {
+using namespace wirekrak::protocol::kraken;
 
+
+namespace wirekrak {
 
 class Parser {
     constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
@@ -23,9 +25,9 @@ class Parser {
 public:
     Parser(std::atomic<uint64_t>& heartbeat_total,
            std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts,
-           lcr::lockfree::spsc_ring<schema::trade::Response, 4096>& trade_ring,
-           lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, 16>& trade_subscribe_ring,
-           lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, 16>& trade_unsubscribe_ring)
+           lcr::lockfree::spsc_ring<protocol::kraken::trade::Response, 4096>& trade_ring,
+           lcr::lockfree::spsc_ring<protocol::kraken::trade::SubscribeAck, 16>& trade_subscribe_ring,
+           lcr::lockfree::spsc_ring<protocol::kraken::trade::UnsubscribeAck, 16>& trade_unsubscribe_ring)
         : heartbeat_total_(heartbeat_total)
         , last_heartbeat_ts_(last_heartbeat_ts)
         , trade_ring_(trade_ring)
@@ -92,9 +94,9 @@ public:
 private:
     std::atomic<uint64_t>& heartbeat_total_;
     std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts_;
-    lcr::lockfree::spsc_ring<schema::trade::Response, 4096>& trade_ring_;
-    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, 16>& trade_subscribe_ring_;
-    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, 16>& trade_unsubscribe_ring_;
+    lcr::lockfree::spsc_ring<protocol::kraken::trade::Response, 4096>& trade_ring_;
+    lcr::lockfree::spsc_ring<protocol::kraken::trade::SubscribeAck, 16>& trade_subscribe_ring_;
+    lcr::lockfree::spsc_ring<protocol::kraken::trade::UnsubscribeAck, 16>& trade_unsubscribe_ring_;
     simdjson::dom::parser parser_;
 
 private:
@@ -139,7 +141,7 @@ private:
     [[nodiscard]] inline bool parse_subscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
         switch (channel) {
             case Channel::Trade: {
-                schema::trade::SubscribeAck resp;
+                protocol::kraken::trade::SubscribeAck resp;
                 if (parse_(root, resp)) {
                     if (!trade_subscribe_ring_.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_subscribe_ring_ full, dropping.");
@@ -158,7 +160,7 @@ private:
     [[nodiscard]] inline bool parse_unsubscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
         switch (channel) {
             case Channel::Trade: {
-                schema::trade::UnsubscribeAck resp;
+                protocol::kraken::trade::UnsubscribeAck resp;
                 if (parse_(root, resp)) {
                     if (!trade_unsubscribe_ring_.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_unsubscribe_ring_ full, dropping.");
@@ -182,7 +184,7 @@ private:
         bool result = false;
         switch (channel) {
             case Channel::Trade: {
-                schema::trade::Response response;
+                protocol::kraken::trade::Response response;
                 result = parse_(root, response);
                 if (!trade_ring_.push(std::move(response))) { // TODO: handle backpressure
                     WK_WARN("[PARSER] trade_ring_ full, dropping.");
@@ -210,7 +212,7 @@ private:
     }
 
     // TRADE PARSER
-    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, schema::trade::Response& out) noexcept {
+    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, protocol::kraken::trade::Response& out) noexcept {
         using namespace simdjson;
         dom::array arr;
         if (root["data"].get(arr)) {
@@ -274,7 +276,7 @@ private:
 
 
 
-    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, schema::trade::SubscribeAck& out) noexcept {
+    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, protocol::kraken::trade::SubscribeAck& out) noexcept {
         using namespace simdjson;
         // required: success (boolean)
         {
@@ -354,7 +356,7 @@ private:
 
 
 
-    inline bool parse_(const simdjson::dom::element& root, schema::trade::UnsubscribeAck& out) noexcept {
+    inline bool parse_(const simdjson::dom::element& root, protocol::kraken::trade::UnsubscribeAck& out) noexcept {
         using namespace simdjson;
         out = {};
         // success (required)

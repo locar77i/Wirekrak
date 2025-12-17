@@ -2,13 +2,15 @@
 
 #include "wirekrak/core/types.hpp"
 
-#include "wirekrak/schema/trade/Subscribe.hpp"
-#include "wirekrak/schema/trade/Unsubscribe.hpp"
-#include "wirekrak/schema/trade/Response.hpp"
-#include "wirekrak/schema/trade/SubscribeAck.hpp"
-#include "wirekrak/schema/trade/UnsubscribeAck.hpp"
+#include "wirekrak/protocol/kraken/trade/Subscribe.hpp"
+#include "wirekrak/protocol/kraken/trade/Unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/trade/Response.hpp"
+#include "wirekrak/protocol/kraken/trade/SubscribeAck.hpp"
+#include "wirekrak/protocol/kraken/trade/UnsubscribeAck.hpp"
 
 namespace wirekrak {
+namespace protocol {
+namespace kraken {
 
 // ============================================================================
 // CHANNEL OF (MESSAGE → CHANNEL MAPPING)
@@ -27,27 +29,27 @@ inline constexpr Channel channel_of_v = channel_of<T>::value;
 // ---------------------------------------------------------------------------
 
 template<>
-struct channel_of<schema::trade::Subscribe> {
+struct channel_of<protocol::kraken::trade::Subscribe> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<schema::trade::Unsubscribe> {
+struct channel_of<protocol::kraken::trade::Unsubscribe> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<schema::trade::Response> {
+struct channel_of<protocol::kraken::trade::Response> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<schema::trade::SubscribeAck> {
+struct channel_of<protocol::kraken::trade::SubscribeAck> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<schema::trade::UnsubscribeAck> {
+struct channel_of<protocol::kraken::trade::UnsubscribeAck> {
     static constexpr Channel value = Channel::Trade;
 };
 
@@ -69,15 +71,17 @@ struct channel_traits;
 // ---------------------------------------------------------------------------
 
 template<>
-struct channel_traits<schema::trade::Subscribe> {
+struct channel_traits<protocol::kraken::trade::Subscribe> {
     static constexpr Channel channel = Channel::Trade;
-    using response_type = schema::trade::Response;
+    using response_type = protocol::kraken::trade::Response;
 };
 
 template<>
-struct channel_traits<schema::trade::Unsubscribe> {
+struct channel_traits<protocol::kraken::trade::Unsubscribe> {
     static constexpr Channel channel = Channel::Trade;
-    using response_type = schema::trade::Response; // same dispatcher type
+    using response_type = protocol::kraken::trade::Response; // same dispatcher type
 };
 
+} // namespace kraken
+} // namespace protocol
 } // namespace wirekrak

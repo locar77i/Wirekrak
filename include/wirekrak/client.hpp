@@ -4,19 +4,21 @@
 #include <thread>
 
 #include "wirekrak/winhttp/websocket.hpp"
-#include "wirekrak/parser.hpp"
+#include "wirekrak/protocol/kraken/parser.hpp"
 #include "wirekrak/dispatcher.hpp"
 #include "wirekrak/channel/manager.hpp"
-#include "wirekrak/schema/trade/Subscribe.hpp"
-#include "wirekrak/schema/trade/Unsubscribe.hpp"
-#include "wirekrak/schema/trade/Response.hpp"
+#include "wirekrak/protocol/kraken/trade/Subscribe.hpp"
+#include "wirekrak/protocol/kraken/trade/Unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/trade/Response.hpp"
+#include "wirekrak/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/replay/database.hpp"
 #include "wirekrak/core/symbol.hpp"
-#include "wirekrak/core/channel_traits.hpp"
 #include "wirekrak/core/transport/websocket.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/sequence.hpp"
+
+using namespace wirekrak::protocol::kraken;
 
 
 namespace wirekrak {
@@ -103,7 +105,7 @@ public:
         would require even more overloads.
 
     The new design accepts a single argument:
-        subscribe(const schema::trade::Subscribe& req);
+        subscribe(const protocol::kraken::trade::Subscribe& req);
 
     Benefits:
       • Strong type safety — each schema struct matches exactly the official
@@ -116,7 +118,7 @@ public:
         client to auto-assign one.
 
     Example usage:
-        client.subscribe(schema::trade::Subscribe{
+        client.subscribe(protocol::kraken::trade::Subscribe{
             .symbols = {"BTC/USD"},
             .snapshot = false
         });
@@ -133,7 +135,7 @@ public:
     PERFORMANCE & API DESIGN NOTE:
     ----------------------------------------------------------------------------
 
-    subscribe() and unsubscribe() accept schema::trade::Subscribe and
+    subscribe() and unsubscribe() accept protocol::kraken::trade::Subscribe and
     Unsubscribe **by const-reference**, but internally we forward these
     to subscribe_with_ack_(), which accepts the request **by value**.
 
@@ -186,7 +188,7 @@ public:
         subscribe_with_ack_(req, cb_copy);
     }
 
-    inline void unsubscribe(const schema::trade::Unsubscribe& req) {
+    inline void unsubscribe(const protocol::kraken::trade::Unsubscribe& req) {
         unsubscribe_with_ack_(req);
     }
 
@@ -220,7 +222,7 @@ public:
         }
         // === Process rings ===
         { // === Process trade subscribe ring ===
-        schema::trade::SubscribeAck ack;
+        protocol::kraken::trade::SubscribeAck ack;
         while (trade_subscribe_ring_.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
@@ -229,9 +231,9 @@ public:
             trade_channel_manager_.process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
         }}
         { // === Process trade unsubscribe ring ===
-        schema::trade::UnsubscribeAck ack;
+        protocol::kraken::trade::UnsubscribeAck ack;
         while (trade_unsubscribe_ring_.pop(ack)) {
-            dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
+            dispatcher_.remove_symbol_handlers<protocol::kraken::trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
                 return;
@@ -239,7 +241,7 @@ public:
             trade_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
         }}
         { // === Process trade ring ===
-        schema::trade::Response resp;
+        protocol::kraken::trade::Response resp;
         while (trade_ring_.pop(resp)) {
             dispatcher_.dispatch(resp);
         }}
@@ -293,9 +295,9 @@ private:
     std::atomic<std::chrono::steady_clock::time_point> last_heartbeat_ts_;
     std::atomic<std::chrono::steady_clock::time_point> last_message_ts_;
 
-    lcr::lockfree::spsc_ring<schema::trade::Response, 4096> trade_ring_{};
-    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, 16> trade_subscribe_ring_{};
-    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, 16> trade_unsubscribe_ring_{};
+    lcr::lockfree::spsc_ring<protocol::kraken::trade::Response, 4096> trade_ring_{};
+    lcr::lockfree::spsc_ring<protocol::kraken::trade::SubscribeAck, 16> trade_subscribe_ring_{};
+    lcr::lockfree::spsc_ring<protocol::kraken::trade::UnsubscribeAck, 16> trade_unsubscribe_ring_{};
 
     Parser parser_;
     Dispatcher dispatcher_;
@@ -389,7 +391,7 @@ private:
         }
         WK_INFO("Connection re-established with server '" << last_url_ << "'. Replaying active subscriptions...");
         // 4) Replay all subscriptions
-        auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
+        auto trade_subscriptions = replay_db_.take_subscriptions<protocol::kraken::trade::Subscribe>();
         for (const auto& subscription : trade_subscriptions) {
             subscribe(subscription.request(), subscription.callback());
         }

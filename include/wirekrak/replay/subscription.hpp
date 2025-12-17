@@ -4,7 +4,9 @@
 #include <cstdint>
 #include <utility>
 
-#include "wirekrak/core/channel_traits.hpp"
+#include "wirekrak/protocol/kraken/channel_traits.hpp"
+
+using namespace wirekrak::protocol::kraken;
 
 
 namespace wirekrak {
