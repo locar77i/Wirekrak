@@ -18,4 +18,4 @@ target_include_directories(test_controller PRIVATE
 target_compile_definitions(test_controller PRIVATE WK_UNIT_TEST)
 
 # Register the test with CTest
-add_test(NAME RecorderControllerTest COMMAND test_controller)
+add_test(NAME RecorderController COMMAND test_controller)

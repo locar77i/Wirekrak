@@ -18,4 +18,4 @@ target_include_directories(test_websocket_transport PRIVATE
 target_compile_definitions(test_websocket_transport PRIVATE WK_UNIT_TEST)
 
 # Register the test with CTest
-add_test(NAME WebSocketTransporTest COMMAND test_websocket_transport)
+add_test(NAME WebSocketTranspor COMMAND test_websocket_transport)

@@ -20,7 +20,7 @@ target_include_directories(test_subscribe_ack_parse PRIVATE
 target_compile_definitions(test_subscribe_ack_parse PRIVATE WK_UNIT_TEST)
 
 # Register the test with CTest
-add_test(NAME SubscribeAckParse COMMAND test_subscribe_ack_parse)
+add_test(NAME BookSubscribeAckParse COMMAND test_subscribe_ack_parse)
 
 
 ###################################################
@@ -43,4 +43,4 @@ target_include_directories(test_unsubscribe_ack_parse PRIVATE
 target_compile_definitions(test_unsubscribe_ack_parse PRIVATE WK_UNIT_TEST)
 
 # Register the test with CTest
-add_test(NAME UnubscribeAckParse COMMAND test_unsubscribe_ack_parse)
+add_test(NAME BookUnubscribeAckParse COMMAND test_unsubscribe_ack_parse)
