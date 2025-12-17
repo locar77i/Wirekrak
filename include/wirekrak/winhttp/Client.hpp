@@ -1,6 +1,6 @@
 #pragma once
 
-#include "wirekrak/Client.hpp"
+#include "wirekrak/client.hpp"
 #include "wirekrak/winhttp/WebSocket.hpp"
 
 

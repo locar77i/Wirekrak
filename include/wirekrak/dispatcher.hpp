@@ -5,7 +5,7 @@
 #include <string>
 #include <functional>
 
-#include "wirekrak/protocol/kraken/trade/Response.hpp"
+#include "wirekrak/protocol/kraken/trade/response.hpp"
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/core/symbol/intern.hpp"
 

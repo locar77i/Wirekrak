@@ -19,8 +19,10 @@ struct SubscribeAck {
     Symbol symbol;
     lcr::optional<std::uint64_t> req_id;
     lcr::optional<bool> snapshot;
+
     lcr::optional<std::vector<std::string>> warnings;
     lcr::optional<std::string> error;
+
     lcr::optional<Timestamp> time_in;
     lcr::optional<Timestamp> time_out;
 };

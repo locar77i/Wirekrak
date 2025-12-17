@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <cassert>
 
-#include "wirekrak/core/types.hpp"
+#include "wirekrak/protocol/kraken/enums.hpp"
 #include "wirekrak/core/symbol/intern.hpp"
 #include "lcr/log/logger.hpp"
 
