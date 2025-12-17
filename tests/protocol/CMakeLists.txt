@@ -19,3 +19,7 @@ target_compile_definitions(test_liveness_detection PRIVATE WK_UNIT_TEST)
 
 # Register the test with CTest
 add_test(NAME LivenessTest COMMAND test_liveness_detection)
+
+
+# ADD SUBDIRS
+add_subdirectory(kraken)
