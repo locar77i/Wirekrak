@@ -75,8 +75,11 @@ target_link_libraries(wirekrak_trade_single PRIVATE wirekrak winhttp)
 add_executable(wirekrak_trade_multi examples/trade_multi.cpp)
 target_link_libraries(wirekrak_trade_multi PRIVATE wirekrak winhttp)
 
+add_executable(wirekrak_book_update_single examples/book_update_single.cpp)
+target_link_libraries(wirekrak_book_update_single PRIVATE wirekrak winhttp)
+
 # -------------------------------------------------------------
-# Tests (optional, enable if Catch2 installed)
+# Tests
 # -------------------------------------------------------------
 option(WIREKRAK_BUILD_TESTS "Build Wirekrak tests" OFF)
 

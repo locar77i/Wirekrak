@@ -4,6 +4,7 @@
 #include <thread>
 
 #include "wirekrak/winhttp/websocket.hpp"
+#include "wirekrak/protocol/kraken/parser/context.hpp"
 #include "wirekrak/protocol/kraken/parser/router.hpp"
 #include "wirekrak/dispatcher.hpp"
 #include "wirekrak/channel/manager.hpp"
@@ -49,7 +50,14 @@ class Client {
 
 public:
     Client()
-        : parser_(heartbeat_total_, last_heartbeat_ts_, trade_ring_, trade_subscribe_ring_, trade_unsubscribe_ring_) {
+        : parser_(parser::Context{ .heartbeat_total = &heartbeat_total_,
+                                   .last_heartbeat_ts = &last_heartbeat_ts_,
+                                   .trade_ring = &trade_ring_,
+                                   .trade_subscribe_ring = &trade_subscribe_ring_,
+                                   .trade_unsubscribe_ring = &trade_unsubscribe_ring_,
+                                   .book_ring = &book_ring_,
+                                   .book_subscribe_ring = &book_subscribe_ring_,
+                                   .book_unsubscribe_ring = &book_unsubscribe_ring_}) {
         last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         ws_.set_message_callback([this](const std::string& msg){
@@ -188,7 +196,8 @@ public:
         subscribe_with_ack_(req, cb_copy);
     }
 
-    inline void unsubscribe(const trade::Unsubscribe& req) {
+    template<class RequestT>
+    inline void unsubscribe(const RequestT& req) {
         unsubscribe_with_ack_(req);
     }
 
@@ -220,7 +229,14 @@ public:
                 next_retry_ = now + backoff_(retry_attempts_);
             }
         }
-        // === Process rings ===
+        // ===============================================================================
+        // PROCESS TRADE MESSAGES
+        // ===============================================================================
+        { // === Process trade ring ===
+        trade::Response resp;
+        while (trade_ring_.pop(resp)) {
+            dispatcher_.dispatch(resp);
+        }}
         { // === Process trade subscribe ring ===
         trade::SubscribeAck ack;
         while (trade_subscribe_ring_.pop(ack)) {
@@ -228,7 +244,7 @@ public:
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
                 return;
             }
-            trade_channel_manager_.process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
+            trade_channel_manager_.process_subscribe_ack(Channel::Trade, ack.req_id.value(), ack.symbol, ack.success);
         }}
         { // === Process trade unsubscribe ring ===
         trade::UnsubscribeAck ack;
@@ -238,14 +254,35 @@ public:
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
                 return;
             }
-            trade_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
+            trade_channel_manager_.process_unsubscribe_ack(Channel::Trade, ack.req_id.value(), ack.symbol, ack.success);
         }}
-        { // === Process trade ring ===
-        trade::Response resp;
-        while (trade_ring_.pop(resp)) {
+        // ===============================================================================
+        // PROCESS BOOK UPDATES
+        // ===============================================================================
+        { // === Process book ring ===
+        protocol::kraken::book::Update resp;
+        while (book_ring_.pop(resp)) {
             dispatcher_.dispatch(resp);
         }}
-        // Add rings for orderbook, ticker, system status, etc.
+        { // === Process book subscribe ring ===
+        book::SubscribeAck ack;
+        while (book_subscribe_ring_.pop(ack)) {
+            if (!ack.req_id.has()) [[unlikely]] {
+                WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
+                return;
+            }
+            book_channel_manager_.process_subscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
+        }}
+        { // === Process book unsubscribe ring ===
+        book::UnsubscribeAck ack;
+        while (book_unsubscribe_ring_.pop(ack)) {
+            dispatcher_.remove_symbol_handlers<book::UnsubscribeAck>(ack.symbol);
+            if (!ack.req_id.has()) [[unlikely]] {
+                WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
+                return;
+            }
+            book_channel_manager_.process_unsubscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
+        }}
     }
 
     // Accessor to the heartbeat counter
@@ -254,10 +291,16 @@ public:
         return heartbeat_total_.load(std::memory_order_relaxed);
     }
 
-    // Accessor to the subscription manager
+    // Accessor to the trade subscription manager
     [[nodiscard]]
     inline const channel::Manager& trade_subscriptions() const noexcept {
         return trade_channel_manager_;
+    }
+
+    // Accessor to the book subscription manager
+    [[nodiscard]]
+    inline const channel::Manager& book_subscriptions() const noexcept {
+        return book_channel_manager_;
     }
 
 #ifdef WK_UNIT_TEST
@@ -299,10 +342,15 @@ private:
     lcr::lockfree::spsc_ring<trade::SubscribeAck, 16> trade_subscribe_ring_{};
     lcr::lockfree::spsc_ring<trade::UnsubscribeAck, 16> trade_unsubscribe_ring_{};
 
+    lcr::lockfree::spsc_ring<protocol::kraken::book::Update, 4096> book_ring_{};
+    lcr::lockfree::spsc_ring<book::SubscribeAck, 16> book_subscribe_ring_{};
+    lcr::lockfree::spsc_ring<book::UnsubscribeAck, 16> book_unsubscribe_ring_{};
+
     parser::Router parser_;
     Dispatcher dispatcher_;
 
     channel::Manager trade_channel_manager_;
+    channel::Manager book_channel_manager_;
 
     replay::Database replay_db_;
 
@@ -385,6 +433,7 @@ private:
         // 2) Clear runtime state
         dispatcher_.clear();
         trade_channel_manager_.clear_all();
+        book_channel_manager_.clear_all();
         // 3) Attempt reconnection
         if (!connect(last_url_)) {
             return false;
@@ -406,6 +455,30 @@ private:
         );
     }
 
+    // Helpers to get the correct subscription manager
+    template<class MessageT>
+    auto& subscription_manager_for_() {
+        if constexpr (channel_of_v<MessageT> == Channel::Trade) {
+            return trade_channel_manager_;
+        }
+        else if constexpr (channel_of_v<MessageT> == Channel::Book) {
+            return book_channel_manager_;
+        }
+        // else if constexpr (...) return ticker_handlers_;
+    }
+
+    template<class MessageT>
+    const auto& subscription_manager_for_() const {
+        if constexpr (channel_of_v<MessageT> == Channel::Trade) {
+            return trade_channel_manager_;
+        }
+        else if constexpr (channel_of_v<MessageT> == Channel::Book) {
+            return book_channel_manager_;
+        }
+        // else if constexpr (...) return ticker_handlers_;
+    }    
+
+
     template<class RequestT, class Callback>
     inline void subscribe_with_ack_(RequestT req, Callback&& cb) {
         using ResponseT = typename channel_traits<RequestT>::response_type;
@@ -424,7 +497,7 @@ private:
             return;
         }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        trade_channel_manager_.register_subscription(
+        subscription_manager_for_<RequestT>().register_subscription(
             std::move(req.symbols),
             req.req_id.value()
         );
@@ -445,7 +518,7 @@ private:
             return;
         }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        trade_channel_manager_.register_unsubscription(
+        subscription_manager_for_<RequestT>().register_unsubscription(
             std::move(req.symbols),
             req.req_id.value()
         );

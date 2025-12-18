@@ -10,6 +10,7 @@
 #include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/trade/response.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/parser/context.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
 #include "wirekrak/protocol/kraken/parser/book/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/book/snapshot.hpp"
@@ -43,16 +44,8 @@ class Router {
     constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
 
 public:
-    Router(std::atomic<uint64_t>& heartbeat_total,
-           std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts,
-           lcr::lockfree::spsc_ring<trade::Response, 4096>& trade_ring,
-           lcr::lockfree::spsc_ring<trade::SubscribeAck, 16>& trade_subscribe_ring,
-           lcr::lockfree::spsc_ring<trade::UnsubscribeAck, 16>& trade_unsubscribe_ring)
-        : heartbeat_total_(heartbeat_total)
-        , last_heartbeat_ts_(last_heartbeat_ts)
-        , trade_ring_(trade_ring)
-        , trade_subscribe_ring_(trade_subscribe_ring)
-        , trade_unsubscribe_ring_(trade_unsubscribe_ring)
+    Router(const Context& ctx)
+        : ctx_(ctx)
     {
     }
 
@@ -112,11 +105,7 @@ public:
 
 
 private:
-    std::atomic<uint64_t>& heartbeat_total_;
-    std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts_;
-    lcr::lockfree::spsc_ring<trade::Response, 4096>& trade_ring_;
-    lcr::lockfree::spsc_ring<trade::SubscribeAck, 16>& trade_subscribe_ring_;
-    lcr::lockfree::spsc_ring<trade::UnsubscribeAck, 16>& trade_unsubscribe_ring_;
+    Context ctx_;
     simdjson::dom::parser parser_;
 
 private:
@@ -163,18 +152,22 @@ private:
             case Channel::Trade: {
                 kraken::trade::SubscribeAck resp;
                 if (parse_(root, resp)) {
-                    if (!trade_subscribe_ring_.push(std::move(resp))) { // TODO: handle backpressure
+                    if (!ctx_.trade_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_subscribe_ring_ full, dropping.");
                     }
                     return true;
                 }
+                WK_WARN("[PARSER] Failed to parse trade subscribe ACK.");
             } break;
             case Channel::Book: {
                 kraken::book::SubscribeAck resp;
                 if (book::subscribe_ack::parse(root, resp)) {
-                    // TODO: push to book_subscribe_ring_
+                    if (!ctx_.book_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] book_subscribe_ring_ full, dropping.");
+                    }
                     return true;
                 }
+                WK_WARN("[PARSER] Failed to parse book subscribe ACK.");
             } break;
             default:
                 WK_WARN("[PARSER] Subscription ACK parsing not implemented for channel '" << to_string(channel) << "'");
@@ -189,7 +182,7 @@ private:
             case Channel::Trade: {
                 trade::UnsubscribeAck resp;
                 if (parse_(root, resp)) {
-                    if (!trade_unsubscribe_ring_.push(std::move(resp))) { // TODO: handle backpressure
+                    if (!ctx_.trade_unsubscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_unsubscribe_ring_ full, dropping.");
                     }
                     return true;
@@ -198,7 +191,9 @@ private:
             case Channel::Book: {
                 kraken::book::UnsubscribeAck resp;
                 if (book::unsubscribe_ack::parse(root, resp)) {
-                    // TODO: push to book_unsubscribe_ring_
+                    if (!ctx_.book_unsubscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] book_unsubscribe_ring_ full, dropping.");
+                    }
                     return true;
                 }
             } break;
@@ -220,7 +215,7 @@ private:
             case Channel::Trade: {
                 kraken::trade::Response response;
                 result = parse_(root, response);
-                if (!trade_ring_.push(std::move(response))) { // TODO: handle backpressure
+                if (!ctx_.trade_ring->push(std::move(response))) { // TODO: handle backpressure
                     WK_WARN("[PARSER] trade_ring_ full, dropping.");
                 }
             } break;
@@ -230,8 +225,8 @@ private:
             case Channel::Book:
                 return parse_book_(root);
             case Channel::Heartbeat:
-                heartbeat_total_.fetch_add(1, std::memory_order_relaxed);
-                last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+                ctx_.heartbeat_total->fetch_add(1, std::memory_order_relaxed);
+                ctx_.last_heartbeat_ts->store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
                 result = true;
                 break;
             case Channel::Status: {
@@ -314,7 +309,9 @@ private:
             case PayloadType::Update: {
                 kraken::book::Update update;
                 if (parser::book::update::parse(root, update)) {
-                    // push update (ring / reducer)
+                    if (!ctx_.book_ring->push(std::move(update))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] book_ring_ full, dropping.");
+                    }
                     return true;
                 }
             } break;

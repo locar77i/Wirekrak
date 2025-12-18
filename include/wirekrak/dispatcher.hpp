@@ -52,10 +52,12 @@ public:
     // Clear everything (used when reconnecting or shutting down)
     inline void clear() noexcept {
         trade_handlers_.clear();
+        book_handlers_.clear();
     }
 
 private:
     std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::trade::Response>>> trade_handlers_;
+    std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::book::Update>>> book_handlers_;
 
 private:
     // Helpers to get the correct handler table for a response type
@@ -64,8 +66,10 @@ private:
         if constexpr (channel_of_v<MessageT> == Channel::Trade) {
             return trade_handlers_;
         }
+        else if constexpr (channel_of_v<MessageT> == Channel::Book) {
+            return book_handlers_;
+        }
         // else if constexpr (...) return ticker_handlers_;
-        // else if constexpr (...) return book_handlers_;
     }
 
     template<class MessageT>
@@ -73,8 +77,10 @@ private:
         if constexpr (channel_of_v<MessageT> == Channel::Trade) {
             return trade_handlers_;
         }
+        else if constexpr (channel_of_v<MessageT> == Channel::Book) {
+            return book_handlers_;
+        }
         // else if constexpr (...) return ticker_handlers_;
-        // else if constexpr (...) return book_handlers_;
     }
 };
 

@@ -3,6 +3,7 @@
 #include <string>
 #include <cstdint>
 
+#include "wirekrak/protocol/kraken/enums/side.hpp"
 #include "wirekrak/protocol/kraken/enums/order_type.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"

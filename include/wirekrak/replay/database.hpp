@@ -63,7 +63,7 @@ public:
 private:
     Table<protocol::kraken::trade::Subscribe> trade_;
     // Table<protocol::kraken::ticker::Subscribe> ticker_;
-    // Table<protocol::kraken::book::Subscribe> book_;
+    Table<protocol::kraken::book::Subscribe> book_;
 
 private:
     // Helpers to get the correct handler table for a response type
@@ -75,9 +75,9 @@ private:
         // else if constexpr (channel_of_v<RequestT> == Channel::Ticker) {
         //     return ticker_;
         // }
-        // else if constexpr (channel_of_v<RequestT> == Channel::Book) {
-        //     return book_;
-        // }
+        else if constexpr (channel_of_v<RequestT> == Channel::Book) {
+            return book_;
+        }
         else {
             static_assert(wirekrak::always_false<RequestT>, "Unsupported RequestT in subscription_table_for_()");
         }
@@ -90,10 +90,10 @@ private:
         }
         // else if constexpr (channel_of_v<RequestT> == Channel::Ticker) {
         //     return ticker_;
-        // }
-        // else if constexpr (channel_of_v<RequestT> == Channel::Book) {
-        //     return book_;
-        // }
+        //}
+        else if constexpr (channel_of_v<RequestT> == Channel::Book) {
+             return book_;
+        }
         else {
             static_assert(wirekrak::always_false<RequestT>, "Unsupported RequestT in subscription_table_for_()");
         }

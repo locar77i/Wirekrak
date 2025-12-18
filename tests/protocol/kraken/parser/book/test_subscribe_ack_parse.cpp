@@ -46,10 +46,10 @@ void test_book_subscribe_ack_success() {
             "symbol": "BTC/USD",
             "depth": 25,
             "snapshot": true,
-            "success": true,
-            "warnings": ["depth 25 is deprecated"],
-            "req_id": 42
+            "warnings": ["depth 25 is deprecated"]
         },
+        "success": true,
+        "req_id": 42,
         "time_in":  "2022-12-25T09:30:59.123456Z",
         "time_out": "2022-12-25T09:30:59.223456Z"
     }
@@ -97,10 +97,10 @@ void test_book_subscribe_ack_error() {
             "channel": "book",
             "symbol": "BTC/USD",
             "depth": 100,
-            "snapshot": false,
-            "success": false,
-            "error": "invalid depth"
-        }
+            "snapshot": false
+        },
+        "success": false,
+        "error": "invalid depth"
     }
     )json";
 
@@ -130,9 +130,9 @@ void test_book_subscribe_ack_wrong_method() {
             "channel": "book",
             "symbol": "BTC/USD",
             "depth": 25,
-            "snapshot": true,
-            "success": true
-        }
+            "snapshot": true
+        },
+        "success": true
     }
     )json";
 
@@ -159,9 +159,9 @@ void test_book_subscribe_ack_wrong_channel() {
             "channel": "trade",
             "symbol": "BTC/USD",
             "depth": 25,
-            "snapshot": true,
-            "success": true
-        }
+            "snapshot": true
+        },
+        "success": true
     }
     )json";
 
@@ -187,9 +187,9 @@ void test_book_subscribe_ack_missing_symbol() {
         "result": {
             "channel": "book",
             "depth": 25,
-            "snapshot": true,
-            "success": true
-        }
+            "snapshot": true
+        },
+        "success": true
     }
     )json";
 
@@ -216,9 +216,9 @@ void test_book_subscribe_ack_invalid_depth_type() {
             "channel": "book",
             "symbol": "BTC/USD",
             "depth": "25",
-            "snapshot": true,
-            "success": true
-        }
+            "snapshot": true
+        },
+        "success": true
     }
     )json";
 

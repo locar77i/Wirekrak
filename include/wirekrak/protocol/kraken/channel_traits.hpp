@@ -8,6 +8,14 @@
 #include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 
+#include "wirekrak/protocol/kraken/book/subscribe.hpp"
+#include "wirekrak/protocol/kraken/book/unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/book/snapshot.hpp"
+#include "wirekrak/protocol/kraken/book/update.hpp"
+#include "wirekrak/protocol/kraken/book/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/book/unsubscribe_ack.hpp"
+
+
 namespace wirekrak {
 namespace protocol {
 namespace kraken {
@@ -53,6 +61,42 @@ struct channel_of<trade::UnsubscribeAck> {
     static constexpr Channel value = Channel::Trade;
 };
 
+
+// ---------------------------------------------------------------------------
+// BOOK channel mappings
+// ---------------------------------------------------------------------------
+
+template<>
+struct channel_of<book::Subscribe> {
+    static constexpr Channel value = Channel::Book;
+};
+
+template<>
+struct channel_of<book::Unsubscribe> {
+    static constexpr Channel value = Channel::Book;
+};
+
+template<>
+struct channel_of<book::Snapshot> {
+    static constexpr Channel value = Channel::Book;
+};
+
+template<>
+struct channel_of<book::Update> {
+    static constexpr Channel value = Channel::Book;
+};
+
+template<>
+struct channel_of<book::SubscribeAck> {
+    static constexpr Channel value = Channel::Book;
+};
+
+template<>
+struct channel_of<book::UnsubscribeAck> {
+    static constexpr Channel value = Channel::Book;
+};
+
+
 // String representation
 template<typename T>
 inline constexpr std::string_view channel_name_of_v = to_string(channel_of_v<T>);
@@ -80,6 +124,23 @@ template<>
 struct channel_traits<trade::Unsubscribe> {
     static constexpr Channel channel = Channel::Trade;
     using response_type = trade::Response; // same dispatcher type
+};
+
+
+// ---------------------------------------------------------------------------
+// BOOK: Subscribe → Update
+// ---------------------------------------------------------------------------
+
+template<>
+struct channel_traits<book::Subscribe> {
+    static constexpr Channel channel = Channel::Book;
+    using response_type = book::Update;
+};
+
+template<>
+struct channel_traits<book::Unsubscribe> {
+    static constexpr Channel channel = Channel::Book;
+    using response_type = book::Update;
 };
 
 } // namespace kraken

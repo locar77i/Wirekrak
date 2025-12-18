@@ -44,10 +44,10 @@ void test_book_unsubscribe_ack_success() {
         "result": {
             "channel": "book",
             "symbol": "BTC/USD",
-            "depth": 25,
-            "success": true,
-            "req_id": 7
+            "depth": 25
         },
+        "success": true,
+        "req_id": 7,
         "time_in":  "2022-12-25T09:30:59.123456Z",
         "time_out": "2022-12-25T09:30:59.223456Z"
     }
@@ -89,10 +89,10 @@ void test_book_unsubscribe_ack_error() {
         "result": {
             "channel": "book",
             "symbol": "BTC/USD",
-            "depth": 100,
-            "success": false,
-            "error": "not subscribed"
-        }
+            "depth": 100
+        },
+        "success": false,
+        "error": "not subscribed"
     }
     )json";
 
@@ -121,9 +121,9 @@ void test_book_unsubscribe_ack_wrong_method() {
         "result": {
             "channel": "book",
             "symbol": "BTC/USD",
-            "depth": 25,
-            "success": true
-        }
+            "depth": 25
+        },
+        "success": true
     }
     )json";
 
@@ -149,9 +149,9 @@ void test_book_unsubscribe_ack_wrong_channel() {
         "result": {
             "channel": "trade",
             "symbol": "BTC/USD",
-            "depth": 25,
-            "success": true
-        }
+            "depth": 25
+        },
+        "success": true
     }
     )json";
 
@@ -176,9 +176,9 @@ void test_book_unsubscribe_ack_missing_symbol() {
         "method": "unsubscribe",
         "result": {
             "channel": "book",
-            "depth": 25,
-            "success": true
-        }
+            "depth": 25
+        },
+        "success": true
     }
     )json";
 
@@ -204,9 +204,9 @@ void test_book_unsubscribe_ack_invalid_depth_type() {
         "result": {
             "channel": "book",
             "symbol": "BTC/USD",
-            "depth": "25",
-            "success": true
-        }
+            "depth": "25"
+        },
+        "success": true
     }
     )json";
 

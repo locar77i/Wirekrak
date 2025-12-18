@@ -17,14 +17,14 @@ int main() {
     if (!client.connect("wss://ws.kraken.com/v2")) {
         return -1;
     }
-
+    std::cout << "[wirekrak] Connected to wss://ws.kraken.com/v2" << std::endl;
     // Subscribe to BTC/USD trades
-    client.subscribe(protocol::kraken::trade::Subscribe{.symbols = {"BTC/USD"}},
+    client.subscribe(protocol::kraken::trade::Subscribe{.symbols = {"BTC/USD"}, .snapshot = false},
                      [](const protocol::kraken::trade::Response& msg) {
                         std::cout << " -> [BTC/USD] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
                      }
     );
-    
+    std::cout << "[wirekrak] Subscribed to BTC/USD trades" << std::endl;
     // MAIN POLLING LOOP
     auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (std::chrono::steady_clock::now() < end_time) {

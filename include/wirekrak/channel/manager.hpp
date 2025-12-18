@@ -106,30 +106,30 @@ public:
     // Process ACK messages
     // ------------------------------------------------------------
 
-    inline void process_subscribe_ack(std::uint64_t group_id, Symbol symbol, bool success) noexcept {
+    inline void process_subscribe_ack(Channel channel, std::uint64_t group_id, Symbol symbol, bool success) noexcept {
         bool done = false;
         if (success) [[likely]] {
             done = confirm_subscription_(symbol, group_id);
-            if (done) WK_INFO("[SUBMGR] Subscription ACCEPTED for channel 'trade' {" << symbol << "} (req_id=" << group_id << ")");
+            if (done) WK_INFO("[SUBMGR] Subscription ACCEPTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ")");
         }
         else {
             done = reject_subscription_(symbol, group_id);
-            if (done) WK_WARN("[SUBMGR] Subscription REJECTED for channel 'trade'  {" << symbol << "} (req_id=" << group_id << ")");
+            if (done) WK_WARN("[SUBMGR] Subscription REJECTED for channel '" << to_string(channel) << "'  {" << symbol << "} (req_id=" << group_id << ")");
         }
-        if (!done) WK_WARN("[SUBMGR] Subscription OMITTED for channel 'trade' {" << symbol << "} (unknown req_id=" << group_id << ")");
+        if (!done) WK_WARN("[SUBMGR] Subscription OMITTED for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << group_id << ")");
     }
 
-    inline void process_unsubscribe_ack(std::uint64_t group_id, Symbol symbol, bool success) noexcept {
+    inline void process_unsubscribe_ack(Channel channel, std::uint64_t group_id, Symbol symbol, bool success) noexcept {
         bool done = false;
         if (success) [[likely]] {
             done = confirm_unsubscription_(symbol, group_id);
-            if (done) WK_INFO("[SUBMGR] Unsubscription ACCEPTED for channel 'trade' {" << symbol << "} (req_id=" << group_id << ")");
+            if (done) WK_INFO("[SUBMGR] Unsubscription ACCEPTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ")");
         }
         else {
             done = reject_unsubscription_(symbol, group_id);
-            if (done) WK_WARN("[SUBMGR] Unsubscription REJECTED for channel 'trade' {" << symbol << "} (req_id=" << group_id << ")");
+            if (done) WK_WARN("[SUBMGR] Unsubscription REJECTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ")");
         }
-        if (!done) WK_WARN("[SUBMGR] Unsubscription ACK omitted for channel 'trade' {" << symbol << "} (unknown req_id=" << group_id << ")");
+        if (!done) WK_WARN("[SUBMGR] Unsubscription ACK omitted for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << group_id << ")");
     }
 
     // ------------------------------------------------------------

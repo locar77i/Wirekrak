@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 
+#include "wirekrak/protocol/kraken/request/validate.hpp"
 #include "wirekrak/protocol/kraken/book/common.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/json.hpp"
@@ -36,24 +37,11 @@ struct Subscribe {
     [[nodiscard]]
     std::string to_json() const {
 #ifndef NDEBUG
-        // -------------------------------------------
-        // Required invariants
-        // -------------------------------------------
-        assert(!symbols.empty() && "book::Subscribe requires at least one symbol");
-
-        for (const auto& s : symbols) {
-            assert(!std::string_view(s).empty() && "book::Subscribe symbol cannot be empty");
-        }
-
-        // -------------------------------------------
+        request::validate_symbols(symbols);
+        request::validate_req_id(req_id);
         // Optional field validation
-        // -------------------------------------------
         if (depth.has()) {
             assert(book::is_valid_depth(depth.value()) && "Invalid Kraken book depth value");
-        }
-
-        if (req_id.has()) {
-            assert(req_id.value() != 0 && "req_id should be non-zero");
         }
 #endif
         std::string j;
