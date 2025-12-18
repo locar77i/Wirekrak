@@ -30,14 +30,14 @@ public:
         // data must be an array
         dom::array data;
         if (root["data"].get(data)) {
-            WK_WARN("[STATUS] Missing 'data' array");
+            WK_DEBUG("[PARSER] Field 'data' missing or invalid in status update -> ignore message.");
             return false;
         }
 
         // Kraken guarantees exactly one object
         auto it = data.begin();
         if (it == data.end()) {
-            WK_WARN("[STATUS] Empty 'data' array");
+            WK_DEBUG("[PARSER] Empty 'data' array in status update -> ignore message.");
             return false;
         }
 
@@ -46,29 +46,33 @@ public:
         // system (required)
         std::string_view system_sv;
         if (obj["system"].get(system_sv)) {
-            WK_WARN("[STATUS] Missing 'system'");
+            WK_DEBUG("[PARSER] Field 'system' missing in status update -> ignore message.");
             return false;
         }
         out.system = to_system_state_enum_fast(system_sv);
+        if (out.system == SystemState::Unknown) {
+            WK_DEBUG("[PARSER] Unknown system state '" << system_sv << "' -> ignore message.");
+            return false;
+        }
 
         // api_version (required)
         std::string_view api_sv;
         if (obj["api_version"].get(api_sv)) {
-            WK_WARN("[STATUS] Missing 'api_version'");
+            WK_DEBUG("[PARSER] Field 'api_version' missing in status update -> ignore message.");
             return false;
         }
         out.api_version.assign(api_sv);
 
         // connection_id (required)
         if (obj["connection_id"].get(out.connection_id)) {
-            WK_WARN("[STATUS] Missing 'connection_id'");
+            WK_DEBUG("[PARSER] Field 'connection_id' missing in status update -> ignore message.");
             return false;
         }
 
         // version (required)
         std::string_view version_sv;
         if (obj["version"].get(version_sv)) {
-            WK_WARN("[STATUS] Missing 'version'");
+            WK_DEBUG("[PARSER] Field 'version' missing in status update -> ignore message.");
             return false;
         }
         out.version.assign(version_sv);
