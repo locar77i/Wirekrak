@@ -47,7 +47,7 @@ struct channel_of<trade::Unsubscribe> {
 };
 
 template<>
-struct channel_of<trade::Response> {
+struct channel_of<trade::Trade> {
     static constexpr Channel value = Channel::Trade;
 };
 
@@ -117,13 +117,13 @@ struct channel_traits;
 template<>
 struct channel_traits<trade::Subscribe> {
     static constexpr Channel channel = Channel::Trade;
-    using response_type = trade::Response;
+    using response_type = trade::Trade;
 };
 
 template<>
 struct channel_traits<trade::Unsubscribe> {
     static constexpr Channel channel = Channel::Trade;
-    using response_type = trade::Response; // same dispatcher type
+    using response_type = trade::Trade;
 };
 
 

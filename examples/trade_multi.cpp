@@ -20,18 +20,18 @@ int main() {
 
     // Subscribe to BTC/USD trades
     client.subscribe(protocol::kraken::trade::Subscribe{.symbols = {"BTC/USD"}},
-                     [](const protocol::kraken::trade::Response& msg) {
-                        std::cout << " -> [BTC/USD] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
+                     [](const protocol::kraken::trade::Trade& msg) {
+                        std::cout << " -> [" << msg.symbol << "] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
                      }
     );
 
     // Subscribe to BTC/EUR trades
     client.subscribe(protocol::kraken::trade::Subscribe{.symbols = {"BTC/EUR"}},
-                     [](const protocol::kraken::trade::Response& msg) {
-                        std::cout << " -> [BTC/EUR] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
+                     [](const protocol::kraken::trade::Trade& msg) {
+                        std::cout << " -> [" << msg.symbol << "] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
                      }
     );
-    auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     while (std::chrono::steady_clock::now() < end_time) {
         client.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -39,7 +39,7 @@ int main() {
 
     // Unsubscribe from BTC/USD trades
     client.unsubscribe(protocol::kraken::trade::Unsubscribe{.symbols = {"BTC/USD"}});
-    end_time = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    end_time = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while ((client.trade_subscriptions().has_pending() || client.trade_subscriptions().has_active()) && std::chrono::steady_clock::now() < end_time) {
         client.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -55,8 +55,8 @@ int main() {
 
     // Subscribe to trades on multiple symbols
     client.subscribe(protocol::kraken::trade::Subscribe{.symbols = {"BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD", "LTC/USD", "ADA/USD", "DOGE/USD", "DOT/USD", "LINK/USD", "ATOM/USD"}},
-                     [](const protocol::kraken::trade::Response& msg) {
-                        std::cout << " -> TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
+                     [](const protocol::kraken::trade::Trade& msg) {
+                        std::cout << " -> [" << msg.symbol << "] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
                      }
     );
     end_time = std::chrono::steady_clock::now() + std::chrono::seconds(20);
@@ -67,7 +67,7 @@ int main() {
 
     // Unsubscribe from five symbols at a time
     client.unsubscribe(protocol::kraken::trade::Unsubscribe{.symbols = {"ADA/USD", "DOGE/USD", "DOT/USD", "LINK/USD", "ATOM/USD"}});
-    end_time = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    end_time = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while ((client.trade_subscriptions().has_pending() || client.trade_subscriptions().has_active()) && std::chrono::steady_clock::now() < end_time) {
         client.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

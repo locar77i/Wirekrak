@@ -235,7 +235,9 @@ public:
         { // === Process trade ring ===
         trade::Response resp;
         while (trade_ring_.pop(resp)) {
-            dispatcher_.dispatch(resp);
+            for (auto& trade_msg : resp.trades) {
+                dispatcher_.dispatch(trade_msg);
+            }
         }}
         { // === Process trade subscribe ring ===
         trade::SubscribeAck ack;

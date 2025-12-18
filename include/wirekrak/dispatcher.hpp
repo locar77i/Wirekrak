@@ -56,7 +56,7 @@ public:
     }
 
 private:
-    std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::trade::Response>>> trade_handlers_;
+    std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::trade::Trade>>> trade_handlers_;
     std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::book::Update>>> book_handlers_;
 
 private:

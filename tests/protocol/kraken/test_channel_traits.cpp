@@ -6,7 +6,7 @@
 
 #include "wirekrak/protocol/kraken/trade/subscribe.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe.hpp"
-#include "wirekrak/protocol/kraken/trade/response.hpp"
+#include "wirekrak/protocol/kraken/trade/Response.hpp"
 #include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 
@@ -34,11 +34,24 @@ Design goals enforced by this test suite:
   • Zero runtime overhead — all checks use static_assert
   • Complete coverage — every public protocol message is validated
   • Dispatcher safety — request → response routing is deterministic
+  • Negative coverage — non-request types must NOT have channel_traits
 
-This test guarantees that protocol refactors cannot silently break channel
-dispatch logic, a critical invariant for high-performance market data systems.
+This guarantees protocol refactors cannot silently break dispatcher logic.
 ================================================================================
 */
+
+// ============================================================================
+// TRAIT DETECTION — DOES A TYPE DEFINE channel_traits?
+// ============================================================================
+
+template<typename T, typename = void>
+struct has_channel_traits : std::false_type {};
+
+template<typename T>
+struct has_channel_traits<T, std::void_t<
+    decltype(channel_traits<T>::channel),
+    typename channel_traits<T>::response_type
+>> : std::true_type {};
 
 // ============================================================================
 // CHANNEL OF<T> — MESSAGE → CHANNEL MAPPING
@@ -47,7 +60,7 @@ dispatch logic, a critical invariant for high-performance market data systems.
 // ---- Trade ----
 static_assert(channel_of_v<trade::Subscribe>        == Channel::Trade);
 static_assert(channel_of_v<trade::Unsubscribe>      == Channel::Trade);
-static_assert(channel_of_v<trade::Response>         == Channel::Trade);
+static_assert(channel_of_v<trade::Trade>            == Channel::Trade);
 static_assert(channel_of_v<trade::SubscribeAck>     == Channel::Trade);
 static_assert(channel_of_v<trade::UnsubscribeAck>   == Channel::Trade);
 
@@ -63,27 +76,35 @@ static_assert(channel_of_v<book::UnsubscribeAck>    == Channel::Book);
 // CHANNEL NAME — STRING REPRESENTATION
 // ============================================================================
 
-static_assert(channel_name_of_v<trade::Subscribe> == "trade");
-static_assert(channel_name_of_v<book::Subscribe>  == "book");
+// ---- Trade ----
+static_assert(channel_name_of_v<trade::Subscribe>      == "trade");
+static_assert(channel_name_of_v<trade::Unsubscribe>    == "trade");
+static_assert(channel_name_of_v<trade::Trade>          == "trade");
+
+// ---- Book ----
+static_assert(channel_name_of_v<book::Subscribe>       == "book");
+static_assert(channel_name_of_v<book::Unsubscribe>     == "book");
+static_assert(channel_name_of_v<book::Snapshot>        == "book");
+static_assert(channel_name_of_v<book::Update>          == "book");
 
 // ============================================================================
 // CHANNEL TRAITS — REQUEST → RESPONSE TYPE
 // ============================================================================
 
-// ---- Trade ----
+// ---- Trade requests produce Trade events ----
 static_assert(channel_traits<trade::Subscribe>::channel == Channel::Trade);
 static_assert(std::is_same_v<
     channel_traits<trade::Subscribe>::response_type,
-    trade::Response
+    trade::Trade
 >);
 
 static_assert(channel_traits<trade::Unsubscribe>::channel == Channel::Trade);
 static_assert(std::is_same_v<
     channel_traits<trade::Unsubscribe>::response_type,
-    trade::Response
+    trade::Trade
 >);
 
-// ---- Book ----
+// ---- Book requests produce Update events ----
 static_assert(channel_traits<book::Subscribe>::channel == Channel::Book);
 static_assert(std::is_same_v<
     channel_traits<book::Subscribe>::response_type,
@@ -96,8 +117,22 @@ static_assert(std::is_same_v<
     book::Update
 >);
 
-} // namespace wirekrak
+// ============================================================================
+// NEGATIVE TRAITS — TYPES THAT MUST NOT HAVE channel_traits
+// ============================================================================
 
+// ---- Trade ----
+static_assert(!has_channel_traits<trade::Trade>::value);
+static_assert(!has_channel_traits<trade::SubscribeAck>::value);
+static_assert(!has_channel_traits<trade::UnsubscribeAck>::value);
+
+// ---- Book ----
+static_assert(!has_channel_traits<book::Snapshot>::value);
+static_assert(!has_channel_traits<book::Update>::value);
+static_assert(!has_channel_traits<book::SubscribeAck>::value);
+static_assert(!has_channel_traits<book::UnsubscribeAck>::value);
+
+} // namespace wirekrak
 
 // ============================================================================
 // RUNTIME HARNESS (CTest compatibility only)

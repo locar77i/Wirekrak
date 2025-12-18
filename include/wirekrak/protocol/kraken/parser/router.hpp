@@ -12,6 +12,9 @@
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/context.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
+#include "wirekrak/protocol/kraken/parser/trade/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/parser/trade/response.hpp"
+#include "wirekrak/protocol/kraken/parser/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/book/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/book/snapshot.hpp"
 #include "wirekrak/protocol/kraken/parser/book/update.hpp"
@@ -180,7 +183,7 @@ private:
     [[nodiscard]] inline bool parse_unsubscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
         switch (channel) {
             case Channel::Trade: {
-                trade::UnsubscribeAck resp;
+                kraken::trade::UnsubscribeAck resp;
                 if (parse_(root, resp)) {
                     if (!ctx_.trade_unsubscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_unsubscribe_ring_ full, dropping.");
@@ -210,74 +213,42 @@ private:
     // ========================================================================
 
     [[nodiscard]] inline bool parse_channel_message_(Channel channel, const simdjson::dom::element& root) noexcept {
-        bool result = false;
         switch (channel) {
-            case Channel::Trade: {
-                kraken::trade::Response response;
-                result = parse_(root, response);
-                if (!ctx_.trade_ring->push(std::move(response))) { // TODO: handle backpressure
-                    WK_WARN("[PARSER] trade_ring_ full, dropping.");
-                }
-            } break;
+            case Channel::Trade:
+                return parse_trade_(root);
             case Channel::Ticker:
-                result = parse_ticker_(root);
-                break;
+                return parse_ticker_(root);;
             case Channel::Book:
                 return parse_book_(root);
             case Channel::Heartbeat:
                 ctx_.heartbeat_total->fetch_add(1, std::memory_order_relaxed);
                 ctx_.last_heartbeat_ts->store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-                result = true;
-                break;
+                return true;
             case Channel::Status: {
                 kraken::status::Update update;
                 if (status::update::parse(root, update)) {
-                    result = true;
-                    // push to ring / dispatch / callback
+                    // TODO: push to ring / dispatch / callback
+                    return true;
                 }
             } break;
             default:
                 WK_WARN("[PARSER] Unhandled channel -> ignore");
                 break;
         }
-        return result;
+        return false;
     }
 
     // TRADE PARSER
-    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, trade::Response& out) noexcept {
+    [[nodiscard]] inline bool parse_trade_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
-        dom::array arr;
-        if (root["data"].get(arr)) {
-            WK_WARN("[PARSER] Field 'data' missing in trade::Response -> ignore message.");
-            return false;
+         kraken::trade::Response response;
+        if (trade::response::parse(root, response)) {
+            if (!ctx_.trade_ring->push(std::move(response))) { // TODO: handle backpressure
+                WK_WARN("[PARSER] trade_ring_ full, dropping.");
+            }
+            return true;
         }
-        // Iterate over trade entries
-        for (dom::element item : arr) {
-            if (auto v = item["symbol"].get_string(); !v.error()) {
-                out.symbol = Symbol(v.value());
-            }
-            if (auto v = item["side"].get_string(); !v.error()) {
-                out.side = to_side_enum_fast(v.value());
-            }
-            if (auto v = item["price"].get_double(); !v.error()) {
-                out.price = v.value();
-            }
-            if (auto v = item["qty"].get_double(); !v.error()) {
-                out.qty = v.value();
-            }
-            if (auto v = item["trade_id"].get_uint64(); !v.error()) {
-                out.trade_id = v.value();
-            }
-            if (auto v = item["timestamp"].get_string(); !v.error()) {
-                if (!parse_rfc3339(v.value(), out.timestamp)) {
-                    out.timestamp = Timestamp{};
-                }
-            }
-            if (auto v = item["ord_type"].get_string(); !v.error()) {
-                out.ord_type = to_order_type_enum_fast(v.value());
-            }
-        }
-        return true;
+        return false;
     };
 
     // TICKER PARSER
@@ -301,14 +272,14 @@ private:
         switch (to_payload_type(type.value())) {
             case PayloadType::Snapshot: {
                 kraken::book::Snapshot snapshot;
-                if (parser::book::snapshot::parse(root, snapshot)) {
+                if (book::snapshot::parse(root, snapshot)) {
                     // push snapshot (ring / callback / reducer)
                     return true;
                 }
             } break;
             case PayloadType::Update: {
                 kraken::book::Update update;
-                if (parser::book::update::parse(root, update)) {
+                if (book::update::parse(root, update)) {
                     if (!ctx_.book_ring->push(std::move(update))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] book_ring_ full, dropping.");
                     }
@@ -327,7 +298,7 @@ private:
 
 
 
-    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, trade::SubscribeAck& out) noexcept {
+    [[nodiscard]] inline bool parse_(const simdjson::dom::element& root, kraken::trade::SubscribeAck& out) noexcept {
         using namespace simdjson;
         // required: success (boolean)
         {
@@ -407,7 +378,7 @@ private:
 
 
 
-    inline bool parse_(const simdjson::dom::element& root, trade::UnsubscribeAck& out) noexcept {
+    inline bool parse_(const simdjson::dom::element& root, kraken::trade::UnsubscribeAck& out) noexcept {
         using namespace simdjson;
         out = {};
         // success (required)
