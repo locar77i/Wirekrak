@@ -154,7 +154,7 @@ private:
         switch (channel) {
             case Channel::Trade: {
                 kraken::trade::SubscribeAck resp;
-                if (parse_(root, resp)) {
+                if (trade::subscribe_ack::parse(root, resp)) {
                     if (!ctx_.trade_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_subscribe_ring_ full, dropping.");
                     }
