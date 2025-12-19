@@ -6,7 +6,7 @@
 #include "lcr/bit/pack.hpp"
 
 
-namespace wirekrak {
+namespace wirekrak::protocol::kraken {
 
 // ===============================================================
 // ORDER TYPE ENUM
@@ -61,4 +61,4 @@ inline constexpr uint32_t TAG_MARK = lcr::bit::pack4("mark");   // first 4 chars
 }
 
 
-} // namespace wirekrak
+} // namespace wirekrak::protocol::kraken

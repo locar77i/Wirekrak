@@ -6,7 +6,7 @@
 #include "lcr/bit/pack.hpp"
 
 
-namespace wirekrak {
+namespace wirekrak::protocol::kraken {
 
 // ===============================================
 // TRADE SIDE ENUM
@@ -56,4 +56,4 @@ inline constexpr Side to_side_enum_fast(std::string_view s) noexcept {
 }
 
 
-} // namespace wirekrak
+} // namespace wirekrak::protocol::kraken

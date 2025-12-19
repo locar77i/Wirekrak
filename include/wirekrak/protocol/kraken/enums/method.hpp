@@ -6,7 +6,7 @@
 #include "lcr/bit/pack.hpp"
 
 
-namespace wirekrak {
+namespace wirekrak::protocol::kraken {
 
 // ===============================================================
 // METHOD ENUM
@@ -75,5 +75,4 @@ inline constexpr uint32_t TAG_PONG = lcr::bit::pack4("pong");
     }
 }
 
-
-} // namespace wirekrak
+} // namespace wirekrak::protocol::kraken

@@ -4,6 +4,7 @@
 
 #include "wirekrak/protocol/kraken/enums/side.hpp"
 #include "wirekrak/protocol/kraken/enums/order_type.hpp"
+#include "wirekrak/protocol/kraken/enums/payload_type.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
 
@@ -101,6 +102,24 @@ inline bool parse_order_type_optional(const simdjson::dom::object& obj, const ch
     return true;
 }
 
+// ------------------------------------------------------------
+// PayloadType (snapshot / update)
+// ------------------------------------------------------------
+[[nodiscard]]
+inline bool parse_payload_type_required(const simdjson::dom::element& obj,const char* key,kraken::PayloadType& out) noexcept {
+    std::string_view sv;
+    // Extract string
+    if (!helper::parse_string_required(obj, key, sv)) {
+        return false; // invalid
+    }
+    // Enforce non-empty
+    if (sv.empty()) {
+        return false; // invalid
+    }
+    // Convert using fast path
+    out = kraken::to_payload_type_enum_fast(sv);
+    return out != kraken::PayloadType::Unknown;
+}
 
 
 // ------------------------------------------------------------

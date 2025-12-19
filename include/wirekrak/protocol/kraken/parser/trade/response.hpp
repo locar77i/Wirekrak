@@ -3,11 +3,8 @@
 #include <string_view>
 
 #include "wirekrak/protocol/kraken/trade/response.hpp"
-#include "wirekrak/protocol/kraken/enums/channel.hpp"
-#include "wirekrak/protocol/kraken/enums/side.hpp"
-#include "wirekrak/protocol/kraken/enums/order_type.hpp"
-#include "wirekrak/core/symbol.hpp"
-#include "wirekrak/core/timestamp.hpp"
+#include "wirekrak/protocol/kraken/parser/helpers.hpp"
+#include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "lcr/log/logger.hpp"
 
 #include "simdjson.h"
@@ -20,39 +17,29 @@ struct response {
     static inline bool parse(const simdjson::dom::element& root, kraken::trade::Response& out) noexcept {
         using namespace simdjson;
 
-        // ------------------------------------------------------------
-        // channel (required)
-        // ------------------------------------------------------------
-        std::string_view channel_sv;
-        if (root["channel"].get(channel_sv) || to_channel_enum_fast(channel_sv) != Channel::Trade) {
-            WK_DEBUG("[PARSER] Invalid or missing 'channel' in trade message.");
+        // Root
+        if (!helper::require_object(root)) {
+            WK_DEBUG("[PARSER] Root not an object in trade response -> ignore message.");
             return false;
         }
 
-        // ------------------------------------------------------------
         // type (required): snapshot | update
-        // ------------------------------------------------------------
-        std::string_view type_sv;
-        if (root["type"].get(type_sv)) {
-            WK_DEBUG("[PARSER] Missing 'type' in trade message.");
+        if (!adapter::parse_payload_type_required(root, "type", out.type)) {
+            WK_DEBUG("[PARSER] Field 'type' invalid or missing in trade response -> ignore message.");
             return false;
         }
 
-        if (type_sv == "snapshot") {
-            out.type = kraken::trade::Type::Snapshot;
-        } else if (type_sv == "update") {
-            out.type = kraken::trade::Type::Update;
-        } else {
-            WK_DEBUG("[PARSER] Invalid 'type' in trade message.");
-            return false;
-        }
-
-        // ------------------------------------------------------------
-        // data array (required, >= 1)
-        // ------------------------------------------------------------
+        // data array (required)
         dom::array data;
         if (root["data"].get(data) || data.begin() == data.end()) {
-            WK_DEBUG("[PARSER] Missing or empty 'data' array in trade message.");
+            WK_DEBUG("[PARSER] Field 'data' missing or empty in trade response -> ignore message.");
+            return false;
+        }
+
+        // Enforce Kraken semantics:
+        // update => exactly one trade
+        if (out.type != kraken::PayloadType::Snapshot && data.size() != 1) {
+            WK_DEBUG("[PARSER] Field 'data' must contain exactly one trade in trade update -> ignore message.");
             return false;
         }
 
@@ -60,65 +47,58 @@ struct response {
         out.trades.reserve(data.size());
 
         // ------------------------------------------------------------
-        // parse each trade object
+        // Parse trade objects
         // ------------------------------------------------------------
-        for (const dom::element& t : data) {
+        for (const dom::element& elem : data) {
 
             dom::object obj;
-            if (t.get(obj)) {
-                WK_DEBUG("[PARSER] Invalid trade object in data[].");
+            if (elem.get(obj)) {
+                WK_DEBUG("[PARSER] Data element not an object in trade response -> ignore message.");
                 return false;
             }
 
             kraken::trade::Trade trade{};
 
             // symbol (required)
-            std::string_view symbol_sv;
-            if (obj["symbol"].get(symbol_sv)) {
-                WK_DEBUG("[PARSER] Missing 'symbol' in trade object.");
+            if (!adapter::parse_symbol_required(obj, "symbol", trade.symbol)) {
+                WK_DEBUG("[PARSER] Field 'symbol' missing in trade object -> ignore message.");
                 return false;
             }
-            trade.symbol = Symbol{ std::string(symbol_sv) };
 
             // side (required)
-            std::string_view side_sv;
-            if (obj["side"].get(side_sv)) {
-                WK_DEBUG("[PARSER] Missing 'side' in trade object.");
+            if (!adapter::parse_side_required(obj, "side", trade.side)) {
+                WK_DEBUG("[PARSER] Field 'side' missing in trade object -> ignore message.");
                 return false;
             }
-            trade.side = to_side_enum_fast(side_sv);
 
             // qty (required)
-            if (obj["qty"].get(trade.qty)) {
-                WK_DEBUG("[PARSER] Missing 'qty' in trade object.");
+            if (!helper::parse_double_required(obj, "qty", trade.qty)) {
+                WK_DEBUG("[PARSER] Field 'qty' missing or invalid in trade object -> ignore message.");
                 return false;
             }
 
             // price (required)
-            if (obj["price"].get(trade.price)) {
-                WK_DEBUG("[PARSER] Missing 'price' in trade object.");
+            if (!helper::parse_double_required(obj, "price", trade.price)) {
+                WK_DEBUG("[PARSER] Field 'price' missing or invalid in trade object -> ignore message.");
                 return false;
             }
 
             // trade_id (required)
-            if (obj["trade_id"].get(trade.trade_id)) {
-                WK_DEBUG("[PARSER] Missing 'trade_id' in trade object.");
+            if (!helper::parse_uint64_required(obj, "trade_id", trade.trade_id)) {
+                WK_DEBUG("[PARSER] Field 'trade_id' missing or invalid in trade object -> ignore message.");
                 return false;
             }
 
             // timestamp (required)
-            std::string_view ts_sv;
-            if (obj["timestamp"].get(ts_sv) ||
-                !parse_rfc3339(ts_sv, trade.timestamp))
-            {
-                WK_DEBUG("[PARSER] Invalid or missing 'timestamp' in trade object.");
+            if (!adapter::parse_timestamp_required(obj, "timestamp", trade.timestamp)) {
+                WK_DEBUG("[PARSER] Field 'timestamp' missing or invalid in trade object -> ignore message.");
                 return false;
             }
 
             // ord_type (optional)
-            std::string_view ord_sv;
-            if (!obj["ord_type"].get(ord_sv)) {
-                trade.ord_type = to_order_type_enum_fast(ord_sv);
+            if (!adapter::parse_order_type_optional(obj, "ord_type", trade.ord_type)) {
+                WK_DEBUG("[PARSER] Field 'ord_type' invalid in trade object -> ignore message.");
+                return false;
             }
 
             out.trades.emplace_back(std::move(trade));

@@ -75,6 +75,14 @@ inline bool parse_uint64_required(const simdjson::dom::element& obj, const char*
 }
 
 [[nodiscard]]
+inline bool parse_double_required(const simdjson::dom::element& obj, const char* key, double& out) noexcept {
+    if (!require_object(obj)) {
+        return false;
+    }
+    return !obj[key].get(out);
+}
+
+[[nodiscard]]
 inline bool parse_string_required(const simdjson::dom::element& obj, const char* key, std::string_view& out) noexcept {
     if (!require_object(obj)) {
         return false;
@@ -118,7 +126,6 @@ inline bool parse_bool_optional(const simdjson::dom::element& obj, const char* k
     return true;
 }
 
-
 [[nodiscard]]
 inline bool parse_uint64_optional(const simdjson::dom::element& obj, const char* key, lcr::optional<std::uint64_t>& out) noexcept {
     if (!require_object(obj)) {
@@ -135,6 +142,24 @@ inline bool parse_uint64_optional(const simdjson::dom::element& obj, const char*
     out = tmp;
     return true;
 }
+
+[[nodiscard]]
+inline bool parse_double_optional(const simdjson::dom::element& obj, const char* key, lcr::optional<double>& out) noexcept {
+    if (!require_object(obj)) {
+        return false;
+    }
+    auto field = obj[key];
+    if (field.error()) {
+        return true; // optional, not present
+    }
+    double tmp{};
+    if (field.get(tmp)) {
+        return false;
+    }
+    out = tmp;
+    return true;
+}
+
 
 [[nodiscard]]
 inline bool parse_string_optional(const simdjson::dom::element& obj, const char* key, lcr::optional<std::string>& out) noexcept {

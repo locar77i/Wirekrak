@@ -6,6 +6,8 @@
 #include "wirekrak/protocol/kraken/enums/channel.hpp"
 #include "wirekrak/protocol/kraken/enums/side.hpp"
 #include "wirekrak/protocol/kraken/enums/order_type.hpp"
+#include "wirekrak/protocol/kraken/enums/system_state.hpp"
+#include "wirekrak/protocol/kraken/enums/payload_type.hpp"
 
 
 namespace wirekrak {

@@ -29,19 +29,6 @@ namespace protocol {
 namespace kraken {
 namespace parser {
 
-    // Payload type enum
-    enum class PayloadType : uint8_t {
-        Snapshot,
-        Update,
-        Unknown
-    };
-    // Determine payload type from string
-    [[nodiscard]] inline constexpr PayloadType to_payload_type(std::string_view s) noexcept {
-        if (s == "snapshot") return PayloadType::Snapshot;
-        if (s == "update")   return PayloadType::Update;
-        return PayloadType::Unknown;
-    }
-
 
 class Router {
     constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
@@ -269,7 +256,7 @@ private:
             return false;
         }
         // route based on type
-        switch (to_payload_type(type.value())) {
+        switch (to_payload_type_enum_fast(type.value())) {
             case PayloadType::Snapshot: {
                 kraken::book::Snapshot snapshot;
                 if (book::snapshot::parse(root, snapshot)) {

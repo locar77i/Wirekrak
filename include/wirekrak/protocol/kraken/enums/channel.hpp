@@ -6,7 +6,7 @@
 #include "lcr/bit/pack.hpp"
 
 
-namespace wirekrak {
+namespace wirekrak::protocol::kraken {
 
 // ===============================================
 // CHANNEL ENUM
@@ -80,4 +80,4 @@ inline constexpr Channel to_channel_enum_fast(std::string_view s) noexcept {
     }
 }
 
-} // namespace wirekrak
+} // namespace wirekrak::protocol::kraken

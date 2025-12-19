@@ -6,9 +6,7 @@
 #include "lcr/bit/pack.hpp"
 
 
-namespace wirekrak {
-namespace protocol {
-namespace kraken {
+namespace wirekrak::protocol::kraken {
 
 // ===============================================
 // SYSTEM STATE ENUM (status.system)
@@ -88,6 +86,4 @@ to_system_state_enum_fast(std::string_view s) noexcept {
     }
 }
 
-} // namespace kraken
-} // namespace protocol
-} // namespace wirekrak
+} // namespace wirekrak::protocol::kraken
