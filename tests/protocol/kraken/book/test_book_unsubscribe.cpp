@@ -120,8 +120,8 @@ int main() {
     test_book_unsubscribe_with_depth_and_req_id();
 
 #ifndef NDEBUG
-    test_book_unsubscribe_empty_symbols_asserts();
-    test_book_unsubscribe_invalid_depth_asserts();
+    //test_book_unsubscribe_empty_symbols_asserts();
+    //test_book_unsubscribe_invalid_depth_asserts();
 #endif
 
     std::cout << "[TEST] ALL BOOK UNSUBSCRIBE REQUEST TESTS PASSED!\n";

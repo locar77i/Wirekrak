@@ -17,15 +17,16 @@ namespace trade {
 struct SubscribeAck {
     bool success = false;
     Symbol symbol;
-    lcr::optional<std::uint64_t> req_id;
+
     lcr::optional<bool> snapshot;
+    std::vector<std::string> warnings;
 
     lcr::optional<std::string> error;
-    std::vector<std::string> warnings;
-    
 
     lcr::optional<Timestamp> time_in;
     lcr::optional<Timestamp> time_out;
+
+    lcr::optional<std::uint64_t> req_id;
 };
 
 } // namespace trade

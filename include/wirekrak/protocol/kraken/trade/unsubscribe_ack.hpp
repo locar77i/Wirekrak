@@ -15,10 +15,13 @@ namespace trade {
 struct UnsubscribeAck {
     bool success = false;
     Symbol symbol;
-    lcr::optional<std::uint64_t> req_id;
-    lcr::optional<std::string> error_msg;
+
+    lcr::optional<std::string> error;
+
     lcr::optional<Timestamp> time_in;
     lcr::optional<Timestamp> time_out;
+
+    lcr::optional<std::uint64_t> req_id;
 };
 
 } // namespace trade
