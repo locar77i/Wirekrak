@@ -54,6 +54,101 @@ inline bool require_object(const simdjson::dom::element& root) noexcept {
     return root.type() == simdjson::dom::element_type::OBJECT;
 }
 
+// ------------------------------------------------------------
+// REQUIRED OBJECT FIELD
+// ------------------------------------------------------------
+[[nodiscard]]
+inline bool parse_object_required(const simdjson::dom::element& parent, const char* key, simdjson::dom::element& out) noexcept {
+    if (!require_object(parent)) {
+        return false;
+    }
+    // Get object field
+    auto field = parent[key];
+    if (field.error()) {
+        return false;
+    }
+    // Extract object
+    out = field.value();
+    return require_object(out);
+}
+
+// ------------------------------------------------------------
+// OPTIONAL OBJECT FIELD
+// ------------------------------------------------------------
+[[nodiscard]]
+inline bool parse_object_optional(const simdjson::dom::element& parent, const char* key, simdjson::dom::element& out, bool& present) noexcept {
+    present = false;
+    if (!require_object(parent)) {
+        return false;
+    }
+    // Get object field
+    auto field = parent[key];
+    if (field.error()) {
+        return true; // optional, not present
+    }
+    // Extract object
+    out = field.value();
+    if (!require_object(out)) {
+        return false;
+    }
+    present = true;
+    return true;
+}
+
+// ------------------------------------------------------------
+// REQUIRED ARRAY FIELD
+// ------------------------------------------------------------
+[[nodiscard]]
+inline bool parse_array_required(const simdjson::dom::element& parent, const char* key, simdjson::dom::array& out) noexcept {
+    if (!require_object(parent)) {
+        return false;
+    }
+    // Get object field
+    auto field = parent[key];
+    if (field.error()) {
+        return false;
+    }
+    // Extract array
+    return !field.get(out);
+}
+
+// ------------------------------------------------------------
+// OPTIONAL ARRAY FIELD
+// ------------------------------------------------------------
+[[nodiscard]]
+inline bool parse_array_optional(const simdjson::dom::element& parent, const char* key, simdjson::dom::array& out, bool& present) noexcept {
+    present = false;
+    if (!require_object(parent)) {
+        return false;
+    }
+    // Get object field
+    auto field = parent[key];
+    if (field.error()) {
+        return true; // optional, not present
+    }
+    // Extract array
+    if (field.get(out)) {
+        return false; // wrong type
+    }
+    present = true;
+    return true;
+}
+
+
+[[nodiscard]]
+inline bool parse_string_equals_required(const simdjson::dom::element& obj, const char* key, std::string_view expected) noexcept {
+    if (!require_object(obj)) {
+        return false;
+    }
+    // Get string field
+    std::string_view sv;
+    if (obj[key].get(sv)) {
+        return false; // missing or wrong type
+    }
+    return sv == expected;
+}
+
+
 // ============================================================================
 // REQUIRED FIELD PARSERS
 // ============================================================================

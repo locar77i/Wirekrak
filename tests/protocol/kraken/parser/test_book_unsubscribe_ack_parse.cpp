@@ -112,6 +112,7 @@ void test_book_unsubscribe_ack_error() {
     std::cout << "[TEST] OK\n";
 }
 
+/* Enforced by caller/router
 void test_book_unsubscribe_ack_wrong_method() {
     std::cout << "[TEST] Book unsubscribe ack parser (wrong method)..." << std::endl;
 
@@ -167,6 +168,7 @@ void test_book_unsubscribe_ack_wrong_channel() {
 
     std::cout << "[TEST] OK\n";
 }
+*/
 
 void test_book_unsubscribe_ack_missing_symbol() {
     std::cout << "[TEST] Book unsubscribe ack parser (missing symbol)..." << std::endl;
@@ -251,8 +253,10 @@ int main() {
     test_book_unsubscribe_ack_error();
 
     // Negative tests
+/* Enforced by caller/router
     test_book_unsubscribe_ack_wrong_method();
     test_book_unsubscribe_ack_wrong_channel();
+*/
     test_book_unsubscribe_ack_missing_symbol();
     test_book_unsubscribe_ack_invalid_depth_type();
     test_book_unsubscribe_ack_missing_result();

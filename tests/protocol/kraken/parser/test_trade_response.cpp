@@ -157,7 +157,7 @@ void test_trade_invalid_type() {
 }
 
 void test_trade_update_multiple_trades_rejected() {
-    std::cout << "[TEST] Trade update with multiple trades (invalid)..." << std::endl;
+    std::cout << "[TEST] Trade update with multiple trades (success)..." << std::endl;
 
     constexpr std::string_view json = R"json(
     {
@@ -188,7 +188,8 @@ void test_trade_update_multiple_trades_rejected() {
     assert(!doc.error());
 
     trade::Response resp{};
-    assert(!parser::trade::response::parse(doc.value(), resp));
+    assert(parser::trade::response::parse(doc.value(), resp));
+    assert(resp.trades.size() == 2);
 
     std::cout << "[TEST] OK\n";
 }

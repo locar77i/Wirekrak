@@ -11,6 +11,7 @@
 #include "wirekrak/protocol/kraken/trade/response.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/context.hpp"
+#include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/response.hpp"
@@ -42,54 +43,28 @@ public:
 
     inline void parse_and_route(const std::string& raw_msg) noexcept {
         using namespace simdjson;
-        dom::element root;
+        simdjson::dom::element root;
         // Parse JSON message
         auto error = parser_.parse(raw_msg).get(root);
         if (error) {
             WK_WARN("[PARSER] JSON parse error: " << error << " in message: " << raw_msg);
             return;
         }
-        // 1) METHOD DISPATCH
-        auto method_field = root["method"];
-        if (!method_field.error()) {
-            std::string_view method_sv;
-            if (!method_field.get(method_sv)) {
-                Method method = to_method_enum_fast(method_sv);
-                if (method != Method::Unknown) {
-                    if (!parse_method_message_(method, root)) {
-                        WK_WARN("[PARSER] Failed to parse method message: " << raw_msg);
-                    }
-                }
-                else {
-                    WK_WARN("[PARSER] Unknown method: " << method_sv);
-                }
+        // METHOD DISPATCH (ACK / CONTROL)
+        Method method;
+        if (adapter::parse_method_required(root, method)) {
+            if (!parse_method_message_(method, root)) {
+                WK_WARN("[PARSER] Failed to parse method message: " << raw_msg);
             }
-            else {
-                WK_WARN("[PARSER] 'method' is not a string");
-            }
-            return; // ACK/NACK messages do not go into rings, they are just control messages
+            return; // method messages never fall through
         }
-        // 2) CHANNEL DISPATCH
-        auto channel_field = root["channel"];
-        if (!channel_field.error()) { // channel exists
-            std::string_view channel_sv;
-            if (!channel_field.get(channel_sv)) {
-                Channel channel = to_channel_enum_fast(channel_sv);
-                if (channel != Channel::Unknown) {
-                    if (!parse_channel_message_(channel, root)) {
-                        WK_WARN("[PARSER] Failed to parse channel message: " << raw_msg);
-                    }
-                }
-                else {
-                    WK_WARN("[PARSER] Unknown channel: " << channel_sv);
-                }
+        // CHANNEL DISPATCH (DATA)
+        Channel channel;
+        if (adapter::parse_channel_required(root, channel)) {
+            if (!parse_channel_message_(channel, root)) {
+                WK_WARN("[PARSER] Failed to parse channel message: " << raw_msg);
             }
-            else {
-                WK_WARN("[PARSER] 'channel' not a string");
-            }
-        }
-        else {
-            WK_WARN("[PARSER] 'channel' missing");
+            return;
         }
     }
 
@@ -104,28 +79,21 @@ private:
     // Parse helpers for method messages
     // =========================================================================
 
-    [[nodiscard]] inline bool parse_method_message_(Method m, const simdjson::dom::element& root) noexcept {
+    [[nodiscard]] inline bool parse_method_message_(Method method, const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
-        // Result object
-        auto result_field = root["result"];
-        if (result_field.error()) {
-            WK_WARN("[PARSER] Field 'result' missing in <method> message -> ignore message.");
+        // result object (required)
+        simdjson::dom::element result;
+        if (!helper::parse_object_required(root, "result", result)) {
+            WK_WARN("[PARSER] Field 'result' missing or invalid in '" << to_string(method) << "' message -> ignore message.");
             return false;
         }
-        dom::element result = result_field.value();
-        // Channel field
-        std::string_view channel_sv;
-        auto channel_field = result["channel"];
-        if (channel_field.error() || channel_field.get(channel_sv)) {
+        // channel (required)
+        Channel channel;
+        if (!adapter::parse_channel_required(result, channel)) {
             WK_WARN("[PARSER] Field 'channel' missing or invalid in <method> message -> ignore message.");
-            return false; // missing or invalid
+            return false;
         }
-        Channel channel = to_channel_enum_fast(channel_sv);
-        if (channel == Channel::Unknown) {
-            WK_WARN("[PARSER] Unknown channel in <method> message -> ignore message.");
-            return false; // reject unknown channels
-        }
-        switch (m) {
+        switch (method) {
             case Method::Subscribe:
                 return parse_subscribe_ack(channel, root);
             case Method::Unsubscribe:

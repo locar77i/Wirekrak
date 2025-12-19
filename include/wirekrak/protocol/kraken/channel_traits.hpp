@@ -47,6 +47,11 @@ struct channel_of<trade::Unsubscribe> {
 };
 
 template<>
+struct channel_of<trade::Response> {
+    static constexpr Channel value = Channel::Trade;
+};
+
+template<>
 struct channel_of<trade::Trade> {
     static constexpr Channel value = Channel::Trade;
 };
@@ -111,7 +116,7 @@ template<typename RequestT>
 struct channel_traits;
 
 // ---------------------------------------------------------------------------
-// TRADE: Subscribe → Response
+// TRADE: Subscribe → Trade
 // ---------------------------------------------------------------------------
 
 template<>

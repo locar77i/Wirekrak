@@ -2,9 +2,12 @@
 
 #include <string_view>
 
+#include "wirekrak/protocol/kraken/enums/method.hpp"
+#include "wirekrak/protocol/kraken/enums/channel.hpp"
 #include "wirekrak/protocol/kraken/enums/side.hpp"
 #include "wirekrak/protocol/kraken/enums/order_type.hpp"
 #include "wirekrak/protocol/kraken/enums/payload_type.hpp"
+#include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
 
@@ -49,6 +52,34 @@ across all Kraken WebSocket protocol parsers.
 
 
 namespace wirekrak::protocol::kraken::parser::adapter {
+
+// ------------------------------------------------------------
+// Method
+// ------------------------------------------------------------
+[[nodiscard]]
+inline bool parse_method_required(const simdjson::dom::element& root, Method& out) noexcept {
+    std::string_view sv;
+    if (!parser::helper::parse_string_required(root, "method", sv)) {
+        return false;
+    }
+    out = to_method_enum_fast(sv);
+    return out != Method::Unknown;
+}
+
+
+// ------------------------------------------------------------
+// Channel
+// ------------------------------------------------------------
+[[nodiscard]]
+inline bool parse_channel_required(const simdjson::dom::element& root, Channel& out) noexcept {
+    std::string_view sv;
+    if (!parser::helper::parse_string_required(root, "channel", sv)) {
+        return false;
+    }
+    out = to_channel_enum_fast(sv);
+    return out != Channel::Unknown;
+}
+
 
 // ------------------------------------------------------------
 // Symbol

@@ -30,18 +30,18 @@ struct response {
         }
 
         // data array (required)
-        dom::array data;
-        if (root["data"].get(data) || data.begin() == data.end()) {
-            WK_DEBUG("[PARSER] Field 'data' missing or empty in trade response -> ignore message.");
+        simdjson::dom::array data;
+        if (!helper::parse_array_required(root, "data", data)) {
+            WK_DEBUG("[PARSER] Field 'data' missing or invalid in trade response -> ignore message.");
+            return false;
+        }
+    
+        // data must contain at least one trade
+        if (data.size() == 0) {
+            WK_DEBUG("[PARSER] Empty 'data' array in trade response -> ignore message.");
             return false;
         }
 
-        // Enforce Kraken semantics:
-        // update => exactly one trade
-        if (out.type != kraken::PayloadType::Snapshot && data.size() != 1) {
-            WK_DEBUG("[PARSER] Field 'data' must contain exactly one trade in trade update -> ignore message.");
-            return false;
-        }
 
         out.trades.clear();
         out.trades.reserve(data.size());
@@ -49,9 +49,9 @@ struct response {
         // ------------------------------------------------------------
         // Parse trade objects
         // ------------------------------------------------------------
-        for (const dom::element& elem : data) {
+        for (const simdjson::dom::element& elem : data) {
 
-            dom::object obj;
+            simdjson::dom::object obj;
             if (elem.get(obj)) {
                 WK_DEBUG("[PARSER] Data element not an object in trade response -> ignore message.");
                 return false;
