@@ -69,6 +69,9 @@ endif()
 add_executable(wirekrak_connect examples/winhttp/connect.cpp)
 target_link_libraries(wirekrak_connect PRIVATE wirekrak winhttp)
 
+add_executable(wirekrak_ping_pong examples/ping_pong.cpp)
+target_link_libraries(wirekrak_ping_pong PRIVATE wirekrak winhttp)
+
 add_executable(wirekrak_trade_single examples/trade_single.cpp)
 target_link_libraries(wirekrak_trade_single PRIVATE wirekrak winhttp)
 

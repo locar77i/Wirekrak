@@ -8,6 +8,7 @@
 #include "wirekrak/protocol/kraken/parser/router.hpp"
 #include "wirekrak/dispatcher.hpp"
 #include "wirekrak/channel/manager.hpp"
+#include "wirekrak/protocol/kraken/system/ping.hpp"
 #include "wirekrak/protocol/kraken/trade/subscribe.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe.hpp"
 #include "wirekrak/protocol/kraken/trade/response.hpp"
@@ -49,9 +50,15 @@ class Client {
     static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15);
 
 public:
+    using status_handler_t = std::function<void(const status::Update&)>;
+    using pong_handler_t = std::function<void(const system::Pong&)>;
+
+public:
     Client()
         : parser_(parser::Context{ .heartbeat_total = &heartbeat_total_,
                                    .last_heartbeat_ts = &last_heartbeat_ts_,
+                                   .pong_ring = &pong_ring_,
+                                    .status_ring = &status_ring_,
                                    .trade_ring = &trade_ring_,
                                    .trade_subscribe_ring = &trade_subscribe_ring_,
                                    .trade_unsubscribe_ring = &trade_unsubscribe_ring_,
@@ -93,6 +100,22 @@ public:
         retry_attempts_ = 0;
         WK_INFO("Connected successfully.");
         return true;
+    }
+
+    // Send ping
+    inline void ping(lcr::optional<std::uint64_t> req_id = {}) noexcept{
+        system::Ping ping{.req_id = req_id};
+        send_raw_(system::Ping{.req_id = req_id});
+    }
+
+    // Register status callback
+    inline void on_status(status_handler_t cb) noexcept {
+        status_handler_ = std::move(cb);
+    }
+
+    // Register pong callback
+    inline void on_pong(pong_handler_t cb) noexcept {
+        pong_handler_ = std::move(cb);
     }
 
 /*
@@ -230,6 +253,22 @@ public:
             }
         }
         // ===============================================================================
+        // PROCESS STATUS MESSAGES
+        // ===============================================================================
+        { // === Process status ring ===
+        status::Update update;
+        while (status_ring_.pop(update)) {
+            handle_status_(update);
+        }}
+        // ===============================================================================
+        // PROCESS PONG MESSAGES
+        // ===============================================================================
+        { // === Process pong ring ===
+        system::Pong pong;
+        while (pong_ring_.pop(pong)) {
+            handle_pong_(pong);
+        }}
+        // ===============================================================================
         // PROCESS TRADE MESSAGES
         // ===============================================================================
         { // === Process trade ring ===
@@ -262,7 +301,7 @@ public:
         // PROCESS BOOK UPDATES
         // ===============================================================================
         { // === Process book ring ===
-        protocol::kraken::book::Update resp;
+        book::Update resp;
         while (book_ring_.pop(resp)) {
             dispatcher_.dispatch(resp);
         }}
@@ -340,13 +379,26 @@ private:
     std::atomic<std::chrono::steady_clock::time_point> last_heartbeat_ts_;
     std::atomic<std::chrono::steady_clock::time_point> last_message_ts_;
 
-    lcr::lockfree::spsc_ring<trade::Response, 4096> trade_ring_{};
-    lcr::lockfree::spsc_ring<trade::SubscribeAck, 16> trade_subscribe_ring_{};
-    lcr::lockfree::spsc_ring<trade::UnsubscribeAck, 16> trade_unsubscribe_ring_{};
+    // Status callback
+    status_handler_t status_handler_;
+    // Pong callback
+    pong_handler_t pong_handler_;
 
-    lcr::lockfree::spsc_ring<protocol::kraken::book::Update, 4096> book_ring_{};
-    lcr::lockfree::spsc_ring<book::SubscribeAck, 16> book_subscribe_ring_{};
-    lcr::lockfree::spsc_ring<book::UnsubscribeAck, 16> book_unsubscribe_ring_{};
+    // Output rings for pong messages
+    lcr::lockfree::spsc_ring<system::Pong, 8> pong_ring_{};
+
+    // Output rings for status channel
+    lcr::lockfree::spsc_ring<status::Update, 8> status_ring_{};
+
+    // Output rings for trade channel
+    lcr::lockfree::spsc_ring<trade::Response, 4096> trade_ring_{};
+    lcr::lockfree::spsc_ring<trade::SubscribeAck, 8> trade_subscribe_ring_{};
+    lcr::lockfree::spsc_ring<trade::UnsubscribeAck, 8> trade_unsubscribe_ring_{};
+
+    // Output rings for book channel
+    lcr::lockfree::spsc_ring<book::Update, 4096> book_ring_{};
+    lcr::lockfree::spsc_ring<book::SubscribeAck, 8> book_subscribe_ring_{};
+    lcr::lockfree::spsc_ring<book::UnsubscribeAck, 8> book_unsubscribe_ring_{};
 
     parser::Router parser_;
     Dispatcher dispatcher_;
@@ -428,6 +480,18 @@ private:
         }
     }
 
+    inline void handle_status_(const status::Update& status) noexcept {
+        if (status_handler_) {
+            status_handler_(status);
+        }
+    }
+
+    inline void handle_pong_(const system::Pong& pong) noexcept {
+        if (pong_handler_) {
+            pong_handler_(pong);
+        }
+    }
+
     [[nodiscard]]
     inline bool reconnect_() {
         // 1) Close old WS
@@ -480,6 +544,17 @@ private:
         // else if constexpr (...) return ticker_handlers_;
     }    
 
+    template<class RequestT>
+    inline void send_raw_(RequestT req) {
+        // 1) Assign req_id if missing
+        if (!req.req_id.has()) {
+            req.req_id = req_id_seq_.next();
+        }
+        std::string json = req.to_json();
+        if (!ws_.send(json)) {
+            WK_ERROR("Failed to send raw message: " << json);
+        }
+    }
 
     template<class RequestT, class Callback>
     inline void subscribe_with_ack_(RequestT req, Callback&& cb) {

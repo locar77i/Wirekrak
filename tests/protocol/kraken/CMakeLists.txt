@@ -13,6 +13,6 @@ endforeach()
 
 
 # ADD SUBDIRS
-add_subdirectory(book)
-
+add_subdirectory(schema)
 add_subdirectory(parser)
+

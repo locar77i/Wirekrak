@@ -13,6 +13,7 @@
 #include "wirekrak/protocol/kraken/parser/context.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
+#include "wirekrak/protocol/kraken/parser/system/pong.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/response.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/unsubscribe_ack.hpp"
@@ -81,6 +82,27 @@ private:
 
     [[nodiscard]] inline bool parse_method_message_(Method method, const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
+
+        // Fix the kraken API inconsistency: 'result' object is not present in 'pong' messages ...
+        // ------------------------------------------------------------------------
+        // Control-scoped messages:
+        // - Do NOT require result
+        // - Do NOT require channel
+        // ------------------------------------------------------------------------
+        switch (method) {
+            case Method::Pong:
+                return parse_pong_(root);
+            default:
+                break;
+        }
+
+        // ------------------------------------------------------------------------
+        // Channel-scoped messages:
+        // - Require result
+        // - Require channel
+        // - Go through generic dispatcher
+        // ------------------------------------------------------------------------
+
         // result object (required)
         simdjson::dom::element result;
         if (!helper::parse_object_required(root, "result", result)) {
@@ -180,11 +202,7 @@ private:
                 ctx_.last_heartbeat_ts->store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
                 return true;
             case Channel::Status: {
-                kraken::status::Update update;
-                if (status::update::parse(root, update)) {
-                    // TODO: push to ring / dispatch / callback
-                    return true;
-                }
+                return parse_status_(root);
             } break;
             default:
                 WK_WARN("[PARSER] Unhandled channel -> ignore");
@@ -204,7 +222,7 @@ private:
             return true;
         }
         return false;
-    };
+    }
 
     // TICKER PARSER
     [[nodiscard]] inline bool parse_ticker_(const simdjson::dom::element& root) noexcept {
@@ -212,7 +230,7 @@ private:
         WK_WARN("[PARSER] Unhandled channel 'ticker' -> ignore");
         // TODO
         return false;
-    };
+    }
 
     // BOOK PARSER
     [[nodiscard]] inline bool parse_book_(const simdjson::dom::element& root) noexcept {
@@ -247,7 +265,32 @@ private:
         }
 
         return false;
-    };
+    }
+
+    // PONG PARSER
+    [[nodiscard]] inline bool parse_pong_(const simdjson::dom::element& root) noexcept {
+        using namespace simdjson;
+        kraken::system::Pong resp;
+        if (system::pong::parse(root, resp)) {
+            if (!ctx_.pong_ring->push(std::move(resp))) { // TODO: handle backpressure
+                WK_WARN("[PARSER] pong_ring_ full, dropping.");
+            }
+            return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] inline bool parse_status_(const simdjson::dom::element& root) noexcept {
+        using namespace simdjson;
+        kraken::status::Update resp;
+        if (status::update::parse(root, resp)) {
+             if (!ctx_.status_ring->push(std::move(resp))) { // TODO: handle backpressure
+                WK_WARN("[PARSER] status_ring_ full, dropping.");
+            }
+            return true;
+        }
+        return false;
+    }
 
 };
 

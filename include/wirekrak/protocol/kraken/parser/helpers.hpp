@@ -195,7 +195,6 @@ inline bool parse_string_optional(const simdjson::dom::element& obj, const char*
     }
     auto field = obj[key];
     if (field.error()) {
-        out = {};
         return true; // not present
     }
     if (field.get(out)) {
@@ -211,6 +210,7 @@ inline bool parse_bool_optional(const simdjson::dom::element& obj, const char* k
     }
     auto field = obj[key];
     if (field.error()) {
+        out.reset();
         return true;
     }
     bool tmp{};

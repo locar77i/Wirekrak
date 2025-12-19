@@ -120,7 +120,20 @@ a configurable timeout, the client assumes the connection is unhealthy and and s
 
 ---
 
-## 🧪 Replay & Backtesting
+## 🔬 Protocol-Strict, Low-Latency Parser
+
+Wirekrak includes a production-grade WebSocket parser designed for real-time market data.
+It uses schema-strict validation, constexpr-based enum decoding, and zero-allocation parsing on top of simdjson.
+
+The architecture cleanly separates routing, parsing, and domain adaptation, enforcing real exchange semantics (e.g. snapshot vs update invariants) and rejecting malformed messages deterministically.
+
+Every parser is fully unit-tested against invalid, edge, and protocol-violating inputs, making refactors safe and correctness provable.
+
+```Built as infrastructure, not a demo.```
+
+---
+
+## 🔁 Replay & Backtesting
 
 WireKrak supports **deterministic replay** of recorded WebSocket sessions:
 

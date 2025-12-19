@@ -2,6 +2,8 @@
 
 #include <string>
 #include <sstream>
+#include <type_traits>
+#include <cassert>
 
 
 namespace lcr {
@@ -13,22 +15,31 @@ public:
     optional(const T& v) : has_(true), value_(v) {}
     optional(T&& v) : has_(true), value_(std::move(v)) {}
 
-    bool has() const { return has_; }
-    const T& value() const { return value_; }
-    T& value() { return value_; }
+    [[nodiscard]] inline bool has() const { return has_; }
+    const T& value() const {
+        assert(has_ && "lcr::optional::value() called when empty");
+        return value_;
+    }
+    [[nodiscard]] inline T& value() {
+        assert(has_ && "lcr::optional::value() called when empty");
+        return value_;
+    }
+    [[nodiscard]] inline T value_or(T fallback) const {
+        return has_ ? value_ : fallback;
+    }
 
-    void reset() {
+    inline void reset() {
         has_ = false;
         value_ = T{};
     }
 
-    optional& operator=(const T& v) {
+    inline optional& operator=(const T& v) {
         value_ = v;
         has_ = true;
         return *this;
     }
 
-    optional& operator=(T&& v) {
+    inline optional& operator=(T&& v) {
         value_ = std::move(v);
         has_ = true;
         return *this;
