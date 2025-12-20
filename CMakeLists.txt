@@ -84,6 +84,7 @@ target_link_libraries(trade_with_snapshot PRIVATE wirekrak winhttp)
 add_executable(wirekrak_book_update_single examples/book_update_single.cpp)
 target_link_libraries(wirekrak_book_update_single PRIVATE wirekrak winhttp)
 
+
 # -------------------------------------------------------------
 # Tests
 # -------------------------------------------------------------

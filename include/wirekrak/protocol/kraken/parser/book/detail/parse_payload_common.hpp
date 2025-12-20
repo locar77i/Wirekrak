@@ -5,12 +5,11 @@
 #include "wirekrak/protocol/kraken/enums/payload_type.hpp"
 #include "wirekrak/protocol/kraken/book/snapshot.hpp"
 #include "wirekrak/protocol/kraken/book/update.hpp"
-
 #include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "wirekrak/protocol/kraken/parser/book/detail/parse_side_levels_common.hpp"
-
 #include "lcr/log/logger.hpp"
+
 #include "simdjson.h"
 
 namespace wirekrak::protocol::kraken::parser::detail {

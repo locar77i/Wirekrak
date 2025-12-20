@@ -8,6 +8,7 @@
 #include "wirekrak/protocol/kraken/parser/router.hpp"
 #include "wirekrak/dispatcher.hpp"
 #include "wirekrak/channel/manager.hpp"
+#include "wirekrak/protocol/kraken/rejection_notice.hpp"
 #include "wirekrak/protocol/kraken/system/ping.hpp"
 #include "wirekrak/protocol/kraken/trade/subscribe.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe.hpp"
@@ -51,15 +52,17 @@ class Client {
     static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15);
 
 public:
-    using status_handler_t = std::function<void(const status::Update&)>;
     using pong_handler_t = std::function<void(const system::Pong&)>;
+    using rejection_handler_t = std::function<void(const rejection::Notice&)>;
+    using status_handler_t = std::function<void(const status::Update&)>;
 
 public:
     Client()
         : parser_(parser::Context{ .heartbeat_total = &heartbeat_total_,
                                    .last_heartbeat_ts = &last_heartbeat_ts_,
                                    .pong_ring = &pong_ring_,
-                                    .status_ring = &status_ring_,
+                                   .rejection_ring = &rejection_ring_,
+                                   .status_ring = &status_ring_,
                                    .trade_ring = &trade_ring_,
                                    .trade_subscribe_ring = &trade_subscribe_ring_,
                                    .trade_unsubscribe_ring = &trade_unsubscribe_ring_,
@@ -109,14 +112,19 @@ public:
         send_raw_request_(system::Ping{.req_id = req_id});
     }
 
-    // Register status callback
-    inline void on_status(status_handler_t cb) noexcept {
-        status_handler_ = std::move(cb);
-    }
-
     // Register pong callback
     inline void on_pong(pong_handler_t cb) noexcept {
         pong_handler_ = std::move(cb);
+    }
+
+    // Register rejection callback
+    inline void on_rejection(rejection_handler_t cb) noexcept {
+        rejection_handler_ = std::move(cb);
+    }
+
+    // Register status callback
+    inline void on_status(status_handler_t cb) noexcept {
+        status_handler_ = std::move(cb);
     }
 
 /*
@@ -208,6 +216,9 @@ public:
 
     template <request::Subscription RequestT, class Callback>
     inline void subscribe(const RequestT& req, Callback&& cb) {
+        static_assert(request::ValidRequestIntent<RequestT>,
+            "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
+        );
         using ResponseT = typename channel_traits<RequestT>::response_type;
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
         // 1) Store callback safely once
@@ -222,6 +233,9 @@ public:
 
     template <request::Unsubscription RequestT>
     inline void unsubscribe(const RequestT& req) {
+        static_assert(request::ValidRequestIntent<RequestT>,
+            "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
+        );
         unsubscribe_with_ack_(req);
     }
 
@@ -254,20 +268,28 @@ public:
             }
         }
         // ===============================================================================
-        // PROCESS STATUS MESSAGES
-        // ===============================================================================
-        { // === Process status ring ===
-        status::Update update;
-        while (status_ring_.pop(update)) {
-            handle_status_(update);
-        }}
-        // ===============================================================================
         // PROCESS PONG MESSAGES
         // ===============================================================================
         { // === Process pong ring ===
         system::Pong pong;
         while (pong_ring_.pop(pong)) {
             handle_pong_(pong);
+        }}
+        // ===============================================================================
+        // PROCESS REJECTION NOTICES
+        // ===============================================================================
+        { // === Process rejection ring ===
+        rejection::Notice notice;
+        while (rejection_ring_.pop(notice)) {
+            handle_rejection_(notice);
+        }}
+        // ===============================================================================
+        // PROCESS STATUS MESSAGES
+        // ===============================================================================
+        { // === Process status ring ===
+        status::Update update;
+        while (status_ring_.pop(update)) {
+            handle_status_(update);
         }}
         // ===============================================================================
         // PROCESS TRADE MESSAGES
@@ -380,16 +402,21 @@ private:
     std::atomic<std::chrono::steady_clock::time_point> last_heartbeat_ts_;
     std::atomic<std::chrono::steady_clock::time_point> last_message_ts_;
 
-    // Status callback
-    status_handler_t status_handler_;
     // Pong callback
     pong_handler_t pong_handler_;
+    // Rejection callback
+    rejection_handler_t rejection_handler_;
+    // Status callback
+    status_handler_t status_handler_;
 
     // Output rings for pong messages
     lcr::lockfree::spsc_ring<system::Pong, 8> pong_ring_{};
 
     // Output rings for status channel
     lcr::lockfree::spsc_ring<status::Update, 8> status_ring_{};
+
+    // Output rings for rejection notices
+    lcr::lockfree::spsc_ring<rejection::Notice, 8> rejection_ring_{};
 
     // Output rings for trade channel
     lcr::lockfree::spsc_ring<trade::Response, 4096> trade_ring_{};
@@ -481,15 +508,21 @@ private:
         }
     }
 
-    inline void handle_status_(const status::Update& status) noexcept {
-        if (status_handler_) {
-            status_handler_(status);
-        }
-    }
-
     inline void handle_pong_(const system::Pong& pong) noexcept {
         if (pong_handler_) {
             pong_handler_(pong);
+        }
+    }
+
+    inline void handle_rejection_(const rejection::Notice& notice) noexcept {
+        if (rejection_handler_) {
+            rejection_handler_(notice);
+        }
+    }
+    
+    inline void handle_status_(const status::Update& status) noexcept {
+        if (status_handler_) {
+            status_handler_(status);
         }
     }
 
@@ -548,6 +581,9 @@ private:
     // Send raw request (used for control messages)
     template <request::Control RequestT>
     inline void send_raw_request_(RequestT req) {
+        static_assert(request::ValidRequestIntent<RequestT>,
+            "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
+        );
         // 1) Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();

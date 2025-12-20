@@ -5,8 +5,6 @@
 #include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/detail/parse_ack_common.hpp"
 
-#include "simdjson.h"
-
 namespace wirekrak::protocol::kraken::parser::trade {
 
 struct subscribe_ack {

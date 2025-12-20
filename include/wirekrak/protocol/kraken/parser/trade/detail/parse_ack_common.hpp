@@ -9,6 +9,8 @@
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
 #include "lcr/log/logger.hpp"
 
+#include "simdjson.h"
+
 
 namespace wirekrak {
 namespace protocol {

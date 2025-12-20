@@ -4,6 +4,7 @@
 #include <chrono>
 
 #include "lcr/lockfree/spsc_ring.hpp"
+#include "wirekrak/protocol/kraken/rejection_notice.hpp"
 #include "wirekrak/protocol/kraken/system/pong.hpp"
 #include "wirekrak/protocol/kraken/status/update.hpp"
 #include "wirekrak/protocol/kraken/trade/response.hpp"
@@ -37,6 +38,11 @@ struct Context {
     // Output ring for pong messages
     // ------------------------------------------------------------
     lcr::lockfree::spsc_ring<kraken::system::Pong, 8>* pong_ring{nullptr};
+
+    // ------------------------------------------------------------
+    // Output ring for rejection notices
+    // ------------------------------------------------------------
+    lcr::lockfree::spsc_ring<kraken::rejection::Notice, 8>* rejection_ring{nullptr};
 
     // ------------------------------------------------------------
     // Output rings for status channel

@@ -5,8 +5,8 @@
 #include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
-
 #include "lcr/log/logger.hpp"
+
 #include "simdjson.h"
 
 

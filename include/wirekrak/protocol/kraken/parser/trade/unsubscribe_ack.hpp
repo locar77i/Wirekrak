@@ -5,8 +5,6 @@
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/detail/parse_ack_common.hpp"
 
-#include "simdjson.h"
-
 
 namespace wirekrak {
 namespace protocol {

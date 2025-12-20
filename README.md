@@ -100,7 +100,7 @@ int main() {
 }
 ```
 
-```Note:``` Subscribe/Unsubscribe are modeled as distinct request types and constrained using C++20 concepts so misuse fails at compile time with zero runtime overhead.
+```Note:``` Subscribe, Unsubscribe, and Control requests are modeled as distinct types and constrained using C++20 concepts, ensuring request misuse fails at compile time with zero runtime overhead.
 
 ---
 

@@ -9,18 +9,34 @@ namespace wirekrak::protocol::kraken::request {
 Request Concepts (Compile-time API Safety)
 ===============================================================================
 
-These concepts constrain client APIs so that only valid request types
+These concepts constrain the client API so that only valid request types
 can be passed at compile time.
+
+Each request type must explicitly encode its intent by defining exactly one
+of the following tags:
+  - subscribe_tag
+  - unsubscribe_tag
+  - control_tag
 
 Design goals:
   - Zero runtime overhead
   - No inheritance or RTTI
   - Explicit intent encoded in the type system
-  - Prevent subscribe/unsubscribe misuse at compile time
-
-Subscribe and Unsubscribe are modeled as distinct request types.
+  - Prevent subscribe/unsubscribe/control misuse at compile time
 ===============================================================================
 */
+
+namespace detail {
+
+// Count how many intent tags a type defines
+template <typename T>
+constexpr int intent_tag_count =
+    (requires { typename T::subscribe_tag; }   ? 1 : 0) +
+    (requires { typename T::unsubscribe_tag; } ? 1 : 0) +
+    (requires { typename T::control_tag; }     ? 1 : 0);
+
+} // namespace detail
+
 
 // -----------------------------------------------------------------------------
 // Subscription request
@@ -48,5 +64,12 @@ concept Control =
     requires {
         typename T::control_tag;
     };
+
+
+// -----------------------------------------------------------------------------
+// Validation helper (used for static_asserts in client API)
+// -----------------------------------------------------------------------------
+template <typename T>
+concept ValidRequestIntent = detail::intent_tag_count<T> == 1;
 
 } // namespace wirekrak::protocol::kraken::request

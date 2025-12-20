@@ -6,8 +6,6 @@
 #include "wirekrak/protocol/kraken/enums/channel.hpp"
 #include "wirekrak/protocol/kraken/parser/book/detail/parse_ack_common.hpp"
 
-#include "simdjson.h"
-
 
 namespace wirekrak {
 namespace protocol {

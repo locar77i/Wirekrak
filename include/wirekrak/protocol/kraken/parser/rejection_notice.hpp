@@ -3,6 +3,9 @@
 #include <string_view>
 
 #include "wirekrak/protocol/kraken/rejection_notice.hpp"
+#include "wirekrak/protocol/kraken/parser/helpers.hpp"
+#include "wirekrak/protocol/kraken/parser/adapters.hpp"
+#include "lcr/log/logger.hpp"
 
 #include "simdjson.h"
 
