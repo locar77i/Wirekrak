@@ -13,6 +13,7 @@
 #include "wirekrak/protocol/kraken/trade/unsubscribe.hpp"
 #include "wirekrak/protocol/kraken/trade/response.hpp"
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
+#include "wirekrak/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/replay/database.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/transport/websocket.hpp"
@@ -105,7 +106,7 @@ public:
     // Send ping
     inline void ping(lcr::optional<std::uint64_t> req_id = {}) noexcept{
         system::Ping ping{.req_id = req_id};
-        send_raw_(system::Ping{.req_id = req_id});
+        send_raw_request_(system::Ping{.req_id = req_id});
     }
 
     // Register status callback
@@ -205,7 +206,7 @@ public:
     ----------------------------------------------------------------------------
 */
 
-    template<class RequestT, class Callback>
+    template <request::Subscription RequestT, class Callback>
     inline void subscribe(const RequestT& req, Callback&& cb) {
         using ResponseT = typename channel_traits<RequestT>::response_type;
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
@@ -219,7 +220,7 @@ public:
         subscribe_with_ack_(req, cb_copy);
     }
 
-    template<class RequestT>
+    template <request::Unsubscription RequestT>
     inline void unsubscribe(const RequestT& req) {
         unsubscribe_with_ack_(req);
     }
@@ -544,8 +545,9 @@ private:
         // else if constexpr (...) return ticker_handlers_;
     }    
 
-    template<class RequestT>
-    inline void send_raw_(RequestT req) {
+    // Send raw request (used for control messages)
+    template <request::Control RequestT>
+    inline void send_raw_request_(RequestT req) {
         // 1) Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();

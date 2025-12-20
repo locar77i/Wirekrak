@@ -28,8 +28,9 @@ namespace book {
 // ===============================================
 
 struct Subscribe {
-    std::vector<Symbol> symbols;
+    using subscribe_tag = void;
 
+    std::vector<Symbol> symbols;
     lcr::optional<std::uint32_t> depth{};     // default: 10
     lcr::optional<bool> snapshot{};           // default: true
     lcr::optional<std::uint64_t> req_id{};

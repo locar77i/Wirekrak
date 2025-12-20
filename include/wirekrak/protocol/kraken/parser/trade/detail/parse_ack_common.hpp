@@ -95,12 +95,12 @@ inline bool parse_ack_common(const simdjson::dom::element& root, std::string_vie
     else {
 
         // error (conditionally required) - parse it as required in the failure branch
-        std::string_view error;
-        if (!helper::parse_string_required(root, "error", error)) {
+        std::string_view sv;
+        if (!helper::parse_string_required(root, "error", sv)) {
             WK_DEBUG("[PARSER] Field 'error' missing in failed " << expected_method << " ACK -> ignore message.");
             return false;
         }
-        out.error = std::string(error);
+        out.error = std::string(sv);
 
         // result must NOT exist
         if (!root["result"].error()) {

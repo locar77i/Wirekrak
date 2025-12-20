@@ -67,12 +67,12 @@ struct pong {
         }
         // FAILURE CASE
         else {
-            std::string_view err;
-            if (!helper::parse_string_required(root, "error", err)) {
+            std::string_view sv;
+            if (!helper::parse_string_required(root, "error", sv)) {
                 WK_DEBUG("[PARSER] Field 'error' missing in failed pong response -> ignore message.");
                 return false;
             }
-            out.error = std::string(err);
+            out.error = std::string(sv);
         }
       
         return true;
@@ -129,12 +129,12 @@ struct pong {
             }
             // FAILURE CASE
             else {
-                std::string_view err;
-                if (!helper::parse_string_required(root, "error", err)) {
+                std::string_view sv;
+                if (!helper::parse_string_required(root, "error", sv)) {
                     WK_DEBUG("[PARSER] Field 'error' missing in failed pong response -> ignore message.");
                     return false;
                 }
-                out.error = std::string(err);
+                out.error = std::string(sv);
             }
         }
         

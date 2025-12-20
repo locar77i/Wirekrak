@@ -97,6 +97,20 @@ inline bool parse_symbol_required(const simdjson::dom::object& obj, const char* 
     return true;
 }
 
+[[nodiscard]]
+inline bool parse_symbol_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<Symbol>& out) noexcept {
+    out.reset();
+    std::string_view sv;
+    if (!parser::helper::parse_string_optional(obj, key, sv)) {
+        return false;
+    }
+    if (sv.empty()) {
+        return true; // optional, not present
+    }
+    out = Symbol{std::string(sv)};
+    return true;
+}
+
 // ------------------------------------------------------------
 // Side
 // ------------------------------------------------------------
@@ -118,6 +132,7 @@ inline bool parse_side_required(const simdjson::dom::object& obj, const char* ke
 // ------------------------------------------------------------
 [[nodiscard]]
 inline bool parse_order_type_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<OrderType>& out) noexcept {
+    out.reset();
     std::string_view sv;
     if (!parser::helper::parse_string_optional(obj, key, sv)) {
         return false;
@@ -170,6 +185,7 @@ inline bool parse_timestamp_required(const simdjson::dom::object& obj, const cha
 
 [[nodiscard]]
 inline bool parse_timestamp_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<Timestamp>& out) noexcept {
+    out.reset();
     std::string_view sv;
     if (!parser::helper::parse_string_optional(obj, key, sv)) {
         return false;

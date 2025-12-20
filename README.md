@@ -100,6 +100,8 @@ int main() {
 }
 ```
 
+```Note:``` Subscribe/Unsubscribe are modeled as distinct request types and constrained using C++20 concepts so misuse fails at compile time with zero runtime overhead.
+
 ---
 
 ## ✨ Liveness Detection
@@ -234,6 +236,27 @@ ctest --preset test-debug -R LivenessTest
 - Tests are enabled via the WK_UNIT_TEST=ON preset option.
 - Unit tests cover client liveness detection, heartbeat and message timeouts, and automatic reconnection behavior.
 - No external test frameworks are required.
+
+---
+
+## ⚠️ Notes on Kraken WebSocket Behavior
+
+While testing against the live Kraken WebSocket API, a few minor differences between the documentation and actual behavior were observed.
+WireKrak handles these cases explicitly to ensure reliable operation.
+
+### pong responses
+
+Kraken sometimes sends lightweight pong heartbeat messages without success or result fields.
+These messages are valid and indicate a healthy connection.
+
+➡️ WireKrak accepts both documented and heartbeat-style pong responses.
+
+### Subscribe / Unsubscribe errors
+
+When a subscription request fails (e.g. duplicate subscription), Kraken returns an error-only response with success = false and no result object.
+
+➡️ WireKrak requires result only on successful responses and correctly parses error replies.
+
 ---
 
 ## 🧠 Why This Matters

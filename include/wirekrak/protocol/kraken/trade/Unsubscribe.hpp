@@ -16,6 +16,8 @@ namespace kraken {
 namespace trade {
 
 struct Unsubscribe {
+    using unsubscribe_tag = void;
+
     std::vector<Symbol> symbols;
     lcr::optional<std::uint64_t> req_id{};
 

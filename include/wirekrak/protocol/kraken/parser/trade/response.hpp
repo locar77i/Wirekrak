@@ -15,7 +15,7 @@ struct response {
 
     [[nodiscard]]
     static inline bool parse(const simdjson::dom::element& root, kraken::trade::Response& out) noexcept {
-        using namespace simdjson;
+        out = kraken::trade::Response{};
 
         // Root
         if (!helper::require_object(root)) {

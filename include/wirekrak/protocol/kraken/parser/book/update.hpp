@@ -15,6 +15,7 @@ namespace book {
 struct update {
     [[nodiscard]]
     static inline bool parse(const simdjson::dom::element& root, kraken::book::Update& out) noexcept {
+        out = kraken::book::Update{};
         return detail::parse_payload_common(root, "update", out);
     }
 };

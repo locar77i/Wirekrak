@@ -13,6 +13,8 @@ namespace kraken {
 namespace system {
 
 struct Ping {
+    using control_tag = void;
+
     lcr::optional<std::uint64_t> req_id{};
 
     std::string to_json() const {

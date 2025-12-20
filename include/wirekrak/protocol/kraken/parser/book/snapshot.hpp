@@ -15,6 +15,7 @@ namespace book {
 struct snapshot {
     [[nodiscard]]
     static inline bool parse(const simdjson::dom::element& root, kraken::book::Snapshot& out) noexcept {
+        out = kraken::book::Snapshot{};
         return detail::parse_payload_common(root, "snapshot", out);
     }
 };

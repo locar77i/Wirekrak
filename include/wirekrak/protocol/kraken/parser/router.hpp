@@ -7,11 +7,13 @@
 #include <simdjson.h>
 
 #include "wirekrak/protocol/kraken/enums.hpp"
+#include "wirekrak/protocol/kraken/rejection_notice.hpp"
 #include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/trade/response.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/context.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
+#include "wirekrak/protocol/kraken/parser/rejection_notice.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
 #include "wirekrak/protocol/kraken/parser/system/pong.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/subscribe_ack.hpp"
@@ -30,7 +32,6 @@ namespace wirekrak {
 namespace protocol {
 namespace kraken {
 namespace parser {
-
 
 class Router {
     constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
@@ -83,7 +84,7 @@ private:
     [[nodiscard]] inline bool parse_method_message_(Method method, const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
 
-        // Fix the kraken API inconsistency: 'result' object is not present in 'pong' messages ...
+        // Fix 1nd kraken API inconsistency: 'result' object is not present in 'pong' messages ...
         // ------------------------------------------------------------------------
         // Control-scoped messages:
         // - Do NOT require result
@@ -95,25 +96,27 @@ private:
             default:
                 break;
         }
-
+        
         // ------------------------------------------------------------------------
         // Channel-scoped messages:
         // - Require result
         // - Require channel
-        // - Go through generic dispatcher
         // ------------------------------------------------------------------------
 
+        // Fix 2nd kraken API inconsistency: Kraken omits the 'result' object on failed subscribe/unsubscribe responses.
+        // On success == false, only 'error' is guaranteed to be present.
+        Channel channel;
         // result object (required)
         simdjson::dom::element result;
         if (!helper::parse_object_required(root, "result", result)) {
-            WK_WARN("[PARSER] Field 'result' missing or invalid in '" << to_string(method) << "' message -> ignore message.");
-            return false;
+            channel = Channel::Unknown;
         }
-        // channel (required)
-        Channel channel;
-        if (!adapter::parse_channel_required(result, channel)) {
-            WK_WARN("[PARSER] Field 'channel' missing or invalid in <method> message -> ignore message.");
-            return false;
+        else {
+            // channel (required)
+            if (!adapter::parse_channel_required(result, channel)) {
+                WK_WARN("[PARSER] Field 'channel' missing or invalid in '" << to_string(method) << "' message -> ignore message.");
+                channel = Channel::Unknown;
+            }
         }
         switch (method) {
             case Method::Subscribe:
@@ -149,9 +152,18 @@ private:
                 }
                 WK_WARN("[PARSER] Failed to parse book subscribe ACK.");
             } break;
-            default:
-                WK_WARN("[PARSER] Subscription ACK parsing not implemented for channel '" << to_string(channel) << "'");
-                break;
+            default: { // 2025-12-20 08:39:28 [WARN] [PARSER] Failed to parse method message: {"error":"Already subscribed","method":"subscribe","req_id":2,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:28.809188Z","time_out":"2025-12-20T07:39:28.809200Z"}
+                kraken::rejection::Notice resp;
+                if (rejection_notice::parse(root, resp)) {
+/*
+                    if (!ctx_.book_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] book_subscribe_ring_ full, dropping.");
+                    }
+*/
+                    return true;
+                }
+                WK_WARN("[PARSER] Failed to parse rejection notice.");
+            } break;
         }
         return false;
     }
@@ -177,9 +189,18 @@ private:
                     return true;
                 }
             } break;
-            default:
-                WK_WARN("[PARSER] Unsubscription ACK parsing not implemented for channel '" << to_string(channel) << "'");
-                break;
+            default: { // 2025-12-20 08:39:43 [WARN] [PARSER] Failed to parse method message: {"error":"Subscription Not Found","method":"subscribe","req_id":4,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:43.909056Z","time_out":"2025-12-20T07:39:43.909073Z"}
+                kraken::rejection::Notice resp;
+                if (rejection_notice::parse(root, resp)) {
+/*
+                    if (!ctx_.book_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] book_subscribe_ring_ full, dropping.");
+                    }
+*/
+                    return true;
+                }
+                WK_WARN("[PARSER] Failed to parse rejection notice.");
+            } break;
         }
         return false;
     }

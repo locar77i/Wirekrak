@@ -18,6 +18,7 @@ namespace book {
 struct unsubscribe_ack {
     [[nodiscard]]
     static inline bool parse(const simdjson::dom::element& root, kraken::book::UnsubscribeAck& out) noexcept {
+        out = kraken::book::UnsubscribeAck{};
         return detail::parse_ack_common(root, "unsubscribe", out);
     }
 };
