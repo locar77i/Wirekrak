@@ -1,6 +1,6 @@
 #include <cassert>
 
-#include "wirekrak/protocol/kraken/book/common.hpp"
+#include "wirekrak/protocol/kraken/schema/book/common.hpp"
 
 using wirekrak::protocol::kraken::book::is_valid_depth;
 

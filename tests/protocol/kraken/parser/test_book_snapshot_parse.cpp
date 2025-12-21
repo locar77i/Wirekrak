@@ -4,7 +4,6 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/protocol/kraken/book/snapshot.hpp"
 #include "wirekrak/protocol/kraken/parser/book/snapshot.hpp"
 
 using namespace wirekrak::protocol::kraken;

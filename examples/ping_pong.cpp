@@ -3,8 +3,6 @@
 #include <thread>
 
 #include "wirekrak/winhttp/client.hpp"
-#include "wirekrak/protocol/kraken/system/ping.hpp"
-#include "wirekrak/protocol/kraken/system/pong.hpp"
 
 using namespace wirekrak;
 using namespace wirekrak::protocol::kraken;

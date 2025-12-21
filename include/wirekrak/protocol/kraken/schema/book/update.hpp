@@ -8,7 +8,7 @@
 
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
-#include "wirekrak/protocol/kraken/book/common.hpp"
+#include "wirekrak/protocol/kraken/schema/book/common.hpp"
 
 
 namespace wirekrak {

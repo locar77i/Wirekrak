@@ -1,11 +1,5 @@
 #pragma once
 
-#include "wirekrak/protocol/kraken/trade/subscribe.hpp"
-#include "wirekrak/protocol/kraken/trade/response.hpp"
-//#include "wirekrak/protocol/kraken/ticker/subscribe.hpp"
-//#include "wirekrak/protocol/kraken/ticker/response.hpp"
-//#include "wirekrak/protocol/kraken/book/subscribe.hpp"
-//#include "wirekrak/protocol/kraken/book/response.hpp"
 #include "wirekrak/replay/Table.hpp"
 
 using namespace wirekrak::protocol::kraken;

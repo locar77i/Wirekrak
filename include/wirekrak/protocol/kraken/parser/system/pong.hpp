@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "wirekrak/protocol/kraken/system/pong.hpp"
+#include "wirekrak/protocol/kraken/schema/system/pong.hpp"
 #include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "lcr/log/logger.hpp"

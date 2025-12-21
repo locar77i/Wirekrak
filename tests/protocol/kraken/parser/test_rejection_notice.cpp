@@ -4,7 +4,6 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/protocol/kraken/rejection_notice.hpp"
 #include "wirekrak/protocol/kraken/parser/rejection_notice.hpp"
 
 using namespace wirekrak::protocol::kraken;

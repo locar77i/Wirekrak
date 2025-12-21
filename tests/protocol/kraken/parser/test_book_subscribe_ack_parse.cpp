@@ -4,7 +4,6 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/protocol/kraken/book/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/book/subscribe_ack.hpp"
 
 using namespace wirekrak::protocol::kraken;

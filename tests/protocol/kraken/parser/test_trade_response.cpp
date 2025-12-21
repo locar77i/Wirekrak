@@ -4,7 +4,6 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/protocol/kraken/trade/response.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/response.hpp"
 
 using namespace wirekrak::protocol::kraken;

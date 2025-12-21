@@ -2,7 +2,7 @@
 
 #include <simdjson.h>
 
-#include "wirekrak/protocol/kraken/status/update.hpp"
+#include "wirekrak/protocol/kraken/schema/status/update.hpp"
 #include "lcr/log/logger.hpp"
 
 

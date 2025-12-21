@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/detail/parse_ack_common.hpp"
 
 namespace wirekrak::protocol::kraken::parser::trade {

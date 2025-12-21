@@ -57,6 +57,23 @@ wirekrak/
 - No transport-specific leakage into domain logic
 - Deterministic, replayable event streams
 
+## Low-latency Common Resources (`lcr`)
+
+WireKrak includes a small internal utility layer named **LCR** (Low-latency Common Resources).
+
+`lcr` contains reusable, header-only building blocks designed for
+low-latency systems and used across ULL systems, including:
+
+- lock-free data structures
+- lightweight `optional` and helpers
+- bit-packing utilities
+- logging abstractions
+
+These utilities are **domain-agnostic** (not Kraken-specific) and are intentionally kept separate
+from the WireKrak protocol code to allow reuse across other ULL (Ultra-Low Latency) projects.
+
+WireKrak itself depends on `lcr`, but `lcr` does not depend on WireKrak.
+
 ---
 
 ## 🚀 Getting Started

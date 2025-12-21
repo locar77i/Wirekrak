@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "wirekrak/protocol/kraken/book/unsubscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/book/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/enums/channel.hpp"
 #include "wirekrak/protocol/kraken/parser/book/detail/parse_ack_common.hpp"
 

@@ -7,10 +7,6 @@
 #include <simdjson.h>
 
 #include "wirekrak/protocol/kraken/enums.hpp"
-#include "wirekrak/protocol/kraken/rejection_notice.hpp"
-#include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/trade/response.hpp"
-#include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/context.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "wirekrak/protocol/kraken/parser/rejection_notice.hpp"
@@ -23,7 +19,6 @@
 #include "wirekrak/protocol/kraken/parser/book/snapshot.hpp"
 #include "wirekrak/protocol/kraken/parser/book/update.hpp"
 #include "wirekrak/protocol/kraken/parser/book/unsubscribe_ack.hpp"
-#include "wirekrak/core/symbol.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 

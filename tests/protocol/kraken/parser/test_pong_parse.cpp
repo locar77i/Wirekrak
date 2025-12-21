@@ -4,7 +4,6 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/protocol/kraken/system/pong.hpp"
 #include "wirekrak/protocol/kraken/parser/system/pong.hpp"
 
 using namespace wirekrak::protocol::kraken;

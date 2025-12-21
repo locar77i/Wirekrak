@@ -8,7 +8,6 @@
 #include <CLI/CLI.hpp>
 
 #include "wirekrak/winhttp/client.hpp"
-#include "wirekrak/protocol/kraken/trade/subscribe.hpp"
 
 using namespace wirekrak;
 using namespace wirekrak::protocol::kraken;

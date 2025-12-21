@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "wirekrak/protocol/kraken/trade/response.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/response.hpp"
 #include "wirekrak/protocol/kraken/parser/result.hpp"
 #include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"

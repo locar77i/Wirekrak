@@ -2,7 +2,7 @@
 #include <iostream>
 #include <string_view>
 
-#include "wirekrak/protocol/kraken/book/unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/book/unsubscribe.hpp"
 
 using namespace wirekrak;
 using namespace wirekrak::protocol::kraken;

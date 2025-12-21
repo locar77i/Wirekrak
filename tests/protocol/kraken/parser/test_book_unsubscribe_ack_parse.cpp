@@ -4,7 +4,6 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/protocol/kraken/book/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/book/unsubscribe_ack.hpp"
 
 using namespace wirekrak::protocol::kraken;

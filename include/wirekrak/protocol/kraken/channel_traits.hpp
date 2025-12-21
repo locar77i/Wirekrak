@@ -2,19 +2,17 @@
 
 #include "wirekrak/protocol/kraken/enums/channel.hpp"
 
-#include "wirekrak/protocol/kraken/trade/subscribe.hpp"
-#include "wirekrak/protocol/kraken/trade/unsubscribe.hpp"
-#include "wirekrak/protocol/kraken/trade/response.hpp"
-#include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
-
-#include "wirekrak/protocol/kraken/book/subscribe.hpp"
-#include "wirekrak/protocol/kraken/book/unsubscribe.hpp"
-#include "wirekrak/protocol/kraken/book/snapshot.hpp"
-#include "wirekrak/protocol/kraken/book/update.hpp"
-#include "wirekrak/protocol/kraken/book/subscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/book/unsubscribe_ack.hpp"
-
+#include "wirekrak/protocol/kraken/schema/trade/subscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/response.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/unsubscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/book/subscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/book/unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/book/snapshot.hpp"
+#include "wirekrak/protocol/kraken/schema/book/update.hpp"
+#include "wirekrak/protocol/kraken/schema/book/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/book/unsubscribe_ack.hpp"
 
 namespace wirekrak {
 namespace protocol {

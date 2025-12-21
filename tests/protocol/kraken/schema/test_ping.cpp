@@ -2,7 +2,7 @@
 #include <iostream>
 #include <string>
 
-#include "wirekrak/protocol/kraken/system/ping.hpp"
+#include "wirekrak/protocol/kraken/schema/system/ping.hpp"
 
 using namespace wirekrak;
 using namespace wirekrak::protocol::kraken;

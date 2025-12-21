@@ -4,20 +4,8 @@
 
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
 
-#include "wirekrak/protocol/kraken/trade/subscribe.hpp"
-#include "wirekrak/protocol/kraken/trade/unsubscribe.hpp"
-#include "wirekrak/protocol/kraken/trade/Response.hpp"
-#include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
-
-#include "wirekrak/protocol/kraken/book/subscribe.hpp"
-#include "wirekrak/protocol/kraken/book/unsubscribe.hpp"
-#include "wirekrak/protocol/kraken/book/snapshot.hpp"
-#include "wirekrak/protocol/kraken/book/update.hpp"
-#include "wirekrak/protocol/kraken/book/subscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/book/unsubscribe_ack.hpp"
-
 using namespace wirekrak::protocol::kraken;
+
 
 namespace wirekrak {
 

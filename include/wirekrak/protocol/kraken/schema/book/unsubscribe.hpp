@@ -3,9 +3,10 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cassert>
 
 #include "wirekrak/protocol/kraken/request/validate.hpp"
-#include "wirekrak/protocol/kraken/book/common.hpp"
+#include "wirekrak/protocol/kraken/schema/book/common.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/json.hpp"
 #include "lcr/optional.hpp"
@@ -17,22 +18,21 @@ namespace kraken {
 namespace book {
 
 // ===============================================
-// BOOK SUBSCRIBE REQUEST
+// BOOK UNSUBSCRIBE REQUEST
 // ===============================================
 //
 // Kraken WebSocket v2
 //
-// method: "subscribe"
+// method:  "unsubscribe"
 // channel: "book"
 //
 // ===============================================
 
-struct Subscribe {
-    using subscribe_tag = void;
+struct Unsubscribe {
+    using unsubscribe_tag = void;
 
     std::vector<Symbol> symbols;
-    lcr::optional<std::uint32_t> depth{};     // default: 10
-    lcr::optional<bool> snapshot{};           // default: true
+    lcr::optional<std::uint32_t> depth{};
     lcr::optional<std::uint64_t> req_id{};
 
     [[nodiscard]]
@@ -48,7 +48,7 @@ struct Subscribe {
         std::string j;
         j.reserve(256);
 
-        j += "{\"method\":\"subscribe\",\"params\":{";
+        j += "{\"method\":\"unsubscribe\",\"params\":{";
         j += "\"channel\":\"book\",";
 
         // -------------------------------------------
@@ -70,14 +70,6 @@ struct Subscribe {
         if (depth.has()) {
             j += ",\"depth\":";
             lcr::json::append(j, depth.value());
-        }
-
-        // -------------------------------------------
-        // snapshot (optional)
-        // -------------------------------------------
-        if (snapshot.has()) {
-            j += ",\"snapshot\":";
-            j += (snapshot.value() ? "true" : "false");
         }
 
         j += "}"; // close params

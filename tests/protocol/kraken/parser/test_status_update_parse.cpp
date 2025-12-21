@@ -4,7 +4,6 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/protocol/kraken/status/update.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
 
 using namespace wirekrak::protocol::kraken;

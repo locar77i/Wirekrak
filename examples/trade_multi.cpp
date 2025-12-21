@@ -3,9 +3,6 @@
 #include <chrono>
 
 #include "wirekrak/winhttp/client.hpp"
-#include "wirekrak/protocol/kraken/trade/subscribe.hpp"
-#include "wirekrak/protocol/kraken/trade/response.hpp"
-#include "wirekrak/protocol/kraken/trade/unsubscribe.hpp"
 
 using namespace wirekrak;
 using namespace lcr::log;

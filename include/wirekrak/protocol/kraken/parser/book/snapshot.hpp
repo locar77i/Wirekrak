@@ -1,6 +1,6 @@
 #pragma once
 
-#include "wirekrak/protocol/kraken/book/snapshot.hpp"
+#include "wirekrak/protocol/kraken/schema/book/snapshot.hpp"
 #include "wirekrak/protocol/kraken/parser/book/detail/parse_payload_common.hpp"
 
 

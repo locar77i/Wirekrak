@@ -4,16 +4,16 @@
 #include <chrono>
 
 #include "wirekrak/config/ring_sizes.hpp"
-#include "wirekrak/protocol/kraken/rejection_notice.hpp"
-#include "wirekrak/protocol/kraken/system/pong.hpp"
-#include "wirekrak/protocol/kraken/status/update.hpp"
-#include "wirekrak/protocol/kraken/trade/response.hpp"
-#include "wirekrak/protocol/kraken/trade/response.hpp"
-#include "wirekrak/protocol/kraken/trade/subscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/trade/unsubscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/book/update.hpp"
-#include "wirekrak/protocol/kraken/book/subscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/book/unsubscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/rejection_notice.hpp"
+#include "wirekrak/protocol/kraken/schema/system/pong.hpp"
+#include "wirekrak/protocol/kraken/schema/status/update.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/response.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/response.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/unsubscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/book/update.hpp"
+#include "wirekrak/protocol/kraken/schema/book/subscribe_ack.hpp"
+#include "wirekrak/protocol/kraken/schema/book/unsubscribe_ack.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 
 namespace wirekrak::protocol::kraken::parser {

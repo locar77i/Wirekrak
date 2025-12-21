@@ -3,8 +3,6 @@
 #include <string_view>
 
 #include "wirekrak/protocol/kraken/enums/payload_type.hpp"
-#include "wirekrak/protocol/kraken/book/snapshot.hpp"
-#include "wirekrak/protocol/kraken/book/update.hpp"
 #include "wirekrak/protocol/kraken/parser/result.hpp"
 #include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
