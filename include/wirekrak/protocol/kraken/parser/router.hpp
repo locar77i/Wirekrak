@@ -244,11 +244,9 @@ private:
             default: { // 2025-12-20 08:39:28 [WARN] [PARSER] Failed to parse method message: {"error":"Already subscribed","method":"subscribe","req_id":2,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:28.809188Z","time_out":"2025-12-20T07:39:28.809200Z"}
                 kraken::rejection::Notice resp;
                 if (rejection_notice::parse(root, resp)) {
-/*
-                    if (!ctx_.book_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] book_subscribe_ring_ full, dropping.");
+                    if (!ctx_.rejection_ring->push(std::move(resp))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] rejection_ring_ full, dropping.");
                     }
-*/
                     return true;
                 }
                 WK_WARN("[PARSER] Failed to parse rejection notice.");
@@ -281,11 +279,9 @@ private:
             default: { // 2025-12-20 08:39:43 [WARN] [PARSER] Failed to parse method message: {"error":"Subscription Not Found","method":"subscribe","req_id":4,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:43.909056Z","time_out":"2025-12-20T07:39:43.909073Z"}
                 kraken::rejection::Notice resp;
                 if (rejection_notice::parse(root, resp)) {
-/*
-                    if (!ctx_.book_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] book_subscribe_ring_ full, dropping.");
+                    if (!ctx_.rejection_ring->push(std::move(resp))) { // TODO: handle backpressure
+                        WK_WARN("[PARSER] rejection_ring_ full, dropping.");
                     }
-*/
                     return true;
                 }
                 WK_WARN("[PARSER] Failed to parse rejection notice.");

@@ -4,6 +4,7 @@
 
 #include "wirekrak/winhttp/client.hpp"
 #include "wirekrak/protocol/kraken/trade/subscribe.hpp"
+#include "wirekrak/protocol/kraken/trade/response.hpp"
 #include "wirekrak/protocol/kraken/trade/unsubscribe.hpp"
 
 using namespace wirekrak;
@@ -21,14 +22,14 @@ int main() {
     // Subscribe to BTC/USD trades
     client.subscribe(protocol::kraken::trade::Subscribe{.symbols = {"BTC/USD"}},
                      [](const protocol::kraken::trade::Trade& msg) {
-                        std::cout << " -> [" << msg.symbol << "] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
+                        std::cout << " -> " << msg << std::endl;
                      }
     );
 
     // Subscribe to BTC/EUR trades
     client.subscribe(protocol::kraken::trade::Subscribe{.symbols = {"BTC/EUR"}},
                      [](const protocol::kraken::trade::Trade& msg) {
-                        std::cout << " -> [" << msg.symbol << "] TRADE: id=" << msg.trade_id << " price=" << msg.price << " qty=" << msg.qty << " side=" << to_string(msg.side) << std::endl;
+                        std::cout << " -> " << msg << std::endl;
                      }
     );
     auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(20);

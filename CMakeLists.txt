@@ -14,76 +14,42 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # -------------------------------------------------------------
 message(STATUS "Using vcpkg toolchain: ${CMAKE_TOOLCHAIN_FILE}")
 
-find_package(Boost REQUIRED COMPONENTS asio beast system date_time regex container)
 find_package(simdjson REQUIRED)
 find_package(spdlog REQUIRED)
-
-# -------------------------------------------------------------
-# Source Files
-# -------------------------------------------------------------
-set(WIREKRAK_SOURCES
-    src/winhttp/websocket.cpp
-)
+find_package(CLI11 REQUIRED)
 
 # -------------------------------------------------------------
 # Create Wirekrak Library
 # -------------------------------------------------------------
-add_library(wirekrak ${WIREKRAK_SOURCES})
+add_library(wirekrak INTERFACE)
 
-if (WIN32)
-    target_link_libraries(wirekrak PUBLIC winhttp)
-endif()
-
-target_include_directories(wirekrak
-    PUBLIC
+target_include_directories(wirekrak INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# -------------------------------------------------------------
-# Link Dependencies
-# -------------------------------------------------------------
-target_link_libraries(wirekrak
-    PUBLIC
-        Boost::asio
-        Boost::beast
-        Boost::system
-        Boost::date_time
-        Boost::regex
-        Boost::container
-        simdjson::simdjson
-        spdlog::spdlog
+target_link_libraries(wirekrak INTERFACE
+    winhttp
+    simdjson::simdjson
+    spdlog::spdlog
 )
+
+
 
 # -------------------------------------------------------------
 # Windows TLS (SChannel)
 # No OpenSSL required
 # -------------------------------------------------------------
-if (WIN32)
-    target_compile_definitions(wirekrak PUBLIC WIREKRAK_USE_SCHANNEL)
-    target_link_libraries(wirekrak PUBLIC crypt32 secur32)
-endif()
+target_compile_definitions(wirekrak INTERFACE WIREKRAK_USE_SCHANNEL)
+
+target_link_libraries(wirekrak INTERFACE
+    crypt32
+    secur32
+)
 
 # -------------------------------------------------------------
 # Examples
 # -------------------------------------------------------------
-add_executable(wirekrak_connect examples/winhttp/connect.cpp)
-target_link_libraries(wirekrak_connect PRIVATE wirekrak winhttp)
-
-add_executable(wirekrak_ping_pong examples/ping_pong.cpp)
-target_link_libraries(wirekrak_ping_pong PRIVATE wirekrak winhttp)
-
-add_executable(wirekrak_trade_single examples/trade_single.cpp)
-target_link_libraries(wirekrak_trade_single PRIVATE wirekrak winhttp)
-
-add_executable(wirekrak_trade_multi examples/trade_multi.cpp)
-target_link_libraries(wirekrak_trade_multi PRIVATE wirekrak winhttp)
-
-add_executable(trade_with_snapshot examples/trade_with_snapshot.cpp)
-target_link_libraries(trade_with_snapshot PRIVATE wirekrak winhttp)
-
-add_executable(wirekrak_book_update_single examples/book_update_single.cpp)
-target_link_libraries(wirekrak_book_update_single PRIVATE wirekrak winhttp)
-
+add_subdirectory(examples)
 
 # -------------------------------------------------------------
 # Tests

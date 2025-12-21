@@ -4,6 +4,8 @@
 
 #include "wirekrak/winhttp/client.hpp"
 #include "wirekrak/protocol/kraken/book/subscribe.hpp"
+#include "wirekrak/protocol/kraken/book/update.hpp"
+#include "wirekrak/protocol/kraken/book/snapshot.hpp"
 #include "wirekrak/protocol/kraken/book/unsubscribe.hpp"
 
 using namespace wirekrak;
@@ -23,8 +25,7 @@ int main() {
     // Subscribe to BTC/USD book updates
     client.subscribe(book::Subscribe{.symbols = {"BTC/USD"}},
                      [](const book::Update& msg) {
-                        std::cout << " -> [" << msg.symbol << "] BOOK: asks=" << msg.asks.size() << " bids=" << msg.bids.size()
-                            << " (checksum=" << std::hex << msg.checksum << std::dec << ")" << std::endl;
+                        std::cout << " -> " << msg << std::endl;
                      }
     );
     

@@ -64,10 +64,22 @@ wirekrak/
 ### Prerequisites
 
 - C++20 compatible compiler
-- CMake ≥ 3.20
+- CMake ≥ 3.25
 - Windows (WinHTTP transport)
 
-### Build
+### Installation
+
+Before building Wirekrak, please install the required dependencies using **vcpkg**.
+
+➡️ **[Install dependencies](INSTALL_DEPENDENCIES.md)**
+
+This guide covers:
+- vcpkg setup
+- Required libraries (simdjson, spdlog, CLI11)
+- CMake presets
+- Debug / Release builds
+
+### 🔧 Build
 
 ```bash
 git clone https://github.com/<your-org>/wirekrak.git

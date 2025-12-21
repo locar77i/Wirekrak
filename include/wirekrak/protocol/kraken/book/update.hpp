@@ -2,6 +2,9 @@
 
 #include <vector>
 #include <cstdint>
+#include <string>
+#include <ostream>
+#include <sstream>
 
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
@@ -36,7 +39,46 @@ struct Update {
 
     std::uint32_t checksum;
     Timestamp timestamp;
+
+    // ---------------------------------------------------------
+    // Debug / diagnostic dump
+    // ---------------------------------------------------------
+    inline void dump(std::ostream& os) const {
+        os << "[BOOK UPDATE] {"
+           << "symbol=" << symbol
+           << ", ts=" << timestamp
+           << ", checksum=" << checksum
+           << "}\n";
+
+        os << "  asks[" << asks.size() << "]: ";
+        for (const auto& l : asks) {
+            os << "(" << l.price << "," << l.qty << ") ";
+        }
+        os << '\n';
+
+        os << "  bids[" << bids.size() << "]: ";
+        for (const auto& l : bids) {
+            os << "(" << l.price << "," << l.qty << ") ";
+        }
+        os << '\n';
+    }
+
+    // ---------------------------------------------------------
+    // String helper (debug / logging)
+    // ---------------------------------------------------------
+    [[nodiscard]]
+    inline std::string str() const {
+        std::ostringstream oss;
+        dump(oss);
+        return oss.str();
+    }
 };
+
+// Stream operator
+inline std::ostream& operator<<(std::ostream& os, const Update& u) {
+    u.dump(os);
+    return os;
+}
 
 } // namespace book
 } // namespace kraken

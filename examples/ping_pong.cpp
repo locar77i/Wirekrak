@@ -3,8 +3,8 @@
 #include <thread>
 
 #include "wirekrak/winhttp/client.hpp"
-#include "wirekrak/protocol/kraken/book/subscribe.hpp"
-#include "wirekrak/protocol/kraken/book/unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/system/ping.hpp"
+#include "wirekrak/protocol/kraken/system/pong.hpp"
 
 using namespace wirekrak;
 using namespace wirekrak::protocol::kraken;
@@ -47,40 +47,18 @@ int main() {
     // Register pong handler
     // ---------------------------------------------------------------------
     client.on_pong([&](const system::Pong& pong) {
-        WK_INFO("[PONG] received");
+        WK_INFO("[PONG] received: " << pong.str());
+        std::cout << " -> [PONG] received: " << pong << std::endl;
 
-        if (pong.success.has()) {
-            WK_INFO("  success: " << std::boolalpha << pong.success.value() << "");
-        }
-        else {
-            WK_INFO("  success: <unknown>");
-        }
-
-        if (pong.req_id.has()) {
-            WK_INFO("  req_id: " << pong.req_id.value() << "");
-        }
-
-        if (!pong.warnings.empty()) {
-            WK_INFO("  warnings:");
-            for (const auto& w : pong.warnings) {
-                WK_INFO("    - " << w << "");
-            }
-        }
-
-        // -----------------------------------------------------------------
         // RTT measurement (engine timestamps, if present)
-        // -----------------------------------------------------------------
         if (pong.time_in.has() && pong.time_out.has()) {
             auto engine_rtt = pong.time_out.value() - pong.time_in.value();
             WK_INFO("  engine RTT: " << engine_rtt << "");
         }
 
-        // -----------------------------------------------------------------
         // Local RTT (wall-clock)
-        // -----------------------------------------------------------------
         auto now = std::chrono::steady_clock::now();
         auto local_rtt = std::chrono::duration_cast<std::chrono::milliseconds>(now - ping_sent_at);
-
         WK_INFO("  local RTT: " << local_rtt.count() << " ms");
     });
 

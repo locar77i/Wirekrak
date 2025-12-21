@@ -2,6 +2,8 @@
 
 #include <string>
 #include <cstdint>
+#include <ostream>
+#include <sstream>
 
 #include "wirekrak/protocol/kraken/enums/system_state.hpp"
 #include "lcr/optional.hpp"
@@ -41,7 +43,35 @@ struct Update {
     std::string api_version;        // WebSocket API version (e.g. "v2")
     std::uint64_t connection_id;    // Unique connection identifier
     std::string version;            // WebSocket service version
+
+    // ------------------------------------------------------------
+    // Debug / diagnostic dump
+    // ------------------------------------------------------------
+    inline void dump(std::ostream& os) const noexcept {
+        os << "[STATUS] { "
+           << "system=" << to_string(system) << ", "
+           << "api_version=" << api_version << ", "
+           << "connection_id=" << connection_id << ", "
+           << "version=" << version
+           << " }";
+    }
+
+    // ------------------------------------------------------------
+    // String helper
+    // ------------------------------------------------------------
+    [[nodiscard]]
+    inline std::string str() const {
+        std::ostringstream oss;
+        dump(oss);
+        return oss.str();
+    }
 };
+
+// Stream operator
+inline std::ostream& operator<<(std::ostream& os, const Update& u) {
+    u.dump(os);
+    return os;
+}
 
 } // namespace status
 } // namespace kraken

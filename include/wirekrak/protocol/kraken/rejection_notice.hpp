@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <ostream>
+#include <sstream>
 
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
@@ -26,7 +28,43 @@ struct Notice {
     lcr::optional<Symbol> symbol;
     lcr::optional<Timestamp> time_in;
     lcr::optional<Timestamp> time_out;
+
+    // ------------------------------------------------------------
+    // Debug / inspection helper
+    // ------------------------------------------------------------
+    inline void dump(std::ostream& os) const {
+        os << "[REJECTION] { " << "error=\"" << error << "\"";
+        if (req_id.has()) {
+            os << ", req_id=" << req_id.value();
+        }
+        if (symbol.has()) {
+            os << ", symbol=" << symbol.value();
+        }
+        if (time_in.has()) {
+            os << ", time_in=" << to_string(time_in.value());
+        }
+        if (time_out.has()) {
+            os << ", time_out=" << to_string(time_out.value());
+        }
+        os << " }";
+    }
+
+    // ------------------------------------------------------------
+    // String helper
+    // ------------------------------------------------------------
+    [[nodiscard]]
+    inline std::string str() const {
+        std::ostringstream oss;
+        dump(oss);
+        return oss.str();
+    }
 };
+
+// Stream operator
+inline std::ostream& operator<<(std::ostream& os, const Notice& n) {
+    n.dump(os);
+    return os;
+}
 
 } // namespace rejection
 } // namespace kraken
