@@ -4,7 +4,8 @@
 #include <thread>
 
 #include "wirekrak/config/ring_sizes.hpp"
-#include "wirekrak/winhttp/websocket.hpp"
+#include "wirekrak/transport/concepts.hpp"
+#include "wirekrak/transport/winhttp/websocket.hpp"
 #include "wirekrak/protocol/kraken/parser/context.hpp"
 #include "wirekrak/protocol/kraken/parser/router.hpp"
 #include "wirekrak/dispatcher.hpp"
@@ -13,7 +14,6 @@
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/replay/database.hpp"
-#include "wirekrak/core/transport/websocket.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/sequence.hpp"
@@ -42,7 +42,7 @@ namespace wirekrak {
 //
 // Besides, the heartbeats count is used as deterministic liveness signal that drives reconnection.
 // Heartbeat timeout is NOT a transport concern. It is a protocol / client liveness concern.
-template<transport::WebSocket WS>
+template<transport::WebSocketConcept WS>
 class Client {
     static constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(10);
     static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15);
@@ -122,93 +122,6 @@ public:
     inline void on_status(status_handler_t cb) noexcept {
         status_handler_ = std::move(cb);
     }
-
-/*
-    ----------------------------------------------------------------------------
-    RATIONALE: Why subscribe()/unsubscribe() now take schema request types
-    ----------------------------------------------------------------------------
-
-    We originally exposed multiple overloads such as:
-        subscribe_trade(const std::string&)
-        subscribe_trade(const std::vector<std::string>&)
-        subscribe_trade(const std::string&, uint64_t req_id)
-        ...
-
-    This quickly became unmaintainable and error-prone:
-      - Overload explosion (8+ overloads for each subscription type).
-      - Hard for developers to remember all combinations.
-      - Future API expansions (adding snapshot flags, tags, metadata, etc.)
-        would require even more overloads.
-
-    The new design accepts a single argument:
-        subscribe(const trade::Subscribe& req);
-
-    Benefits:
-      • Strong type safety — each schema struct matches exactly the official
-        Kraken WS schema for that request type.
-      • Self-documenting — the struct fields convey all available options.
-      • Extensible — adding new fields in the future does NOT require new
-        overloads or breaking existing code.
-      • Cleaner API — developers construct the request type they need and pass it.
-      • Flexible req_id management — the caller may provide req_id or allow the
-        client to auto-assign one.
-
-    Example usage:
-        client.subscribe(trade::Subscribe{
-            .symbols = {"BTC/USD"},
-            .snapshot = false
-        });
-
-    Internally, requests are taken by value to allow efficient move semantics.
-    This means passing temporaries incurs no copying overhead.
-
-    In short:
-        → Schema types prevent API bloat,
-        → provide clarity,
-        → and guarantee compatibility with Kraken’s evolving message formats.
-
-    ----------------------------------------------------------------------------
-    PERFORMANCE & API DESIGN NOTE:
-    ----------------------------------------------------------------------------
-
-    subscribe() and unsubscribe() accept trade::Subscribe and
-    Unsubscribe **by const-reference**, but internally we forward these
-    to subscribe_with_ack_(), which accepts the request **by value**.
-
-    Why?
-    ----
-    subscribe_with_ack_() must be allowed to *modify* the request before sending it,
-    specifically:
-        - auto-assigning req_id when the user has not provided one.
-
-    The current design allows modify the request by:
-
-        • subscribe(req)       → req passed by const&
-        • subscribe_with_ack_(req)  → req copied once (or moved), then modified
-
-    Move efficiency
-    ---------------
-    subscribe_with_ack_ takes the request **by value**, which enables the "pass-by-
-    value + move when possible" modern C++ optimization pattern:
-
-        • The temporary struct is moved into subscribe_with_ack_ (no heavy copies)
-        • std::vector<std::string> and optional<T> are moved → O(1)
-        • req_id can be safely auto-filled inside subscribe_with_ack_
-
-    Copy only happens when the user passes a named lvalue — which is rare and
-    intentional (the user explicitly wants to keep control over the request).
-
-    Summary
-    -------
-    ✓ subscribe() and unsubscribe() stay clean and type-safe  
-    ✓ subscribe_with_ack_() can mutate req_id safely  
-    ✓ rvalue requests are moved → zero-copy fast path  
-    ✓ lvalue requests copy once → intentional, explicit behavior  
-    ✓ Schema structs eliminate overload explosion and future-proof the SDK
-
-    This pattern is standard in modern high-performance SDK design.
-    ----------------------------------------------------------------------------
-*/
 
     template <request::Subscription RequestT, class Callback>
     inline void subscribe(const RequestT& req, Callback&& cb) {

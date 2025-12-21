@@ -2,7 +2,7 @@
 #include <chrono>
 #include <thread>
 
-#include "wirekrak/winhttp/client.hpp"
+#include "wirekrak/win_client.hpp"
 
 using namespace wirekrak;
 using namespace wirekrak::protocol::kraken;
@@ -20,7 +20,7 @@ This functionality is completely independent of channel subscriptions and is des
 int main() {
     Logger::instance().set_level(Level::Info);
 
-    winhttp::WinClient client;
+    WinClient client;
 
     // Track when we send the ping (local wall clock)
     auto ping_sent_at = std::chrono::steady_clock::now();

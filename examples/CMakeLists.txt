@@ -4,8 +4,8 @@
 # -------------------------------------------------------------
 # Examples
 # -------------------------------------------------------------
-add_executable(wirekrak_connect winhttp/connect.cpp)
-target_link_libraries(wirekrak_connect PRIVATE wirekrak)
+add_executable(winhttp_connect transport/winhttp/connect.cpp)
+target_link_libraries(winhttp_connect PRIVATE wirekrak)
 
 add_executable(wirekrak_ping_pong ping_pong.cpp)
 target_link_libraries(wirekrak_ping_pong PRIVATE wirekrak)

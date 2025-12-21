@@ -4,10 +4,10 @@
 #include <thread>
 #include <iostream>
 
-#include "wirekrak/winhttp/websocket.hpp"
+#include "wirekrak/transport/winhttp/concepts.hpp"
+#include "wirekrak/transport/winhttp/websocket.hpp"
 
-using namespace wirekrak::winhttp;
-
+using namespace wirekrak;
 /*
 ================================================================================
 WebSocket Transport Unit Tests
@@ -24,7 +24,7 @@ Key design goals demonstrated here:
   • Testability by design — WinHTTP is injected as a compile-time policy
 
 The WebSocket is exercised through the real implementation
-(WebSocketImpl<WinHttpApi>), while a fake WinHTTP backend is used to simulate
+(WebSocketImpl<ApiConcept>), while a fake WinHTTP backend is used to simulate
 errors, close frames, and message delivery.
 
 This approach mirrors production-grade trading SDKs, where transport logic is
@@ -36,10 +36,13 @@ avoiding timing assumptions and relying only on observable transport invariants.
 ================================================================================
 */
 
+namespace wirekrak {
+namespace transport {
+namespace winhttp {
 // -----------------------------------------------------------------------------
 // Fake WinHTTP API (test-only)
 // -----------------------------------------------------------------------------
-struct FakeWinHttpApi {
+struct FakeApi {
     std::queue<DWORD> results;
     std::queue<WINHTTP_WEB_SOCKET_BUFFER_TYPE> types;
 
@@ -72,10 +75,15 @@ struct FakeWinHttpApi {
         ++close_count;
     }
 };
-static_assert(WinHttpApi<FakeWinHttpApi>, "FakeWinHttpApi must model WinHttpApi");
+// Defensive check that FakeApi conforms to ApiConcept concept
+static_assert(ApiConcept<FakeApi>, "FakeApi must model ApiConcept");
+
+} // namespace winhttp
+} // namespace transport
+} // namespace wirekrak
 
 // Convenience alias for the templated WebSocket
-using TestWebSocket = WebSocketImpl<FakeWinHttpApi>;
+using TestWebSocket = transport::winhttp::WebSocketImpl<transport::winhttp::FakeApi>;
 
 // -----------------------------------------------------------------------------
 // Tests

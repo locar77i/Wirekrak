@@ -4,13 +4,13 @@
 #include <thread>
 #include <locale>
 
-#include "wirekrak/winhttp/websocket.hpp"
+#include "wirekrak/transport/winhttp/websocket.hpp"
 
 using namespace wirekrak;
 
 
 int main() {
-    winhttp::WebSocket ws;
+    transport::winhttp::WebSocket ws;
     ws.set_message_callback([](const std::string& msg){
         std::cout << "Received: " << msg << std::endl;
     });

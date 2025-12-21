@@ -4,10 +4,17 @@
 #include <functional>
 #include <concepts>
 
-namespace wirekrak::transport {
+namespace wirekrak {
+namespace transport {
+
+// -------------------------------------------------------------------------
+// WebSocketConcept defines the generic WebSocket transport contract
+// required by streaming clients, independent of the underlying platform
+// or implementation.
+// -------------------------------------------------------------------------
 
 template<class WS>
-concept WebSocket =
+concept WebSocketConcept =
     requires(
         WS ws,
         const std::string& host,
@@ -32,4 +39,5 @@ concept WebSocket =
     { ws.set_error_callback(on_error) } -> std::same_as<void>;
 };
 
-} // namespace wirekrak::transport
+} // namespace transport
+} // namespace wirekrak

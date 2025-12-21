@@ -2,7 +2,7 @@
 #include <thread>
 #include <chrono>
 
-#include "wirekrak/winhttp/client.hpp"
+#include "wirekrak/win_client.hpp"
 
 using namespace wirekrak;
 using namespace lcr::log;
@@ -11,7 +11,7 @@ using namespace lcr::log;
 int main() {
     Logger::instance().set_level(Level::Info);
 
-    winhttp::WinClient client;
+    WinClient client;
     if (!client.connect("wss://ws.kraken.com/v2")) {
         return -1;
     }

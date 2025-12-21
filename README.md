@@ -57,7 +57,15 @@ wirekrak/
 - No transport-specific leakage into domain logic
 - Deterministic, replayable event streams
 
-## Low-latency Common Resources (`lcr`)
+### Transport Architecture <a name="transport"></a>
+
+- Transport is fully decoupled from protocol logic via C++20 concepts
+- WebSocket and WinHTTP APIs are modeled as compile-time contracts
+- Enables mocking, testing, and reuse with zero runtime overhead
+
+➡️ **[Transport overview](docs/architecture/transport/Overview.md)**
+
+### Low-latency Common Resources (`lcr`)
 
 WireKrak includes a small internal utility layer named **LCR** (Low-latency Common Resources).
 
@@ -110,14 +118,14 @@ cmake --build build
 ## 📡 Example Usage
 
 ```cpp
-#include "wirekrak/winhttp/client.hpp"
+#include "wirekrak/win_client.hpp"
 
 using namespace wirekrak;
 
 int main() {
     
     // Client setup
-    winhttp::WinClient client;
+    WinClient client;
 
     // Register handlers
     client.on_pong(...);
@@ -301,9 +309,9 @@ ctest --preset test-debug -R LivenessTest
 
 ## Examples <a name="examples"></a>
 
-- [Trade subscription (single & multi-symbol)](./docs/examples/TRADE_SUBSCRIPTION.md)
+- [Trade subscription (single & multi-symbol)](./docs/examples/Trades.md)
 
-- [Book update subscription (single & multi-symbol)](./docs/examples/BOOK_UPDATE_SUBSCRIPTION.md)
+- [Book update subscription (single & multi-symbol)](./docs/examples/BookUpdates.md)
 
 ---
 

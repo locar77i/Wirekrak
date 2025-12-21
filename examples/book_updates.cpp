@@ -7,7 +7,7 @@
 
 #include <CLI/CLI.hpp>
 
-#include "wirekrak/winhttp/client.hpp"
+#include "wirekrak/win_client.hpp"
 
 using namespace wirekrak;
 using namespace wirekrak::protocol::kraken;
@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // Client setup
     // -------------------------------------------------------------
-    winhttp::WinClient client;
+    WinClient client;
 
     // Register pong handler
     client.on_pong([&](const system::Pong& pong) {

@@ -5,7 +5,7 @@
 #include <cassert>
 
 #include "wirekrak/client.hpp"
-#include "wirekrak/core/transport/websocket.hpp"
+#include "wirekrak/transport/concepts.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
 
@@ -21,6 +21,8 @@
 
 using namespace wirekrak;
 
+namespace wirekrak {
+namespace transport {
 
 struct MockWebSocket {
     using MessageCallback = std::function<void(const std::string&)>;
@@ -86,7 +88,13 @@ struct MockWebSocket {
         }
     }
 };
+// Assert that MockWebSocket conforms to transport::WebSocketConcept concept
+static_assert(wirekrak::transport::WebSocketConcept<MockWebSocket>);
 
+} // namespace transport
+} // namespace wirekrak
+
+using TestClient = wirekrak::Client<wirekrak::transport::MockWebSocket>;
 
 
 void test_liveness_detection() {
@@ -94,7 +102,7 @@ void test_liveness_detection() {
 
     std::cout << "[TEST] Liveness detection started" << std::endl;
 
-    Client<MockWebSocket> client;
+    TestClient client;
 
     TEST_CHECK(client.connect("wss://test"));
     std::cout << "[TEST] Connected" << std::endl;
