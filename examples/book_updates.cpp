@@ -30,12 +30,11 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // CLI parsing
     // -------------------------------------------------------------
-    CLI::App app{"WireKrak - Kraken Trade Subscription Example\n"
-        "This example let's you subscribe to trade events on a given symbol from Kraken WebSocket API v2.\n"};
+    CLI::App app{"WireKrak - Kraken Book Subscription Example\n"
+        "This example let's you subscribe to book updates on a given symbol from Kraken WebSocket API v2.\n"};
 
     std::vector<std::string> symbols = {"BTC/USD"};
     std::string url                  = "wss://ws.kraken.com/v2";
-    bool snapshot                    = false;
     bool double_sub                  = false;
     std::string log_level            = "info";
 
@@ -61,7 +60,6 @@ int main(int argc, char** argv) {
 
     app.add_option("--url", url, "Kraken WebSocket URL")->check(ws_url_validator)->default_val(url);
     app.add_option("-s,--symbol", symbols, "Trading symbol(s), repeatable (e.g. -s BTC/USD -s ETH/USD)")->check(symbol_validator)->default_val(symbols);
-    app.add_option("--snapshot", snapshot, "Request trade snapshot")->check(CLI::IsMember({true, false}))->default_val(snapshot);
     app.add_flag("--double-sub", double_sub, "Subscribe twice to demonstrate rejection handling");
     app.add_option("-l, --log-level", log_level, "Log level: trace | debug | info | warn | error")->default_val(log_level);
     app.footer(
@@ -90,7 +88,6 @@ int main(int argc, char** argv) {
               << "Symbols  : ";
     for (const auto& s : symbols) { std::cout << s << " "; }
     std::cout << "\n"
-              << "Snapshot : " << (snapshot ? "true" : "false") << "\n"
               << "URL      : " << url << "\n"
               << "Press Ctrl+C to exit\n\n";
 
@@ -119,19 +116,19 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    // Subscribe to BTC/USD trades with snapshot enabled
-    client.subscribe(trade::Subscribe{.symbols = symbols, .snapshot = snapshot},
-                     [](const trade::Trade& msg) {
+    // Subscribe to BTC/USD book updates
+    client.subscribe(book::Subscribe{.symbols = symbols},
+                     [](const book::Update& msg) {
                         std::cout << " -> " << msg << std::endl;
                      }
     );
 
     if (double_sub) {
         // Subscribe again to demonstrate rejection handling
-        client.subscribe(trade::Subscribe{.symbols = symbols, .snapshot = snapshot},
-                         [](const trade::Trade& msg) {
-                            std::cout << " -> " << msg << std::endl;
-                         }
+        client.subscribe(book::Subscribe{.symbols = symbols},
+                     [](const book::Update& msg) {
+                        std::cout << " -> " << msg << std::endl;
+                     }
         );
     }
 
@@ -142,9 +139,9 @@ int main(int argc, char** argv) {
     }
 
     // Ctrl+C received
-    client.unsubscribe(trade::Unsubscribe{.symbols = symbols});
+    client.unsubscribe(book::Unsubscribe{.symbols = symbols});
     if (double_sub) {
-        client.unsubscribe(trade::Unsubscribe{.symbols = symbols});
+        client.unsubscribe(book::Unsubscribe{.symbols = symbols});
     }
 
     // Drain events

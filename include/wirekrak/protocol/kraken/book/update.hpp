@@ -50,17 +50,21 @@ struct Update {
            << ", checksum=" << checksum
            << "}\n";
 
-        os << "  asks[" << asks.size() << "]: ";
-        for (const auto& l : asks) {
-            os << "(" << l.price << "," << l.qty << ") ";
+        if (!asks.empty()) {
+            os << "    asks[" << asks.size() << "]: ";
+            for (const auto& l : asks) {
+                os << "(price=" << l.price << ", qty=" << l.qty << ") ";
+            }
+            os << '\n';
         }
-        os << '\n';
 
-        os << "  bids[" << bids.size() << "]: ";
-        for (const auto& l : bids) {
-            os << "(" << l.price << "," << l.qty << ") ";
+        if (!bids.empty()) {
+            os << "    bids[" << bids.size() << "]: ";
+            for (const auto& l : bids) {
+                os << "(price=" << l.price << ", qty=" << l.qty << ") ";
+            }
+            os << '\n';
         }
-        os << '\n';
     }
 
     // ---------------------------------------------------------

@@ -67,7 +67,7 @@ wirekrak/
 - CMake ≥ 3.25
 - Windows (WinHTTP transport)
 
-### Installation
+### Installation <a name="installation"></a>
 
 Before building Wirekrak, please install the required dependencies using **vcpkg**.
 
@@ -93,23 +93,40 @@ cmake --build build
 ## 📡 Example Usage
 
 ```cpp
-#include <wirekrak/client.hpp>
+#include "wirekrak/winhttp/client.hpp"
 
 using namespace wirekrak;
 
 int main() {
-    Client client({
-        .on_trade = [](const trade::Event& trade) {
-            std::cout << trade.symbol << " @ " << trade.price << std::endl;
-        },
-        .on_error = [](Error err) {
-            std::cerr << err.message() << std::endl;
-        }
-    });
+    
+    // Client setup
+    winhttp::WinClient client;
 
-    client.subscribe_trades("BTC/USD");
-    client.run();
+    // Register handlers
+    client.on_pong(...);
+    client.on_status(...);
+    client.on_rejection(...);
+
+    // Connect
+    if (!client.connect("wss://ws.kraken.com/v2")) {
+        return -1;
+    }
+
+    // Subscribe to BTC/USD trades with snapshot enabled
+    client.subscribe(trade::Subscribe{.symbols = {"BTC/USD"}, .snapshot = true},
+                     [](const trade::Trade& msg) { std::cout << " -> " << msg << std::endl; }
+    );
+
+    // Main polling loop
+    while (!Ctrl_C) {
+        client.poll();   // REQUIRED to process incoming messages
+    }
+
+    client.unsubscribe(trade::Unsubscribe{.symbols = {"BTC/USD"}});
+    
+    return 0;
 }
+
 ```
 
 ```Note:``` Subscribe, Unsubscribe, and Control requests are modeled as distinct types and constrained using C++20 concepts, ensuring request misuse fails at compile time with zero runtime overhead.
@@ -262,6 +279,14 @@ ctest --preset test-debug -R LivenessTest
 - Tests are enabled via the WK_UNIT_TEST=ON preset option.
 - Unit tests cover client liveness detection, heartbeat and message timeouts, and automatic reconnection behavior.
 - No external test frameworks are required.
+
+---
+
+## Examples <a name="examples"></a>
+
+- [Trade subscription (single & multi-symbol)](./docs/examples/TRADE_SUBSCRIPTION.md)
+
+- [Book update subscription (single & multi-symbol)](./docs/examples/BOOK_UPDATE_SUBSCRIPTION.md)
 
 ---
 
