@@ -127,9 +127,23 @@ a configurable timeout, the client assumes the connection is unhealthy and and s
 Wirekrak includes a production-grade WebSocket parser designed for real-time market data.
 It uses schema-strict validation, constexpr-based enum decoding, and zero-allocation parsing on top of simdjson.
 
+### Overview
+
 The architecture cleanly separates routing, parsing, and domain adaptation, enforcing real exchange semantics (e.g. snapshot vs update invariants) and rejecting malformed messages deterministically.
 
-Every parser is fully unit-tested against invalid, edge, and protocol-violating inputs, making refactors safe and correctness provable.
+#### Parser Router
+
+Incoming WebSocket messages are first routed by method/channel to the appropriate message parser, ensuring each payload is handled by the correct protocol-specific logic with minimal branching.
+
+#### Layered Parsers (Helpers → Adapters → Parsers)
+
+Low-level helpers validate JSON structure and extract primitives, adapters perform domain-aware conversions (enums, symbols, timestamps), and message parsers handle control flow and logging. This separation keeps parsing fast, safe, and maintainable.
+
+#### Explicit Error Semantics
+
+Parsing distinguishes between invalid schema and invalid values using a lightweight enum, allowing robust handling of real-world Kraken API inconsistencies while remaining allocation-free and exception-free.
+
+```note``` Every parser is fully unit-tested against invalid, edge, and protocol-violating inputs, making refactors safe and correctness provable.
 
 ```Built as infrastructure, not a demo.```
 

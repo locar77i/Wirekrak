@@ -5,6 +5,7 @@
 #include "wirekrak/protocol/kraken/enums/payload_type.hpp"
 #include "wirekrak/protocol/kraken/book/snapshot.hpp"
 #include "wirekrak/protocol/kraken/book/update.hpp"
+#include "wirekrak/protocol/kraken/parser/result.hpp"
 #include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "wirekrak/protocol/kraken/parser/book/detail/parse_side_levels_common.hpp"
@@ -20,21 +21,24 @@ inline bool parse_payload_common(const simdjson::dom::element& root, std::string
     using namespace simdjson;
 
     // Root
-    if (!helper::require_object(root)) {
+    auto r = helper::require_object(root);
+    if (r != parser::Result::Ok) {
         WK_DEBUG("[PARSER] Root not an object in book message -> ignore message.");
         return false;
     }
 
     // type (required): snapshot | update
     kraken::PayloadType type;
-    if (!adapter::parse_payload_type_required(root, "type", type)) {
+    r = adapter::parse_payload_type_required(root, "type", type);
+    if (r != parser::Result::Ok) {
         WK_DEBUG("[PARSER] Field 'type' invalid or missing in trade response -> ignore message.");
         return false;
     }
 
     // data array (required, exactly one element)
     simdjson::dom::array data;
-    if (!helper::parse_array_required(root, "data", data)) {
+    r = helper::parse_array_required(root, "data", data);
+    if (r != parser::Result::Ok) {
         WK_DEBUG("[PARSER] Field 'data' missing or invalid in book message -> ignore message.");
         return false;
     }
@@ -52,7 +56,8 @@ inline bool parse_payload_common(const simdjson::dom::element& root, std::string
     }
 
     // symbol (required)
-    if (!adapter::parse_symbol_required(book, "symbol", out.symbol)) {
+    r = parser::adapter::parse_symbol_required(book, "symbol", out.symbol);
+    if (r != parser::Result::Ok) {
         WK_DEBUG("[PARSER] Field 'symbol' missing in book message -> ignore message.");
         return false;
     }
@@ -74,7 +79,8 @@ inline bool parse_payload_common(const simdjson::dom::element& root, std::string
 
     // checksum (required)
     std::uint64_t checksum = 0;
-    if (!helper::parse_uint64_required(book, "checksum", checksum)) {
+    r = helper::parse_uint64_required(book, "checksum", checksum);
+    if (r != parser::Result::Ok) {
         WK_DEBUG("[PARSER] Field 'checksum' missing or invalid in book message -> ignore message.");
         return false;
     }
@@ -82,7 +88,8 @@ inline bool parse_payload_common(const simdjson::dom::element& root, std::string
 
     // timestamp (Update only)
     if constexpr (requires { out.timestamp; }) {
-        if (!adapter::parse_timestamp_required(book, "timestamp", out.timestamp)) {
+        r = adapter::parse_timestamp_required(book, "timestamp", out.timestamp);
+        if (r != parser::Result::Ok) {
             WK_DEBUG("[PARSER] Field 'timestamp' missing or invalid in book message -> ignore message.");
             return false;
         }

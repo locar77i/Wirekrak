@@ -1,5 +1,6 @@
 #pragma once
 
+#include "wirekrak/protocol/kraken/parser/result.hpp"
 #include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "lcr/log/logger.hpp"
 
@@ -40,7 +41,9 @@ inline bool parse_side_levels_common(const simdjson::dom::object& book, std::str
         // parse price and qty
         double price = 0.0;
         double qty   = 0.0;
-        if (!helper::parse_double_required(obj, "price", price) || !helper::parse_double_required(obj, "qty", qty)) {
+        auto r1 = helper::parse_double_required(obj, "price", price);
+        auto r2 = helper::parse_double_required(obj, "qty", qty);
+        if (r1 != parser::Result::Ok || r2 != parser::Result::Ok) {
             WK_DEBUG("[PARSER] Invalid level entry in '" << field << "' side -> ignore message.");
             return false;
         }

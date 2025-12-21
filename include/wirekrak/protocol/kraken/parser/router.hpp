@@ -33,6 +33,91 @@ namespace protocol {
 namespace kraken {
 namespace parser {
 
+/*
+================================================================================
+Kraken WebSocket Parsing Architecture
+================================================================================
+
+This parser layer is intentionally structured into three distinct roles to
+ensure correctness, performance, and long-term maintainability.
+
+-------------------------------------------------------------------------------
+1) Parser Router (Message Dispatch)
+-------------------------------------------------------------------------------
+The parser router is responsible for:
+  • Inspecting raw WebSocket messages
+  • Routing messages by method / channel
+  • Selecting the appropriate message parser
+  • Enforcing high-level protocol flow
+
+The router performs no field-level parsing and contains no domain logic.
+It exists solely to orchestrate message dispatch safely and efficiently.
+
+-------------------------------------------------------------------------------
+2) Message Parsers (Protocol-Level Validation)
+-------------------------------------------------------------------------------
+Message parsers implement full Kraken message schemas (subscribe ACKs,
+updates, snapshots, control messages, rejections, etc.).
+
+Responsibilities:
+  • Validate required vs optional fields
+  • Apply protocol rules (success vs error paths)
+  • Log parsing failures with actionable diagnostics
+  • Populate strongly-typed domain structures
+
+Message parsers are allowed to:
+  • Reject malformed or semantically invalid messages
+  • Decide whether a message should be ignored or propagated
+  • Perform control-flow decisions
+
+They are NOT responsible for low-level JSON extraction.
+
+-------------------------------------------------------------------------------
+3) Adapters (Domain-Aware Field Parsing)
+-------------------------------------------------------------------------------
+Adapters sit between message parsers and low-level helpers.
+
+Responsibilities:
+  • Convert primitive fields into domain types (Symbol, Side, OrderType, etc.)
+  • Enforce semantic validity (non-empty strings, known enums, valid ranges)
+  • Distinguish between invalid schema and invalid values
+  • Remain allocation-light and exception-free
+
+Adapters are domain-aware but schema-agnostic.
+
+-------------------------------------------------------------------------------
+4) Helpers (Low-Level JSON Primitives)
+-------------------------------------------------------------------------------
+Helpers are the lowest-level building blocks and are intentionally strict.
+
+Responsibilities:
+  • Enforce JSON structural correctness (object, array, type)
+  • Parse primitive types without allocation
+  • Provide explicit optional-field presence signaling
+  • Never perform semantic or domain validation
+  • Never log, throw, or allocate
+
+Helpers return a lightweight parser::Result enum to distinguish:
+  • Ok              → structurally valid
+  • InvalidSchema   → malformed JSON or wrong types
+  • InvalidValue    → reserved for higher layers
+
+-------------------------------------------------------------------------------
+Design Goals
+-------------------------------------------------------------------------------
+  • Zero runtime overhead abstractions
+  • Clear separation of responsibilities
+  • Deterministic, testable parsing behavior
+  • Robust handling of real-world Kraken API inconsistencies
+  • Compile-time safety where possible, runtime safety everywhere else
+
+This layered design allows each component to remain simple, focused, and
+correct, while enabling the overall system to scale as Kraken schemas evolve.
+
+================================================================================
+*/
+
+
 class Router {
     constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
 
@@ -54,7 +139,8 @@ public:
         }
         // METHOD DISPATCH (ACK / CONTROL)
         Method method;
-        if (adapter::parse_method_required(root, method)) {
+        auto r = adapter::parse_method_required(root, method);
+        if (r == parser::Result::Ok) {
             if (!parse_method_message_(method, root)) {
                 WK_WARN("[PARSER] Failed to parse method message: " << raw_msg);
             }
@@ -62,7 +148,8 @@ public:
         }
         // CHANNEL DISPATCH (DATA)
         Channel channel;
-        if (adapter::parse_channel_required(root, channel)) {
+        r = adapter::parse_channel_required(root, channel);
+        if (r == parser::Result::Ok) {
             if (!parse_channel_message_(channel, root)) {
                 WK_WARN("[PARSER] Failed to parse channel message: " << raw_msg);
             }
@@ -108,12 +195,14 @@ private:
         Channel channel;
         // result object (required)
         simdjson::dom::element result;
-        if (!helper::parse_object_required(root, "result", result)) {
+        auto r = helper::parse_object_required(root, "result", result);
+        if (r != parser::Result::Ok) {
             channel = Channel::Unknown;
         }
         else {
             // channel (required)
-            if (!adapter::parse_channel_required(result, channel)) {
+            r = adapter::parse_channel_required(result, channel);
+            if (r != parser::Result::Ok) {
                 WK_WARN("[PARSER] Field 'channel' missing or invalid in '" << to_string(method) << "' message -> ignore message.");
                 channel = Channel::Unknown;
             }

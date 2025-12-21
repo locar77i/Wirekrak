@@ -7,6 +7,7 @@
 #include "wirekrak/protocol/kraken/enums/side.hpp"
 #include "wirekrak/protocol/kraken/enums/order_type.hpp"
 #include "wirekrak/protocol/kraken/enums/payload_type.hpp"
+#include "wirekrak/protocol/kraken/parser/result.hpp"
 #include "wirekrak/protocol/kraken/parser/helpers.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
@@ -57,13 +58,20 @@ namespace wirekrak::protocol::kraken::parser::adapter {
 // Method
 // ------------------------------------------------------------
 [[nodiscard]]
-inline bool parse_method_required(const simdjson::dom::element& root, Method& out) noexcept {
+inline parser::Result parse_method_required(const simdjson::dom::element& root, Method& out) noexcept {
+    // Required string field
     std::string_view sv;
-    if (!parser::helper::parse_string_required(root, "method", sv)) {
-        return false;
+    auto r = parser::helper::parse_string_required(root, "method", sv);
+    if (r != parser::Result::Ok) {
+        return r;
     }
+    // Convert to enum
     out = to_method_enum_fast(sv);
-    return out != Method::Unknown;
+    // Present but unknown method
+    if (out == Method::Unknown) {
+        return parser::Result::InvalidValue;
+    }
+    return parser::Result::Ok;
 }
 
 
@@ -71,13 +79,19 @@ inline bool parse_method_required(const simdjson::dom::element& root, Method& ou
 // Channel
 // ------------------------------------------------------------
 [[nodiscard]]
-inline bool parse_channel_required(const simdjson::dom::element& root, Channel& out) noexcept {
+inline parser::Result parse_channel_required(const simdjson::dom::element& root, Channel& out) noexcept {
+    // Required string field
     std::string_view sv;
-    if (!parser::helper::parse_string_required(root, "channel", sv)) {
-        return false;
+    auto r = parser::helper::parse_string_required(root, "channel", sv);
+    if (r != parser::Result::Ok) {
+        return r;
     }
+    // Convert to enum
     out = to_channel_enum_fast(sv);
-    return out != Channel::Unknown;
+    if (out == Channel::Unknown) {
+        return parser::Result::InvalidValue;
+    }
+    return parser::Result::Ok;
 }
 
 
@@ -85,86 +99,119 @@ inline bool parse_channel_required(const simdjson::dom::element& root, Channel& 
 // Symbol
 // ------------------------------------------------------------
 [[nodiscard]]
-inline bool parse_symbol_required(const simdjson::dom::object& obj, const char* key, Symbol& out) noexcept {
+inline parser::Result parse_symbol_required(const simdjson::dom::object& obj, const char* key, Symbol& out) noexcept {
+    // Required string field
     std::string_view sv;
-    if (!parser::helper::parse_string_required(obj, key, sv)) {
-        return false;
+    auto r = parser::helper::parse_string_required(obj, key, sv);
+    if (r != parser::Result::Ok) {
+        return r;
     }
+    // Enforce non-empty
     if (sv.empty()) {
-        return false;
+        return parser::Result::InvalidValue;
     }
+    // Valid symbol
     out = Symbol{std::string(sv)};
-    return true;
+    return parser::Result::Ok;
 }
 
 [[nodiscard]]
-inline bool parse_symbol_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<Symbol>& out) noexcept {
+inline parser::Result parse_symbol_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<Symbol>& out) noexcept {
+    // Always reset output (streaming safety)
     out.reset();
+    // Parse optional string field
+    bool presence = false;
     std::string_view sv;
-    if (!parser::helper::parse_string_optional(obj, key, sv)) {
-        return false;
+    auto r = parser::helper::parse_string_optional(obj, key, sv, presence);
+    if (r != parser::Result::Ok) {
+        return r; // InvalidSchema bubbles up
     }
+    // Field not present → OK (optional)
+    if (!presence) {
+        return parser::Result::Ok;
+    }
+    // Field present but empty → invalid value
     if (sv.empty()) {
-        return true; // optional, not present
+        return parser::Result::InvalidValue;
     }
+    // Valid symbol
     out = Symbol{std::string(sv)};
-    return true;
+    return parser::Result::Ok;
 }
 
 // ------------------------------------------------------------
 // Side
 // ------------------------------------------------------------
 [[nodiscard]]
-inline bool parse_side_required(const simdjson::dom::object& obj, const char* key, Side& out) noexcept {
+inline parser::Result parse_side_required(const simdjson::dom::object& obj, const char* key, Side& out) noexcept {
+    // Required string field
     std::string_view sv;
-    if (!parser::helper::parse_string_required(obj, key, sv)) {
-        return false;
+    auto r = parser::helper::parse_string_required(obj, key, sv);
+    if (r != parser::Result::Ok) {
+        return r;
     }
+    // Enforce non-empty
     if (sv.empty()) {
-        return false;
+        return parser::Result::InvalidValue;
     }
+    // Convert to enum
     out = to_side_enum_fast(sv);
-    return out != Side::Unknown;
+    if (out == Side::Unknown) {
+        return parser::Result::InvalidValue;
+    }
+    return parser::Result::Ok;
 }
 
 // ------------------------------------------------------------
 // Order type (optional)
 // ------------------------------------------------------------
 [[nodiscard]]
-inline bool parse_order_type_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<OrderType>& out) noexcept {
+inline parser::Result parse_order_type_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<OrderType>& out) noexcept {
+    // Always reset output (streaming safety)
     out.reset();
+    // Parse optional string field
+    bool presence = false;
     std::string_view sv;
-    if (!parser::helper::parse_string_optional(obj, key, sv)) {
-        return false;
+    auto r = parser::helper::parse_string_optional(obj, key, sv, presence);
+    if (r != parser::Result::Ok) {
+        return r; // InvalidSchema bubbles up
     }
-    if (sv.empty()) {
-        return true; // optional, not present
+    // Field not present → OK (optional)
+    if (!presence) {
+        return parser::Result::Ok;
     }
+    // Convert to enum
     OrderType t = to_order_type_enum_fast(sv);
+    // Present but invalid value
     if (t == OrderType::Unknown) {
-        return false;
+        return parser::Result::InvalidValue;
     }
     out = t;
-    return true;
+    return parser::Result::Ok;
 }
 
 // ------------------------------------------------------------
 // PayloadType (snapshot / update)
 // ------------------------------------------------------------
 [[nodiscard]]
-inline bool parse_payload_type_required(const simdjson::dom::element& obj,const char* key,kraken::PayloadType& out) noexcept {
+inline parser::Result parse_payload_type_required(const simdjson::dom::element& obj,const char* key,kraken::PayloadType& out) noexcept {
+    // Required string field
     std::string_view sv;
-    // Extract string
-    if (!helper::parse_string_required(obj, key, sv)) {
-        return false; // invalid
+    auto r = helper::parse_string_required(obj, key, sv);
+    if (r != parser::Result::Ok) {
+        return r; // InvalidSchema bubbles up
     }
-    // Enforce non-empty
+    // Present but empty → invalid value
     if (sv.empty()) {
-        return false; // invalid
+        return parser::Result::InvalidValue;
     }
     // Convert using fast path
     out = kraken::to_payload_type_enum_fast(sv);
-    return out != kraken::PayloadType::Unknown;
+    // Unknown payload type → invalid value
+    if (out == kraken::PayloadType::Unknown) {
+        return parser::Result::InvalidValue;
+    }
+    return parser::Result::Ok;
 }
 
 
@@ -172,33 +219,45 @@ inline bool parse_payload_type_required(const simdjson::dom::element& obj,const 
 // Timestamp
 // ------------------------------------------------------------
 [[nodiscard]]
-inline bool parse_timestamp_required(const simdjson::dom::object& obj, const char* key, Timestamp& out) noexcept {
+inline parser::Result parse_timestamp_required(const simdjson::dom::object& obj, const char* key, Timestamp& out) noexcept {
     std::string_view sv;
-    if (!parser::helper::parse_string_required(obj, key, sv)) {
-        return false;
+    // Required string field
+    auto r = parser::helper::parse_string_required(obj, key, sv);
+    if (r != parser::Result::Ok) {
+        return r; // InvalidSchema bubbles up
     }
+    // Enforce non-empty
     if (sv.empty()) {
-        return false;
+        return parser::Result::InvalidValue;
     }
-    return parse_rfc3339(sv, out);
+    // Parse RFC3339 timestamp
+    if (!parse_rfc3339(sv, out)) {
+        return parser::Result::InvalidValue;
+    }
+    return parser::Result::Ok;
 }
 
 [[nodiscard]]
-inline bool parse_timestamp_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<Timestamp>& out) noexcept {
+inline parser::Result parse_timestamp_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<Timestamp>& out) noexcept {
     out.reset();
+    bool presence = false;
+    // Optional string field
     std::string_view sv;
-    if (!parser::helper::parse_string_optional(obj, key, sv)) {
-        return false;
+    auto r = parser::helper::parse_string_optional(obj, key, sv, presence);
+    if (r != parser::Result::Ok) {
+        return r; // InvalidSchema
     }
-    if (sv.empty()) {
-        return true;
+    // Field not present → OK (optional)
+    if (!presence) {
+        return parser::Result::Ok; // optional, not present
     }
+    // Enforce non-empty
     Timestamp ts;
     if (!parse_rfc3339(sv, ts)) {
-        return false;
+        return parser::Result::InvalidValue;
     }
     out = ts;
-    return true;
+    return parser::Result::Ok;
 }
 
 

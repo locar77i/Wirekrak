@@ -3,6 +3,7 @@
 #include <string>
 #include <thread>
 
+#include "wirekrak/config/ring_sizes.hpp"
 #include "wirekrak/winhttp/websocket.hpp"
 #include "wirekrak/protocol/kraken/parser/context.hpp"
 #include "wirekrak/protocol/kraken/parser/router.hpp"
@@ -410,23 +411,23 @@ private:
     status_handler_t status_handler_;
 
     // Output rings for pong messages
-    lcr::lockfree::spsc_ring<system::Pong, 8> pong_ring_{};
+    lcr::lockfree::spsc_ring<system::Pong, config::pong_ring> pong_ring_{};
 
     // Output rings for status channel
-    lcr::lockfree::spsc_ring<status::Update, 8> status_ring_{};
+    lcr::lockfree::spsc_ring<status::Update, config::status_ring> status_ring_{};
 
     // Output rings for rejection notices
-    lcr::lockfree::spsc_ring<rejection::Notice, 8> rejection_ring_{};
+    lcr::lockfree::spsc_ring<rejection::Notice, config::rejection_ring> rejection_ring_{};
 
     // Output rings for trade channel
-    lcr::lockfree::spsc_ring<trade::Response, 4096> trade_ring_{};
-    lcr::lockfree::spsc_ring<trade::SubscribeAck, 8> trade_subscribe_ring_{};
-    lcr::lockfree::spsc_ring<trade::UnsubscribeAck, 8> trade_unsubscribe_ring_{};
+    lcr::lockfree::spsc_ring<trade::Response, config::trade_update_ring> trade_ring_{};
+    lcr::lockfree::spsc_ring<trade::SubscribeAck, config::subscribe_ack_ring> trade_subscribe_ring_{};
+    lcr::lockfree::spsc_ring<trade::UnsubscribeAck, config::unsubscribe_ack_ring> trade_unsubscribe_ring_{};
 
     // Output rings for book channel
-    lcr::lockfree::spsc_ring<book::Update, 4096> book_ring_{};
-    lcr::lockfree::spsc_ring<book::SubscribeAck, 8> book_subscribe_ring_{};
-    lcr::lockfree::spsc_ring<book::UnsubscribeAck, 8> book_unsubscribe_ring_{};
+    lcr::lockfree::spsc_ring<book::Update, config::book_update_ring> book_ring_{};
+    lcr::lockfree::spsc_ring<book::SubscribeAck, config::subscribe_ack_ring> book_subscribe_ring_{};
+    lcr::lockfree::spsc_ring<book::UnsubscribeAck, config::unsubscribe_ack_ring> book_unsubscribe_ring_{};
 
     parser::Router parser_;
     Dispatcher dispatcher_;
