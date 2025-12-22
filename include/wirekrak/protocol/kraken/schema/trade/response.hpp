@@ -37,7 +37,7 @@ struct Trade {
            << ", price=" << price
            << ", qty=" << qty
            << ", side=" << to_string(side)
-           << ", timestamp=" << timestamp;
+           << ", timestamp=" << wirekrak::to_string(timestamp);
 
         if (ord_type.has()) {
             os << ", ord_type=" << to_string(ord_type.value());

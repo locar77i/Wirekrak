@@ -8,6 +8,7 @@
 #include <functional>
 #include <atomic>
 #include <vector>
+#include <cassert>
 #include <windows.h>
 
 #include "wirekrak/transport/concepts.hpp"

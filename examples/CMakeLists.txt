@@ -24,5 +24,8 @@ target_link_libraries(wirekrak_book_updates
         CLI11::CLI11
 )
 
-add_executable(wirekrak_trade_multi trade_multi.cpp)
-target_link_libraries(wirekrak_trade_multi PRIVATE wirekrak)
+add_executable(wirekrak_minimal_for_trades minimal_for_trades.cpp)
+target_link_libraries(wirekrak_minimal_for_trades PRIVATE wirekrak)
+
+add_executable(wirekrak_minimal_for_book_updates minimal_for_book_updates.cpp)
+target_link_libraries(wirekrak_minimal_for_book_updates PRIVATE wirekrak)

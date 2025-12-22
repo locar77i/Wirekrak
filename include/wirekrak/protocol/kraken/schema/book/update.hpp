@@ -46,7 +46,7 @@ struct Update {
     inline void dump(std::ostream& os) const {
         os << "[BOOK UPDATE] {"
            << "symbol=" << symbol
-           << ", ts=" << timestamp
+           << ", ts=" << wirekrak::to_string(timestamp)
            << ", checksum=" << checksum
            << "}\n";
 

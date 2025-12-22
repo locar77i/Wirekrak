@@ -41,10 +41,10 @@ struct Notice {
             os << ", symbol=" << symbol.value();
         }
         if (time_in.has()) {
-            os << ", time_in=" << to_string(time_in.value());
+            os << ", time_in=" << wirekrak::to_string(time_in.value());
         }
         if (time_out.has()) {
-            os << ", time_out=" << to_string(time_out.value());
+            os << ", time_out=" << wirekrak::to_string(time_out.value());
         }
         os << " }";
     }

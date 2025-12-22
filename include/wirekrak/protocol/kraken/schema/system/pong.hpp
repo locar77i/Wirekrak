@@ -45,10 +45,10 @@ struct Pong {
             }
         }
         if (time_in.has()) {
-            os << "  time_in: " << to_string(time_in.value()) << "\n";
+            os << "  time_in: " << wirekrak::to_string(time_in.value()) << "\n";
         }
         if (time_out.has()) {
-            os << "  time_out: " << to_string(time_out.value()) << "\n";
+            os << "  time_out: " << wirekrak::to_string(time_out.value()) << "\n";
         }
         if (error.has()) {
             os << "  error: " << error.value() << "\n";

@@ -123,10 +123,12 @@ public:
     }
 
 
-    inline void parse_and_route(const std::string& raw_msg) noexcept {
+    // Main entry point
+    inline void parse_and_route(std::string_view sv) noexcept {
         using namespace simdjson;
-        simdjson::dom::element root;
+        std::string_view raw_msg = sv;
         // Parse JSON message
+        simdjson::dom::element root;
         auto error = parser_.parse(raw_msg).get(root);
         if (error) {
             WK_WARN("[PARSER] JSON parse error: " << error << " in message: " << raw_msg);
