@@ -1,11 +1,11 @@
 #pragma once
 
-#include "wirekrak/replay/Table.hpp"
-
-using namespace wirekrak::protocol::kraken;
+#include "wirekrak/protocol/kraken/replay/Table.hpp"
 
 
 namespace wirekrak {
+namespace protocol {
+namespace kraken {
 namespace replay {
 
 // =============================================================
@@ -96,4 +96,6 @@ private:
 };
 
 } // namespace replay
+} // namespace kraken
+} // namespace protocol
 } // namespace wirekrak

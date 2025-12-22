@@ -6,10 +6,10 @@
 
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
 
-using namespace wirekrak::protocol::kraken;
-
 
 namespace wirekrak {
+namespace protocol {
+namespace kraken {
 namespace replay {
 
 // ------------------------------------------------------------
@@ -49,4 +49,6 @@ private:
 };
 
 } // namespace replay
+} // namespace kraken
+} // namespace protocol
 } // namespace wirekrak

@@ -7,7 +7,7 @@
 
 #include <CLI/CLI.hpp>
 
-#include "wirekrak/win_client.hpp"
+#include "wirekrak/client.hpp"
 
 using namespace wirekrak;
 using namespace wirekrak::protocol::kraken;

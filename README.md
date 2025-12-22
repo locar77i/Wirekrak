@@ -118,7 +118,7 @@ cmake --build build
 ## 📡 Example Usage
 
 ```cpp
-#include "wirekrak/win_client.hpp"
+#include "wirekrak/client.hpp"
 
 using namespace wirekrak;
 

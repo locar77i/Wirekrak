@@ -8,10 +8,8 @@
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/core/symbol/intern.hpp"
 
-using namespace wirekrak::protocol::kraken;
 
-
-namespace wirekrak {
+namespace wirekrak::protocol::kraken {
 
 class Dispatcher {
 public:
@@ -83,4 +81,4 @@ private:
     }
 };
 
-} // namespace wirekrak
+} // namespace wirekrak::protocol::kraken

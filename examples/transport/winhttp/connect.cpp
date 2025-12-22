@@ -3,13 +3,25 @@
 #include <chrono>
 #include <thread>
 #include <locale>
+#include <csignal>
 
 #include "wirekrak/transport/winhttp/websocket.hpp"
 
 using namespace wirekrak;
 
+// -----------------------------------------------------------------------------
+// Ctrl+C handling
+// -----------------------------------------------------------------------------
+std::atomic<bool> running{true};
+
+void on_signal(int) {
+    running.store(false);
+}
+
 
 int main() {
+    std::signal(SIGINT, on_signal);  // Handle Ctrl+C
+
     transport::winhttp::WebSocket ws;
     ws.set_message_callback([](const std::string& msg){
         std::cout << "Received: " << msg << std::endl;
@@ -42,9 +54,11 @@ int main() {
         return 3;
     }
 
-    // Keep running forever
-    std::cout << "Subscribed. Waiting for messages...\n";
-    while (true) Sleep(1000);
+    // Keep running until interrupted
+    std::cout << "Subscribed. Waiting for messages... (Ctrl+C to exit)\n";
+    while (running.load(std::memory_order_relaxed)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     ws.close();
     return 0;

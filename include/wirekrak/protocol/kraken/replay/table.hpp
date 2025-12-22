@@ -5,13 +5,13 @@
 #include <cstdint>
 #include <utility>
 
-#include "wirekrak/replay/subscription.hpp"
+#include "wirekrak/protocol/kraken/replay/subscription.hpp"
 #include "lcr/log/logger.hpp"
-
-using namespace wirekrak::protocol::kraken;
 
 
 namespace wirekrak {
+namespace protocol {
+namespace kraken {
 namespace replay {
 
 /*
@@ -116,4 +116,6 @@ private:
 };
 
 } // namespace replay
+} // namespace kraken
+} // namespace protocol
 } // namespace wirekrak

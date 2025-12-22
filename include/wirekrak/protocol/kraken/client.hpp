@@ -12,14 +12,15 @@
 #include "wirekrak/config/ring_sizes.hpp"
 #include "wirekrak/stream/client.hpp"
 #include "wirekrak/transport/winhttp/websocket.hpp"
+#include "wirekrak/protocol/kraken/context.hpp"
 #include "wirekrak/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/protocol/kraken/parser/router.hpp"
-#include "wirekrak/dispatcher.hpp"
-#include "wirekrak/channel/manager.hpp"
-#include "wirekrak/replay/database.hpp"
+#include "wirekrak/protocol/kraken/dispatcher.hpp"
+#include "wirekrak/protocol/kraken/channel/manager.hpp"
+#include "wirekrak/protocol/kraken/replay/database.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/sequence.hpp"
@@ -85,17 +86,9 @@ class Client {
 
 public:
     Client()
-        : parser_(parser::Context{ .heartbeat_total = &stream_.heartbeat_total(),
-                                   .last_heartbeat_ts = &stream_.last_heartbeat_ts(),
-                                   .pong_ring = &pong_ring_,
-                                   .rejection_ring = &rejection_ring_,
-                                   .status_ring = &status_ring_,
-                                   .trade_ring = &trade_ring_,
-                                   .trade_subscribe_ring = &trade_subscribe_ring_,
-                                   .trade_unsubscribe_ring = &trade_unsubscribe_ring_,
-                                   .book_ring = &book_ring_,
-                                   .book_subscribe_ring = &book_subscribe_ring_,
-                                   .book_unsubscribe_ring = &book_unsubscribe_ring_}) 
+        : ctx_{stream_.heartbeat_total(), stream_.last_heartbeat_ts()}
+        , ctx_view_{ctx_}
+        , parser_(ctx_view_)
     {
         stream_.on_connect([this]() {
             handle_connect_();
@@ -174,7 +167,7 @@ public:
         // ===============================================================================
         { // === Process pong ring ===
         system::Pong pong;
-        while (pong_ring_.pop(pong)) {
+        while (ctx_.pong_ring.pop(pong)) {
             handle_pong_(pong);
         }}
         // ===============================================================================
@@ -182,7 +175,7 @@ public:
         // ===============================================================================
         { // === Process rejection ring ===
         rejection::Notice notice;
-        while (rejection_ring_.pop(notice)) {
+        while (ctx_.rejection_ring.pop(notice)) {
             handle_rejection_(notice);
         }}
         // ===============================================================================
@@ -190,7 +183,7 @@ public:
         // ===============================================================================
         { // === Process status ring ===
         status::Update update;
-        while (status_ring_.pop(update)) {
+        while (ctx_.status_ring.pop(update)) {
             handle_status_(update);
         }}
         // ===============================================================================
@@ -198,14 +191,14 @@ public:
         // ===============================================================================
         { // === Process trade ring ===
         trade::Response resp;
-        while (trade_ring_.pop(resp)) {
+        while (ctx_.trade_ring.pop(resp)) {
             for (auto& trade_msg : resp.trades) {
                 dispatcher_.dispatch(trade_msg);
             }
         }}
         { // === Process trade subscribe ring ===
         trade::SubscribeAck ack;
-        while (trade_subscribe_ring_.pop(ack)) {
+        while (ctx_.trade_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
                 return;
@@ -214,7 +207,7 @@ public:
         }}
         { // === Process trade unsubscribe ring ===
         trade::UnsubscribeAck ack;
-        while (trade_unsubscribe_ring_.pop(ack)) {
+        while (ctx_.trade_unsubscribe_ring.pop(ack)) {
             dispatcher_.remove_symbol_handlers<trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
@@ -227,12 +220,12 @@ public:
         // ===============================================================================
         { // === Process book ring ===
         book::Update resp;
-        while (book_ring_.pop(resp)) {
+        while (ctx_.book_ring.pop(resp)) {
             dispatcher_.dispatch(resp);
         }}
         { // === Process book subscribe ring ===
         book::SubscribeAck ack;
-        while (book_subscribe_ring_.pop(ack)) {
+        while (ctx_.book_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
                 return;
@@ -241,7 +234,7 @@ public:
         }}
         { // === Process book unsubscribe ring ===
         book::UnsubscribeAck ack;
-        while (book_unsubscribe_ring_.pop(ack)) {
+        while (ctx_.book_unsubscribe_ring.pop(ack)) {
             dispatcher_.remove_symbol_handlers<book::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
@@ -274,6 +267,9 @@ private:
     // Sequence generator for request IDs
     lcr::sequence req_id_seq_{};
 
+    // Underlying streaming client (composition)
+    wirekrak::stream::Client<WS> stream_;
+
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
         pong_handler_t handle_pong{};            // Pong callback
@@ -284,24 +280,11 @@ private:
     // Handlers bundle
     Hooks hooks_;
 
-    // Output rings for pong messages
-    lcr::lockfree::spsc_ring<system::Pong, config::pong_ring> pong_ring_{};
+    // Client context (owning)
+    Context ctx_;
 
-    // Output rings for status channel
-    lcr::lockfree::spsc_ring<status::Update, config::status_ring> status_ring_{};
-
-    // Output rings for rejection notices
-    lcr::lockfree::spsc_ring<rejection::Notice, config::rejection_ring> rejection_ring_{};
-
-    // Output rings for trade channel
-    lcr::lockfree::spsc_ring<trade::Response, config::trade_update_ring> trade_ring_{};
-    lcr::lockfree::spsc_ring<trade::SubscribeAck, config::subscribe_ack_ring> trade_subscribe_ring_{};
-    lcr::lockfree::spsc_ring<trade::UnsubscribeAck, config::unsubscribe_ack_ring> trade_unsubscribe_ring_{};
-
-    // Output rings for book channel
-    lcr::lockfree::spsc_ring<book::Update, config::book_update_ring> book_ring_{};
-    lcr::lockfree::spsc_ring<book::SubscribeAck, config::subscribe_ack_ring> book_subscribe_ring_{};
-    lcr::lockfree::spsc_ring<book::UnsubscribeAck, config::unsubscribe_ack_ring> book_unsubscribe_ring_{};
+    // Client context view (non-owning)
+    ContextView ctx_view_;
 
     // Protocol parser / router
     parser::Router parser_;
@@ -315,9 +298,6 @@ private:
 
     // Replay database
     replay::Database replay_db_;
-
-    // Underlying streaming client (composition)
-    wirekrak::stream::Client<WS> stream_;
 
 private:
     inline void handle_connect_() {

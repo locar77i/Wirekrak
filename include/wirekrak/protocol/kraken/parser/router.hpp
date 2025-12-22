@@ -7,7 +7,7 @@
 #include <simdjson.h>
 
 #include "wirekrak/protocol/kraken/enums.hpp"
-#include "wirekrak/protocol/kraken/parser/context.hpp"
+#include "wirekrak/protocol/kraken/context.hpp"
 #include "wirekrak/protocol/kraken/parser/adapters.hpp"
 #include "wirekrak/protocol/kraken/parser/rejection_notice.hpp"
 #include "wirekrak/protocol/kraken/parser/status/update.hpp"
@@ -117,8 +117,8 @@ class Router {
     constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
 
 public:
-    Router(const Context& ctx)
-        : ctx_(ctx)
+    Router(ContextView& ctx)
+        : ctx_view_(ctx)
     {
     }
 
@@ -156,7 +156,10 @@ public:
 
 
 private:
-    Context ctx_;
+    // Context view (non-owning)
+    ContextView& ctx_view_;
+
+    // Underlying simdjson parser
     simdjson::dom::parser parser_;
 
 private:
@@ -221,7 +224,7 @@ private:
             case Channel::Trade: {
                 kraken::trade::SubscribeAck resp;
                 if (trade::subscribe_ack::parse(root, resp)) {
-                    if (!ctx_.trade_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
+                    if (!ctx_view_.trade_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_subscribe_ring_ full, dropping.");
                     }
                     return true;
@@ -231,7 +234,7 @@ private:
             case Channel::Book: {
                 kraken::book::SubscribeAck resp;
                 if (book::subscribe_ack::parse(root, resp)) {
-                    if (!ctx_.book_subscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
+                    if (!ctx_view_.book_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] book_subscribe_ring_ full, dropping.");
                     }
                     return true;
@@ -241,7 +244,7 @@ private:
             default: { // 2025-12-20 08:39:28 [WARN] [PARSER] Failed to parse method message: {"error":"Already subscribed","method":"subscribe","req_id":2,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:28.809188Z","time_out":"2025-12-20T07:39:28.809200Z"}
                 kraken::rejection::Notice resp;
                 if (rejection_notice::parse(root, resp)) {
-                    if (!ctx_.rejection_ring->push(std::move(resp))) { // TODO: handle backpressure
+                    if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] rejection_ring_ full, dropping.");
                     }
                     return true;
@@ -258,7 +261,7 @@ private:
             case Channel::Trade: {
                 kraken::trade::UnsubscribeAck resp;
                 if (trade::unsubscribe_ack::parse(root, resp)) {
-                    if (!ctx_.trade_unsubscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
+                    if (!ctx_view_.trade_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] trade_unsubscribe_ring_ full, dropping.");
                     }
                     return true;
@@ -267,7 +270,7 @@ private:
             case Channel::Book: {
                 kraken::book::UnsubscribeAck resp;
                 if (book::unsubscribe_ack::parse(root, resp)) {
-                    if (!ctx_.book_unsubscribe_ring->push(std::move(resp))) { // TODO: handle backpressure
+                    if (!ctx_view_.book_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] book_unsubscribe_ring_ full, dropping.");
                     }
                     return true;
@@ -276,7 +279,7 @@ private:
             default: { // 2025-12-20 08:39:43 [WARN] [PARSER] Failed to parse method message: {"error":"Subscription Not Found","method":"subscribe","req_id":4,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:43.909056Z","time_out":"2025-12-20T07:39:43.909073Z"}
                 kraken::rejection::Notice resp;
                 if (rejection_notice::parse(root, resp)) {
-                    if (!ctx_.rejection_ring->push(std::move(resp))) { // TODO: handle backpressure
+                    if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] rejection_ring_ full, dropping.");
                     }
                     return true;
@@ -301,8 +304,8 @@ private:
             case Channel::Book:
                 return parse_book_(root);
             case Channel::Heartbeat:
-                ctx_.heartbeat_total->fetch_add(1, std::memory_order_relaxed);
-                ctx_.last_heartbeat_ts->store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+                ctx_view_.heartbeat_total.fetch_add(1, std::memory_order_relaxed);
+                ctx_view_.last_heartbeat_ts.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
                 return true;
             case Channel::Status: {
                 return parse_status_(root);
@@ -319,7 +322,7 @@ private:
         using namespace simdjson;
          kraken::trade::Response response;
         if (trade::response::parse(root, response)) {
-            if (!ctx_.trade_ring->push(std::move(response))) { // TODO: handle backpressure
+            if (!ctx_view_.trade_ring.push(std::move(response))) { // TODO: handle backpressure
                 WK_WARN("[PARSER] trade_ring_ full, dropping.");
             }
             return true;
@@ -356,7 +359,7 @@ private:
             case PayloadType::Update: {
                 kraken::book::Update update;
                 if (book::update::parse(root, update)) {
-                    if (!ctx_.book_ring->push(std::move(update))) { // TODO: handle backpressure
+                    if (!ctx_view_.book_ring.push(std::move(update))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] book_ring_ full, dropping.");
                     }
                     return true;
@@ -375,7 +378,7 @@ private:
         using namespace simdjson;
         kraken::system::Pong resp;
         if (system::pong::parse(root, resp)) {
-            if (!ctx_.pong_ring->push(std::move(resp))) { // TODO: handle backpressure
+            if (!ctx_view_.pong_ring.push(std::move(resp))) { // TODO: handle backpressure
                 WK_WARN("[PARSER] pong_ring_ full, dropping.");
             }
             return true;
@@ -387,7 +390,7 @@ private:
         using namespace simdjson;
         kraken::status::Update resp;
         if (status::update::parse(root, resp)) {
-             if (!ctx_.status_ring->push(std::move(resp))) { // TODO: handle backpressure
+             if (!ctx_view_.status_ring.push(std::move(resp))) { // TODO: handle backpressure
                 WK_WARN("[PARSER] status_ring_ full, dropping.");
             }
             return true;

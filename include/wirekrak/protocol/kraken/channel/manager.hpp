@@ -12,8 +12,9 @@
 #include "wirekrak/core/symbol/intern.hpp"
 #include "lcr/log/logger.hpp"
 
-
 namespace wirekrak {
+namespace protocol {
+namespace kraken {
 namespace channel {
 
 /*
@@ -309,4 +310,6 @@ private:
 };
 
 } // namespace channel
+} // namespace kraken
+} // namespace protocol
 } // namespace wirekrak
