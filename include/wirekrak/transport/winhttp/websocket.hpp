@@ -68,19 +68,13 @@ public:
 
 public:
     explicit WebSocketImpl() noexcept {
-        hSession_ = WinHttpOpen(
-            L"Wirekrak/1.0",
-            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-            WINHTTP_NO_PROXY_NAME,
-            WINHTTP_NO_PROXY_BYPASS,
-            0
-        );
     }
 
     ~WebSocketImpl() {
         close();
         if (hSession_) {
             WinHttpCloseHandle(hSession_);
+            hSession_ = nullptr;
         }
     }
 
@@ -88,6 +82,13 @@ public:
     bool connect(const std::string& host,
                  const std::string& port,
                  const std::string& path) noexcept {
+        hSession_ = WinHttpOpen(
+            L"Wirekrak/1.0",
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+            WINHTTP_NO_PROXY_NAME,
+            WINHTTP_NO_PROXY_BYPASS,
+            0
+        );
         if (!hSession_) {
             WK_ERROR("[WS] WinHttpOpen failed");
             return false;
@@ -159,13 +160,13 @@ public:
     }
 
     void close() noexcept {
-        // Stop the receive loop (idempotent)
-        running_.store(false, std::memory_order_release);
         // Close the WebSocket (idempotent)
         if (hWebSocket_) {
             WK_DEBUG("[WS:API] Closing WebSocket ...");
             api_.websocket_close(hWebSocket_);
         }
+        // Stop the receive loop (idempotent)
+        running_.store(false, std::memory_order_release);
         // Signal close callback (idempotent)
         signal_close_();
         // Join receive thread
@@ -175,7 +176,7 @@ public:
         if (hWebSocket_) { WinHttpCloseHandle(hWebSocket_); hWebSocket_ = nullptr; }
         if (hRequest_)   { WinHttpCloseHandle(hRequest_);   hRequest_ = nullptr; }
         if (hConnect_)   { WinHttpCloseHandle(hConnect_);   hConnect_ = nullptr; }
-        if (hSession_)   { WinHttpCloseHandle(hSession_);   hSession_ = nullptr; }
+        //if (hSession_)   { WinHttpCloseHandle(hSession_);   hSession_ = nullptr; }
         WK_TRACE("[WS] WebSocket closed.");
     }
 
@@ -194,6 +195,7 @@ private:
     }
 #endif // WK_UNIT_TEST
         std::vector<char> buffer(WINHTTP_WEB_SOCKET_BUFFER_MAX_SIZE);
+        std::string message;
         // Receive internal loop
         while (running_.load(std::memory_order_acquire)) {
             DWORD bytes = 0;
@@ -222,6 +224,7 @@ private:
                 break;
             }
             // Handle message
+
             if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE) {
                 if (on_message_) {
                     on_message_(std::string(buffer.data(), bytes));

@@ -65,6 +65,18 @@ wirekrak/
 
 ➡️ **[Transport overview](docs/architecture/transport/Overview.md)**
 
+---
+
+### Threading Model <a name="threading-model"></a>
+
+Wirekrak currently uses a deliberate **2-thread architecture** optimized for
+low latency and correctness. A 3-thread model (dedicated parser thread) is
+planned but intentionally postponed until full benchmarking is completed.
+
+➡️ **[Read the full threading model rationale](docs/notes/ThreadingModel_2T_VS_3T.md)**
+
+---
+
 ### Low-latency Common Resources (`lcr`)
 
 WireKrak includes a small internal utility layer named **LCR** (Low-latency Common Resources).
@@ -309,9 +321,28 @@ ctest --preset test-debug -R LivenessTest
 
 ## Examples <a name="examples"></a>
 
-- [Trade subscription (single & multi-symbol)](./docs/examples/Trades.md)
+### Wirekrak Trades
 
-- [Book update subscription (single & multi-symbol)](./docs/examples/BookUpdates.md)
+This example demonstrates how to subscribe to Kraken trade events using WireKrak, supporting one or multiple symbols,
+optional snapshot mode, and clean shutdown via Ctrl+C:
+
+➡️ **[Trade subscription (single & multi-symbol)](./docs/examples/Trades.md)**
+
+### Wirekrak Book Updates
+
+This example demonstrates how to subscribe to Kraken order book updates using WireKrak, supporting one or multiple symbols, clean shutdown via Ctrl+C, and rejection handling.
+
+➡️ **[Book update subscription (single & multi-symbol)](./docs/examples/BookUpdates.md)**
+
+---
+
+## ⚠️ Notes on Platform Behaviors <a name="platform-notes"></a>
+
+➡️ **[WinHTTP WebSocket close delay on Windows](./docs/notes/WinhttpCloseDelay.md)**
+
+On Windows, WebSocket closure via WinHTTP/SChannel is asynchronous and may take
+~10 seconds to fully complete. This is expected OS behavior and does not affect
+Wirekrak’s reconnection logic.
 
 ---
 
@@ -325,13 +356,13 @@ WireKrak handles these cases explicitly to ensure reliable operation.
 Kraken sometimes sends lightweight pong heartbeat messages without success or result fields.
 These messages are valid and indicate a healthy connection.
 
-➡️ WireKrak accepts both documented and heartbeat-style pong responses.
+- WireKrak accepts both documented and heartbeat-style pong responses.
 
 ### Subscribe / Unsubscribe errors
 
 When a subscription request fails (e.g. duplicate subscription), Kraken returns an error-only response with success = false and no result object.
 
-➡️ WireKrak requires result only on successful responses and correctly parses error replies.
+- WireKrak requires result only on successful responses and correctly parses error replies.
 
 ---
 

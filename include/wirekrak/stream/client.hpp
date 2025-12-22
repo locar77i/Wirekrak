@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "wirekrak/transport/concepts.hpp"
+#include "wirekrak/stream/state.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -77,7 +78,7 @@ It is intentionally decoupled from any exchange schema or message format.
 
 template <transport::WebSocketConcept WS>
 class Client {
-    static constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(10);
+    static constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15);
     static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15);
 
 public:
@@ -108,18 +109,22 @@ public:
     // Connection lifecycle
     [[nodiscard]]
     inline bool connect(const std::string& url) noexcept {
-        last_url_ = url;
-        state_ = ConnState::Connecting;
-    
-        WK_INFO("Connecting to: " << url);
-        if (!parse_and_connect_(url)) {
-            state_ = ConnState::Disconnected;
-            WK_ERROR("Connection failed.");
+        if (get_state_() != State::Disconnected && get_state_() != State::WaitingReconnect) {
+            WK_WARN("[STREAM] connect() called while not disconnected  (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
-        state_ = ConnState::Connected;
+        last_url_ = url;
+        set_state_(State::Connecting);
+    
+        WK_INFO("[STREAM] Connecting to: " << url);
+        if (!parse_and_connect_(url)) {
+            set_state_(State::Disconnected);
+            WK_ERROR("[STREAM] Connection failed.");
+            return false;
+        }
+        set_state_(State::Connected);
         retry_attempts_ = 0;
-        WK_INFO("Connected successfully.");
+        WK_INFO("[STREAM] Connected successfully.");
         if (hooks_.on_connect_cb_) {
             hooks_.on_connect_cb_();
         }
@@ -133,7 +138,10 @@ public:
     // Sending
     [[nodiscard]]
     inline bool send(std::string_view text) noexcept {
-        // TODO: temporal implementation pseudocode
+        if (get_state_() != State::Connected) {
+            WK_WARN("[STREAM] send() called while not connected (state: " << to_string(get_state_()) << "). Ignoring.");
+            return false;
+        }
         if (ws_.send(std::string(text))) {
             last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
             return true;
@@ -143,17 +151,10 @@ public:
 
     // // Event loop
     inline void poll() noexcept {
-        auto now = std::chrono::steady_clock::now();
         // === Heartbeat liveness check ===
-        if (state_ == ConnState::Connected) {
-            auto last_msg = last_message_ts_.load(std::memory_order_relaxed);
-            bool message_stale   = (now - last_msg) > message_timeout_;
-            auto last_hb  = last_heartbeat_ts_.load(std::memory_order_relaxed);
-            bool heartbeat_stale = (now - last_hb) > heartbeat_timeout_;
-            // Conservative: only reconnect if BOTH are stale
-            if (message_stale && heartbeat_stale) {
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_hb);
-                WK_WARN("Heartbeat timeout (" << duration.count() << " ms). Forcing reconnect.");
+        if (get_state_() == State::Connected) {
+            if (is_liveness_stale_()) {
+                set_state_(State::Disconnecting);
                 if (hooks_.on_liveness_timeout_cb_) {
                     hooks_.on_liveness_timeout_cb_();
                 }
@@ -162,14 +163,19 @@ public:
             }
         }
         // === Reconnection logic ===
-        if (state_ == ConnState::WaitingReconnect && now >= next_retry_) {
-            WK_INFO("Attempting reconnection...");
-            if (reconnect_()) {
-                WK_INFO("Reconnected successfully");
-                state_ = ConnState::Connected;
-            } else {
+        auto now = std::chrono::steady_clock::now();
+        if (get_state_() == State::WaitingReconnect && now >= next_retry_) {
+            if (!reconnect_()) {
                 retry_attempts_++;
-                next_retry_ = now + backoff_(retry_attempts_);
+                auto ms = backoff_(retry_attempts_);
+                next_retry_ = now + ms;
+                // convert to seconds for logging
+                auto seconds = std::chrono::duration_cast<std::chrono::seconds>(ms);
+                if (seconds.count() == 1) {
+                    WK_INFO("[STREAM] Next reconnection attempt in 1 second.");
+                } else if (seconds.count() > 1) {
+                    WK_INFO("[STREAM] Next reconnection attempt in " << seconds.count() << " seconds.");
+                }
             }
         }
     }
@@ -272,18 +278,41 @@ private:
     Hooks hooks_;
     
 private:
-    enum class ConnState {
-        Disconnected,
-        Connecting,
-        Connected,
-        WaitingReconnect
-    };
-
-    ConnState state_ = ConnState::Disconnected;
-    std::chrono::steady_clock::time_point next_retry_;
-    int retry_attempts_ = 0;
+    State state_{State::Disconnected};
+    std::chrono::steady_clock::time_point next_retry_{};
+    int retry_attempts_{0};
 
 private:
+    // State accessor
+    inline State get_state_() const noexcept {
+        return state_;
+    }
+
+    // State mutator with logging
+    inline void set_state_(State new_state) noexcept {
+        WK_TRACE("[STREAM] State:  " << to_string(state_) << " -> " << to_string(new_state));
+        state_ = new_state;
+    }
+
+    [[nodiscard]]
+    inline bool is_liveness_stale_() noexcept {
+        auto now = std::chrono::steady_clock::now();
+        // last message liveness
+        auto last_msg = last_message_ts_.load(std::memory_order_relaxed);
+        bool message_stale   = (now - last_msg) > message_timeout_;
+        // last heartbeat liveness
+        auto last_hb  = last_heartbeat_ts_.load(std::memory_order_relaxed);
+        bool heartbeat_stale = (now - last_hb) > heartbeat_timeout_;
+/*
+        auto last_hb_duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_hb);
+        auto last_msg_duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_msg);
+        WK_TRACE("[STREAM] Liveness timeout exceeded (no heartbeat for " << last_hb_duration.count()
+                << " ms and no message for " << last_msg_duration.count() << " ms). Forcing reconnect.");
+*/
+        // Conservative: only true if BOTH are stale
+        return message_stale && heartbeat_stale;
+    }
+                
     // Placeholder for user-defined behavior on message receipt
     inline void on_message_received_(std::string_view msg) {
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
@@ -294,14 +323,14 @@ private:
 
     // Placeholder for user-defined behavior on transport closure
     inline void on_transport_closed_() {
-        WK_DEBUG("WebSocket closed.");
+        WK_DEBUG("[STREAM] WebSocket closed.");
         if (hooks_.on_disconnect_cb_) {
             hooks_.on_disconnect_cb_();
         }
-        if (state_ == ConnState::Connected) {
-            state_ = ConnState::WaitingReconnect;
-            retry_attempts_++;
-            next_retry_ = std::chrono::steady_clock::now() + backoff_(retry_attempts_);
+        if (get_state_() == State::Connected || get_state_() == State::Disconnecting) {
+            set_state_(State::WaitingReconnect);
+            retry_attempts_ = 1;
+            next_retry_ = std::chrono::steady_clock::now(); // immediate retry
         }
     }
 
@@ -357,20 +386,28 @@ private:
 
     [[nodiscard]]
     inline bool reconnect_() {
-        // 1) Close old WS
-        ws_.close();
-        // 2) Clear runtime state
-        state_ = ConnState::Connecting;
-        // 3) Attempt reconnection
-        WK_INFO("Reconnecting to: " << last_url_);
-        if (!parse_and_connect_(last_url_)) {
-            state_ = ConnState::Disconnected;
-            WK_ERROR("Reconnection failed.");
+        if (get_state_() != State::WaitingReconnect) {
+            WK_WARN("[STREAM] reconnect() called while not waiting to reconnect (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
-        state_ = ConnState::Connected;
+        WK_INFO("[STREAM] Attempting reconnection... (attempt " << (retry_attempts_) << ")");
+        // 1) Clear runtime state
+        set_state_(State::Connecting);
+        // 2) Attempt reconnection
+        WK_INFO("[STREAM] Reconnecting to: " << last_url_);
+        if (!parse_and_connect_(last_url_)) {
+            set_state_(State::WaitingReconnect);
+            WK_ERROR("[STREAM] Reconnection failed.");
+            return false;
+        }
+        // 3) Set new state
+        set_state_(State::Connected);
         retry_attempts_ = 0;
-        WK_INFO("Connection re-established with server '" << last_url_ << "'.");
+        auto now =  std::chrono::steady_clock::now();
+        last_message_ts_.store(now, std::memory_order_relaxed);
+        last_heartbeat_ts_.store(now, std::memory_order_relaxed);
+        WK_INFO("[STREAM] Connection re-established with server '" << last_url_ << "'.");
+        // 4) Invoke connect callback
         if (hooks_.on_connect_cb_) {
             hooks_.on_connect_cb_();
         }
@@ -378,11 +415,13 @@ private:
     }
 
     inline std::chrono::milliseconds backoff_(int attempt) {
-        using namespace std::chrono;
-        return std::min(
-            milliseconds(100 * (1 << attempt)),
-            milliseconds(5000)
-        );
+        constexpr std::chrono::milliseconds base{100};
+        constexpr std::chrono::milliseconds max{5000};
+        // Clamp exponent
+        attempt = std::min(attempt, 6); // 100 * 2^6 = 6400ms → capped
+        // Calculate delay
+        auto delay = base * (1 << attempt);
+        return std::min(delay, max);
     }
 };
 
