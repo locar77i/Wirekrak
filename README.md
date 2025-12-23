@@ -319,7 +319,7 @@ ctest --preset test-debug -R LivenessTest
 
 ---
 
-## Examples <a name="examples"></a>
+## ⚙️ Examples <a name="examples"></a>
 
 ### Wirekrak Trades
 
@@ -333,6 +333,22 @@ optional snapshot mode, and clean shutdown via Ctrl+C:
 This example demonstrates how to subscribe to Kraken order book updates using WireKrak, supporting one or multiple symbols, clean shutdown via Ctrl+C, and rejection handling.
 
 ➡️ **[Book update subscription (single & multi-symbol)](./docs/examples/BookUpdates.md)**
+
+---
+
+## 🧪 Experimental Integration Examples <a name="experimental-examples"></a>
+
+The examples/experimental/ directory contains opt-in experimental examples that explore advanced or external integrations built on top of Wirekrak.
+
+These examples are not compiled by default and are gated behind an explicit CMake option and preset to avoid impacting normal Debug/Release builds. They may depend on additional code, prototypes, or header-only projects that are intentionally kept outside the core library.
+
+### ⚡ FlashStrike Integration (Experimental)
+
+Experimental examples demonstrate integration with **FlashStrike**, a **high-performance Matching Engine System** built for **ultra-low latency trading**.  
+Optimized for HFT environments, it demonstrates **exchange-grade design principles** in a clean, efficient codebase.
+
+The examples highlight architectural interoperability between real-time market data ingestion and a production-grade matching engine design.
+Flashstrike is a header-only experimental integration used exclusively by opt-in examples and is not part of the core Wirekrak library.
 
 ---
 

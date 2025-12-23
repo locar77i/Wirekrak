@@ -151,7 +151,7 @@ public:
             WK_ERROR("[WS] send() called on unconnected WebSocket");
             return false;
         }
-        WK_DEBUG("[WS:API] Sending message ... (size " << msg.size() << ")");
+        WK_TRACE("[WS:API] Sending message ... (size " << msg.size() << ")");
         return api_.websocket_send(
                    hWebSocket_,
                    WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE,
@@ -162,7 +162,7 @@ public:
     inline void close() noexcept {
         // Close the WebSocket (idempotent)
         if (hWebSocket_) {
-            WK_DEBUG("[WS:API] Closing WebSocket ...");
+            WK_TRACE("[WS:API] Closing WebSocket ...");
             api_.websocket_close(hWebSocket_);
         }
         // Stop the receive loop (idempotent)
@@ -200,7 +200,7 @@ private:
         while (running_.load(std::memory_order_acquire)) {
             DWORD bytes = 0;
             WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
-            WK_DEBUG("[WS] Receiving message ...");
+            WK_TRACE("[WS:API] Receiving message ...");
             DWORD result = api_.websocket_receive(
                 hWebSocket_,
                 buffer.data(),

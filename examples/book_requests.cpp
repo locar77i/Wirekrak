@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     std::signal(SIGINT, on_signal);
 
-    std::cout << "=== WireKrak Trade Example ===\n"
+    std::cout << "=== WireKrak Book Example ===\n"
               << "Symbols  : ";
     for (const auto& s : symbols) { std::cout << s << " "; }
     std::cout << "\n"
