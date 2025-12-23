@@ -15,12 +15,12 @@ namespace kraken {
 namespace trade {
 
 struct SubscribeAck {
-    bool success = false;
+    bool success;
     Symbol symbol;
 
     lcr::optional<bool> snapshot;
-    std::vector<std::string> warnings;
 
+    std::vector<std::string> warnings;
     lcr::optional<std::string> error;
 
     lcr::optional<Timestamp> time_in;

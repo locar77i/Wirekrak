@@ -6,6 +6,7 @@
 #include <concepts>
 
 #include "wirekrak/transport/concepts.hpp"
+#include "lcr/log/logger.hpp"
 
 
 namespace wirekrak {
@@ -21,21 +22,31 @@ class MockWebSocket {
     ErrorCallback   on_error_cb_;
 
 public:
+    MockWebSocket() {
+        WK_DEBUG("[MockWebSocket] constructed");
+    }
+
+    ~MockWebSocket() {
+        WK_DEBUG("[MockWebSocket] destructed");
+    }
 
     // ---------------------------------------------------------------------
     // transport::WebSocket API
     // ---------------------------------------------------------------------
 
-    bool connect(const std::string&, const std::string&, const std::string&) {
+    inline bool connect(const std::string&, const std::string&, const std::string&) {
+        WK_DEBUG("[MockWebSocket] connect() called");
         connected_ = true;
         return true;
     }
 
-    bool send(const std::string&) {
+    inline bool send(const std::string&) {
+        WK_DEBUG("[MockWebSocket] send() called");
         return connected_;
     }
 
-    void close() {
+    inline void close() {
+        WK_DEBUG("[MockWebSocket] close() called");
         if (!connected_) return;
         connected_ = false;
         close_count_++;
@@ -44,15 +55,15 @@ public:
         }
     }
 
-    void set_message_callback(MessageCallback cb) {
+    inline void set_message_callback(MessageCallback cb) {
         on_message_cb_ = std::move(cb);
     }
 
-    void set_close_callback(CloseCallback cb) {
+    inline void set_close_callback(CloseCallback cb) {
         on_close_cb_ = std::move(cb);
     }
 
-    void set_error_callback(ErrorCallback cb) {
+    inline void set_error_callback(ErrorCallback cb) {
         on_error_cb_ = std::move(cb);
     }
 
@@ -60,13 +71,13 @@ public:
     // Test helpers
     // ---------------------------------------------------------------------
 
-    void emit_message(const std::string& msg) {
+    inline void emit_message(const std::string& msg) {
         if (on_message_cb_) {
             on_message_cb_(msg);
         }
     }
 
-    void emit_error(unsigned long code = 1) {
+    inline void emit_error(unsigned long code = 1) {
         error_count_++;
         if (on_error_cb_) {
             on_error_cb_(code);
@@ -74,24 +85,36 @@ public:
     }
 
     // Accessors
-    bool is_connected() const {
+    inline bool is_connected() const {
         return connected_;
     }
-    int close_count() const {
+    inline int close_count() const {
         return close_count_;
     }
-    int error_count() const {
+    inline int error_count() const {
         return error_count_;
     }
 
+    // mutators
+    static inline void reset() {
+        connected_   = false;
+        close_count_ = 0;
+        error_count_ = 0;
+    }
+
 private:
-    bool connected_   = false;
-    int  close_count_ = 0;
-    int  error_count_ = 0;
+    static bool connected_;
+    static int  close_count_;
+    static int  error_count_;
 
 };
 // Assert that MockWebSocket conforms to transport::WebSocketConcept concept
 static_assert(wirekrak::transport::WebSocketConcept<MockWebSocket>);
+
+// ininitialize static members
+bool MockWebSocket::connected_   = false;
+int  MockWebSocket::close_count_ = 0;
+int  MockWebSocket::error_count_ = 0;
 
 } // namespace transport
 } // namespace wirekrak

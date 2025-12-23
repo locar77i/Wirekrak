@@ -34,6 +34,7 @@ void advance_time_and_poll(Client& client, std::chrono::milliseconds delay) {
 
 void test_liveness_message_resets_timer() {
     std::cout << "[TEST] stream::Client liveness reset on message\n";
+    transport::MockWebSocket::reset();
 
     stream::Client<transport::MockWebSocket> client;
     client.set_liveness_timeout(50ms);
@@ -60,6 +61,7 @@ void test_liveness_message_resets_timer() {
 
 void test_liveness_timeout_triggers_close() {
     std::cout << "[TEST] stream::Client liveness timeout closes connection\n";
+    transport::MockWebSocket::reset();
 
     stream::Client<transport::MockWebSocket> client;
     client.set_liveness_timeout(30ms);
@@ -69,7 +71,7 @@ void test_liveness_timeout_triggers_close() {
     // No messages
     advance_time_and_poll(client, 40ms);
 
-    //TEST_CHECK(!client.ws().is_connected());  <-- Implement reconnection logic configurable by user (On/Off)
+    TEST_CHECK(client.ws().is_connected()); // It must be connected due to reconnection logic
     TEST_CHECK(client.ws().close_count() == 1);
 
     std::cout << "[TEST] OK\n";
@@ -77,6 +79,7 @@ void test_liveness_timeout_triggers_close() {
 
 void test_no_false_timeout_before_deadline() {
     std::cout << "[TEST] stream::Client no premature liveness timeout\n";
+    transport::MockWebSocket::reset();
 
     stream::Client<transport::MockWebSocket> client;
     client.set_liveness_timeout(100ms);
@@ -92,11 +95,13 @@ void test_no_false_timeout_before_deadline() {
 
 void test_error_does_not_reset_liveness() {
     std::cout << "[TEST] stream::Client error does not reset liveness\n";
+    transport::MockWebSocket::reset();
 
     stream::Client<transport::MockWebSocket> client;
     client.set_liveness_timeout(40ms);
 
     TEST_CHECK(client.connect("wss://example.com/ws"));
+
 
     // Emit error only
     client.ws().emit_error();
@@ -104,7 +109,7 @@ void test_error_does_not_reset_liveness() {
 
     advance_time_and_poll(client, 50ms);
 
-    //TEST_CHECK(!client.ws().is_connected()); <-- Implement reconnection logic configurable by user (On/Off)
+    TEST_CHECK(client.ws().is_connected()); // It must be connected due to reconnection logic
     TEST_CHECK(client.ws().close_count() == 1);
 
     std::cout << "[TEST] OK\n";
@@ -112,6 +117,7 @@ void test_error_does_not_reset_liveness() {
 
 void test_heartbeat_keeps_connection_alive() {
     std::cout << "[TEST] stream::Client heartbeat-only traffic\n";
+    transport::MockWebSocket::reset();
 
     stream::Client<transport::MockWebSocket> client;
     client.set_liveness_timeout(40ms);

@@ -147,6 +147,7 @@ public:
         for (const auto& symbol : req.symbols) {
             dispatcher_.add_handler<ResponseT>(symbol, cb_copy);
         }
+        // TODO: Handle duplicate symbol subscriptions to avoid kraken rejections
         subscribe_with_ack_(req, cb_copy);
     }
 
@@ -219,7 +220,7 @@ public:
         // PROCESS BOOK UPDATES
         // ===============================================================================
         { // === Process book ring ===
-        book::Update resp;
+        book::Response resp;
         while (ctx_.book_ring.pop(resp)) {
             dispatcher_.dispatch(resp);
         }}
@@ -337,6 +338,7 @@ private:
 
     inline void handle_rejection_(const rejection::Notice& notice) noexcept {
         if (hooks_.handle_rejection) {
+            WK_WARN("[!!] TODO: Rejection internal management (f. ex. drop invalid symbols, ...)");
             hooks_.handle_rejection(notice);
         }
     }
@@ -389,6 +391,7 @@ private:
     // Perform subscription with ACK handling
     template<class RequestT, class Callback>
     inline void subscribe_with_ack_(RequestT req, Callback&& cb) {
+        WK_DEBUG("subscribe_with_ack_() called: " << req.to_json());
         using ResponseT = typename channel_traits<RequestT>::response_type;
         using StoredCallback = std::function<void(const ResponseT&)>;
         // 1) Assign req_id if missing
@@ -414,6 +417,7 @@ private:
     // Perform unsubscription with ACK handling
     template<class RequestT>
     inline void unsubscribe_with_ack_(RequestT req) {
+        WK_DEBUG("unsubscribe_with_ack_() called: " << req.to_json());
         // 1) Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();

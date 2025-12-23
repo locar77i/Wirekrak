@@ -55,6 +55,7 @@ static_assert(channel_of_v<trade::UnsubscribeAck>   == Channel::Trade);
 // ---- Book ----
 static_assert(channel_of_v<book::Subscribe>         == Channel::Book);
 static_assert(channel_of_v<book::Unsubscribe>       == Channel::Book);
+static_assert(channel_of_v<book::Response>          == Channel::Book);
 static_assert(channel_of_v<book::Snapshot>          == Channel::Book);
 static_assert(channel_of_v<book::Update>            == Channel::Book);
 static_assert(channel_of_v<book::SubscribeAck>      == Channel::Book);
@@ -72,6 +73,7 @@ static_assert(channel_name_of_v<trade::Trade>          == "trade");
 // ---- Book ----
 static_assert(channel_name_of_v<book::Subscribe>       == "book");
 static_assert(channel_name_of_v<book::Unsubscribe>     == "book");
+static_assert(channel_name_of_v<book::Response>        == "book");
 static_assert(channel_name_of_v<book::Snapshot>        == "book");
 static_assert(channel_name_of_v<book::Update>          == "book");
 
@@ -96,13 +98,13 @@ static_assert(std::is_same_v<
 static_assert(channel_traits<book::Subscribe>::channel == Channel::Book);
 static_assert(std::is_same_v<
     channel_traits<book::Subscribe>::response_type,
-    book::Update
+    book::Response
 >);
 
 static_assert(channel_traits<book::Unsubscribe>::channel == Channel::Book);
 static_assert(std::is_same_v<
     channel_traits<book::Unsubscribe>::response_type,
-    book::Update
+    book::Response
 >);
 
 // ============================================================================
@@ -115,6 +117,7 @@ static_assert(!has_channel_traits<trade::SubscribeAck>::value);
 static_assert(!has_channel_traits<trade::UnsubscribeAck>::value);
 
 // ---- Book ----
+static_assert(!has_channel_traits<book::Response>::value);
 static_assert(!has_channel_traits<book::Snapshot>::value);
 static_assert(!has_channel_traits<book::Update>::value);
 static_assert(!has_channel_traits<book::SubscribeAck>::value);

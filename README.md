@@ -354,32 +354,19 @@ When a subscription request fails (e.g. duplicate subscription), Kraken returns 
 
 - WireKrak requires result only on successful responses and correctly parses error replies.
 
----
+### Book snapshot vs updates
 
-## 🧠 Why This Matters
+The Kraken book channel delivers a full snapshot followed by incremental updates within the same subscription. Snapshot messages may include undocumented but stable fields (e.g. timestamp), which are treated as metadata and ignored for book logic.
 
-Traditional WebSocket examples focus on connectivity.
-
-WireKrak focuses on:
-- **Correctness under failure**
-- **Recoverability**
-- **Deterministic behavior**
-- **Production trading constraints**
-
-This makes it suitable for:
-- Algo trading systems
-- Market data pipelines
-- Trading dashboards
-- Simulation & research environments
+- WireKrak tolerates extra fields for forward compatibility.
 
 ---
 
-## 🏁 Hackathon Highlights
+## ✨ Acknowledgements
 
-- Schema-driven protocol layer
-- WAL-backed market data ingestion
-- Deterministic replay for backtesting
-- Production-inspired SDK design
+Built with caffeine, curiosity, and a little help from ChatGPT.
+
+ChatGPT was a great brainstorming partner throughout the hackathon, helping explore ideas, refine approaches, and keep the project moving forward.
 
 ---
 

@@ -16,8 +16,7 @@
 #include "wirekrak/protocol/kraken/parser/trade/response.hpp"
 #include "wirekrak/protocol/kraken/parser/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/parser/book/subscribe_ack.hpp"
-#include "wirekrak/protocol/kraken/parser/book/snapshot.hpp"
-#include "wirekrak/protocol/kraken/parser/book/update.hpp"
+#include "wirekrak/protocol/kraken/parser/book/response.hpp"
 #include "wirekrak/protocol/kraken/parser/book/unsubscribe_ack.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
@@ -225,7 +224,7 @@ private:
                 kraken::trade::SubscribeAck resp;
                 if (trade::subscribe_ack::parse(root, resp)) {
                     if (!ctx_view_.trade_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] trade_subscribe_ring_ full, dropping.");
+                        WK_WARN("[PARSER] trade subscribe ring full, dropping.");
                     }
                     return true;
                 }
@@ -235,7 +234,7 @@ private:
                 kraken::book::SubscribeAck resp;
                 if (book::subscribe_ack::parse(root, resp)) {
                     if (!ctx_view_.book_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] book_subscribe_ring_ full, dropping.");
+                        WK_WARN("[PARSER] book subscribe ring full, dropping.");
                     }
                     return true;
                 }
@@ -245,7 +244,7 @@ private:
                 kraken::rejection::Notice resp;
                 if (rejection_notice::parse(root, resp)) {
                     if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] rejection_ring_ full, dropping.");
+                        WK_WARN("[PARSER] rejection ring full, dropping.");
                     }
                     return true;
                 }
@@ -262,7 +261,7 @@ private:
                 kraken::trade::UnsubscribeAck resp;
                 if (trade::unsubscribe_ack::parse(root, resp)) {
                     if (!ctx_view_.trade_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] trade_unsubscribe_ring_ full, dropping.");
+                        WK_WARN("[PARSER] trade unsubscribe ring full, dropping.");
                     }
                     return true;
                 }
@@ -271,7 +270,7 @@ private:
                 kraken::book::UnsubscribeAck resp;
                 if (book::unsubscribe_ack::parse(root, resp)) {
                     if (!ctx_view_.book_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] book_unsubscribe_ring_ full, dropping.");
+                        WK_WARN("[PARSER] book unsubscribe ring full, dropping.");
                     }
                     return true;
                 }
@@ -320,10 +319,10 @@ private:
     // TRADE PARSER
     [[nodiscard]] inline bool parse_trade_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
-         kraken::trade::Response response;
+        kraken::trade::Response response;
         if (trade::response::parse(root, response)) {
             if (!ctx_view_.trade_ring.push(std::move(response))) { // TODO: handle backpressure
-                WK_WARN("[PARSER] trade_ring_ full, dropping.");
+                WK_WARN("[PARSER] trade ring full, dropping.");
             }
             return true;
         }
@@ -341,35 +340,13 @@ private:
     // BOOK PARSER
     [[nodiscard]] inline bool parse_book_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
-        // type field
-        auto type = root["type"].get_string();
-        if (type.error()) {
-            WK_WARN("[PARSER] book message missing type -> ignore");
-            return false;
+         kraken::book::Response response;
+        if (book::response::parse(root, response)) {
+            if (!ctx_view_.book_ring.push(std::move(response))) { // TODO: handle backpressure
+                WK_WARN("[PARSER] book ring full, dropping.");
+            }
+            return true;
         }
-        // route based on type
-        switch (to_payload_type_enum_fast(type.value())) {
-            case PayloadType::Snapshot: {
-                kraken::book::Snapshot snapshot;
-                if (book::snapshot::parse(root, snapshot)) {
-                    // push snapshot (ring / callback / reducer)
-                    return true;
-                }
-            } break;
-            case PayloadType::Update: {
-                kraken::book::Update update;
-                if (book::update::parse(root, update)) {
-                    if (!ctx_view_.book_ring.push(std::move(update))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] book_ring_ full, dropping.");
-                    }
-                    return true;
-                }
-            } break;
-            default:
-                WK_WARN("[PARSER] Unknown book type -> ignore");
-                break;
-        }
-
         return false;
     }
 
@@ -379,7 +356,7 @@ private:
         kraken::system::Pong resp;
         if (system::pong::parse(root, resp)) {
             if (!ctx_view_.pong_ring.push(std::move(resp))) { // TODO: handle backpressure
-                WK_WARN("[PARSER] pong_ring_ full, dropping.");
+                WK_WARN("[PARSER] pong ring full, dropping.");
             }
             return true;
         }
@@ -391,7 +368,7 @@ private:
         kraken::status::Update resp;
         if (status::update::parse(root, resp)) {
              if (!ctx_view_.status_ring.push(std::move(resp))) { // TODO: handle backpressure
-                WK_WARN("[PARSER] status_ring_ full, dropping.");
+                WK_WARN("[PARSER] status ring full, dropping.");
             }
             return true;
         }

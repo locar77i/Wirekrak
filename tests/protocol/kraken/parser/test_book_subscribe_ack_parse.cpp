@@ -67,7 +67,8 @@ void test_book_subscribe_ack_success() {
     // Required fields
     assert(ack.symbol == "BTC/USD");
     assert(ack.depth == 25);
-    assert(ack.snapshot == true);
+    assert(ack.snapshot.has());
+    assert(ack.snapshot.value() == true);
     assert(ack.success == true);
 
     // Optional fields

@@ -28,7 +28,7 @@ public:
     // Dispatch a message to the correct symbol listeners
     template<class ResponseT>
     inline void dispatch(const ResponseT& msg) {
-        SymbolId sid = intern_symbol(msg.symbol);
+        SymbolId sid = intern_symbol(msg.get_symbol());
         auto& table = handler_table_for_<ResponseT>();
         auto it = table.find(sid);
         if (it == table.end()) {
@@ -54,7 +54,7 @@ public:
 
 private:
     std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::trade::Trade>>> trade_handlers_;
-    std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::book::Update>>> book_handlers_;
+    std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::book::Response>>> book_handlers_;
 
 private:
     // Helpers to get the correct handler table for a response type

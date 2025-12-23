@@ -17,13 +17,15 @@ namespace book {
 // BOOK SUBSCRIBE ACK RESPONSE
 // ===============================================
 struct SubscribeAck {
-    Symbol symbol;
-    std::uint32_t depth;
-    bool snapshot;
     bool success;
+    Symbol symbol;
 
-    lcr::optional<std::string> error;
+    lcr::optional<bool> snapshot;
+
+    std::uint32_t depth;
+
     std::vector<std::string> warnings;
+    lcr::optional<std::string> error;
 
     lcr::optional<Timestamp> time_in;
     lcr::optional<Timestamp> time_out;

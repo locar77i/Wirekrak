@@ -34,6 +34,8 @@ int main(int argc, char** argv) {
 
     std::vector<std::string> symbols = {"BTC/USD"};
     std::string url                  = "wss://ws.kraken.com/v2";
+    std::uint32_t depth              = 10;
+    bool snapshot                    = false;
     bool double_sub                  = false;
     std::string log_level            = "info";
 
@@ -57,8 +59,31 @@ int main(int argc, char** argv) {
         "Trading symbol validator"
     );
 
+    auto depth_validator = CLI::Validator(
+        [](std::string& value) -> std::string {
+            try {
+                auto depth = std::stoul(value);
+                switch (depth) {
+                    case 10:
+                    case 25:
+                    case 100:
+                    case 500:
+                    case 1000:
+                        return {}; // valid
+                    default:
+                        return "Depth must be one of: 10, 25, 100, 500, 1000";
+                }
+            } catch (...) {
+                return "Depth must be a valid integer";
+            }
+        },
+        "Order book depth validator"
+    );
+
     app.add_option("--url", url, "Kraken WebSocket URL")->check(ws_url_validator)->default_val(url);
     app.add_option("-s,--symbol", symbols, "Trading symbol(s), repeatable (e.g. -s BTC/USD -s ETH/USD)")->check(symbol_validator)->default_val(symbols);
+    app.add_option("-d,--depth", depth, "Order book depth (10, 25, 100, 500, 1000)")->check(depth_validator)->default_val(depth);
+    app.add_flag("--snapshot", snapshot, "Request book snapshot");
     app.add_flag("--double-sub", double_sub, "Subscribe twice to demonstrate rejection handling");
     app.add_option("-l, --log-level", log_level, "Log level: trace | debug | info | warn | error")->default_val(log_level);
     app.footer(
@@ -87,6 +112,8 @@ int main(int argc, char** argv) {
               << "Symbols  : ";
     for (const auto& s : symbols) { std::cout << s << " "; }
     std::cout << "\n"
+              << "Depth    : " << depth << "\n"
+              << "Snapshot : " << (snapshot ? "true" : "false") << "\n"
               << "URL      : " << url << "\n"
               << "Press Ctrl+C to exit\n\n";
 
@@ -116,16 +143,16 @@ int main(int argc, char** argv) {
     }
 
     // Subscribe to BTC/USD book updates
-    client.subscribe(book::Subscribe{.symbols = symbols},
-                     [](const book::Update& msg) {
+    client.subscribe(book::Subscribe{.symbols = symbols, .depth = depth, .snapshot = snapshot},
+                     [](const book::Response& msg) {
                         std::cout << " -> " << msg << std::endl;
                      }
     );
 
     if (double_sub) {
         // Subscribe again to demonstrate rejection handling
-        client.subscribe(book::Subscribe{.symbols = symbols},
-                     [](const book::Update& msg) {
+        client.subscribe(book::Subscribe{.symbols = symbols, .depth = depth, .snapshot = snapshot},
+                     [](const book::Response& msg) {
                         std::cout << " -> " << msg << std::endl;
                      }
         );
@@ -138,9 +165,9 @@ int main(int argc, char** argv) {
     }
 
     // Ctrl+C received
-    client.unsubscribe(book::Unsubscribe{.symbols = symbols});
+    client.unsubscribe(book::Unsubscribe{.symbols = symbols, .depth = depth});
     if (double_sub) {
-        client.unsubscribe(book::Unsubscribe{.symbols = symbols});
+        client.unsubscribe(book::Unsubscribe{.symbols = symbols, .depth = depth});
     }
 
     // Drain events

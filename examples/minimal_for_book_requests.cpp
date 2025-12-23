@@ -27,7 +27,7 @@ int main() {
 
     int messages_received = 0;   // 2) Subscribe to BTC/EUR book updates
     client.subscribe(protocol::kraken::book::Subscribe{.symbols = {"BTC/EUR"}},
-                     [&](const protocol::kraken::book::Update& msg) {
+                     [&](const protocol::kraken::book::Response& msg) {
                             std::cout << " -> " << msg << std::endl;
                             ++messages_received;
                      }

@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    // Subscribe to BTC/USD trades with snapshot enabled
+    // Subscribe to BTC/USD trades
     client.subscribe(trade::Subscribe{.symbols = symbols, .snapshot = snapshot},
                      [](const trade::Trade& msg) {
                         std::cout << " -> " << msg << std::endl;

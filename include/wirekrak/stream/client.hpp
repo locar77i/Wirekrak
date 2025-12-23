@@ -241,13 +241,12 @@ public:
     }
 
     WS& ws() {
-        return old_ws_;
+        return *ws_;
     }
 #endif // WK_UNIT_TEST
 
 private:
     std::string last_url_;
-    WS old_ws_;
     std::unique_ptr<WS> ws_;
 
     // The kraken heartbeats count is used as deterministic liveness signal that drives reconnection.

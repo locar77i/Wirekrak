@@ -9,6 +9,7 @@
 #include "wirekrak/protocol/kraken/schema/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/schema/book/subscribe.hpp"
 #include "wirekrak/protocol/kraken/schema/book/unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/book/response.hpp"
 #include "wirekrak/protocol/kraken/schema/book/snapshot.hpp"
 #include "wirekrak/protocol/kraken/schema/book/update.hpp"
 #include "wirekrak/protocol/kraken/schema/book/subscribe_ack.hpp"
@@ -80,12 +81,17 @@ struct channel_of<book::Unsubscribe> {
 };
 
 template<>
-struct channel_of<book::Snapshot> {
+struct channel_of<book::Response> {
     static constexpr Channel value = Channel::Book;
 };
 
 template<>
-struct channel_of<book::Update> {
+struct channel_of<book::Snapshot> {  // Deprecated, kept for completeness
+    static constexpr Channel value = Channel::Book;
+};
+
+template<>
+struct channel_of<book::Update> {  // Deprecated, kept for completeness
     static constexpr Channel value = Channel::Book;
 };
 
@@ -131,19 +137,19 @@ struct channel_traits<trade::Unsubscribe> {
 
 
 // ---------------------------------------------------------------------------
-// BOOK: Subscribe → Update
+// BOOK: Subscribe → Response
 // ---------------------------------------------------------------------------
 
 template<>
 struct channel_traits<book::Subscribe> {
     static constexpr Channel channel = Channel::Book;
-    using response_type = book::Update;
+    using response_type = book::Response;
 };
 
 template<>
 struct channel_traits<book::Unsubscribe> {
     static constexpr Channel channel = Channel::Book;
-    using response_type = book::Update;
+    using response_type = book::Response;
 };
 
 } // namespace kraken

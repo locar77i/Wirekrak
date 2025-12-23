@@ -27,6 +27,11 @@ struct Trade {
     Timestamp     timestamp;
     lcr::optional<OrderType> ord_type;
 
+    [[nodiscard]]
+    inline Symbol get_symbol() const noexcept{
+        return symbol;
+    }
+
     // ---------------------------------------------------------
     // Dump (no allocations)
     // ---------------------------------------------------------

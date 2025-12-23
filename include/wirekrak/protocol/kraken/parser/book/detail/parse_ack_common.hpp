@@ -77,9 +77,9 @@ inline bool parse_ack_common(const simdjson::dom::element& root, std::string_vie
 
         // snapshot (subscribe-only)
         if constexpr (requires { out.snapshot; }) {
-            r = helper::parse_bool_required(result, "snapshot", out.snapshot);
+            r = helper::parse_bool_optional(result, "snapshot", out.snapshot);
             if (r != parser::Result::Ok) {
-                WK_DEBUG("[PARSER] Field 'snapshot' missing in " << expected_method << " ACK -> ignore message.");
+                WK_DEBUG("[PARSER] Field 'snapshot' invalid in " << expected_method << " ACK -> ignore message.");
                 return false;
             }
         }

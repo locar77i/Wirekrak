@@ -13,22 +13,22 @@ target_link_libraries(winhttp_book_snapshot_subscription PRIVATE wirekrak)
 add_executable(wirekrak_ping_pong ping_pong.cpp)
 target_link_libraries(wirekrak_ping_pong PRIVATE wirekrak)
 
-add_executable(wirekrak_trades trades.cpp)
-target_link_libraries(wirekrak_trades
+add_executable(wirekrak_trade_requests trade_requests.cpp)
+target_link_libraries(wirekrak_trade_requests
     PRIVATE
         wirekrak
         CLI11::CLI11
 )
 
-add_executable(wirekrak_book_updates book_updates.cpp)
-target_link_libraries(wirekrak_book_updates
+add_executable(wirekrak_book_requests book_requests.cpp)
+target_link_libraries(wirekrak_book_requests
     PRIVATE
         wirekrak
         CLI11::CLI11
 )
 
-add_executable(wirekrak_minimal_for_trades minimal_for_trades.cpp)
-target_link_libraries(wirekrak_minimal_for_trades PRIVATE wirekrak)
+add_executable(wirekrak_minimal_for_trade_requests minimal_for_trade_requests.cpp)
+target_link_libraries(wirekrak_minimal_for_trade_requests PRIVATE wirekrak)
 
-add_executable(wirekrak_minimal_for_book_updates minimal_for_book_updates.cpp)
-target_link_libraries(wirekrak_minimal_for_book_updates PRIVATE wirekrak)
+add_executable(wirekrak_minimal_for_book_requests minimal_for_book_requests.cpp)
+target_link_libraries(wirekrak_minimal_for_book_requests PRIVATE wirekrak)

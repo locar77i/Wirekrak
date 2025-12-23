@@ -25,6 +25,7 @@ using namespace wirekrak::transport;
 // -----------------------------------------------------------------------------
 void test_connect() {
     std::cout << "[TEST] stream::Client connect\n";
+    transport::MockWebSocket::reset();
 
     Client<MockWebSocket> client;
 
@@ -42,6 +43,7 @@ void test_connect() {
 // -----------------------------------------------------------------------------
 void test_message_dispatch() {
     std::cout << "[TEST] stream::Client message dispatch\n";
+    transport::MockWebSocket::reset();
 
     Client<MockWebSocket> client;
     (void)client.connect("wss://example.com/ws");
@@ -62,6 +64,7 @@ void test_message_dispatch() {
 // -----------------------------------------------------------------------------
 void test_send() {
     std::cout << "[TEST] stream::Client send\n";
+    transport::MockWebSocket::reset();
 
     Client<MockWebSocket> client;
     (void)client.connect("wss://example.com/ws");
@@ -76,6 +79,7 @@ void test_send() {
 // -----------------------------------------------------------------------------
 void test_close() {
     std::cout << "[TEST] stream::Client close\n";
+    transport::MockWebSocket::reset();
 
     Client<MockWebSocket> client;
 
@@ -96,6 +100,7 @@ void test_close() {
 // -----------------------------------------------------------------------------
 void test_reconnect_on_close() {
     std::cout << "[TEST] stream::Client reconnect on transport close\n";
+    transport::MockWebSocket::reset();
 
     Client<MockWebSocket> client;
 
@@ -128,6 +133,7 @@ void test_reconnect_on_close() {
 // -----------------------------------------------------------------------------
 void test_liveness_hook() {
     std::cout << "[TEST] stream::Client liveness hook\n";
+    transport::MockWebSocket::reset();
 
     using clock = std::chrono::steady_clock;
 
