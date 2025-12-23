@@ -96,6 +96,7 @@ public:
     }
 
     ~Client() {
+        close();
     }
 
     // Connection lifecycle
@@ -129,7 +130,9 @@ public:
         return true;
     }
 
+    // Manual disconnect (happy path)
     inline void close() noexcept {
+        set_state_(State::Disconnecting);
         ws_->close();
     }
 
@@ -153,7 +156,7 @@ public:
         if (get_state_() == State::Connected) {
             if (is_liveness_stale_()) {
                 WK_TRACE("[STREAM] Liveness timeout exceeded. Forcing reconnect.");
-                set_state_(State::Disconnecting);
+                set_state_(State::ForcedDisconnection);
                 if (hooks_.on_liveness_timeout_cb_) {
                     hooks_.on_liveness_timeout_cb_();
                 }
@@ -333,10 +336,13 @@ private:
         if (hooks_.on_disconnect_cb_) {
             hooks_.on_disconnect_cb_();
         }
-        if (get_state_() == State::Connected || get_state_() == State::Disconnecting) {
+        if (get_state_() == State::Connected || get_state_() == State::ForcedDisconnection) {
             set_state_(State::WaitingReconnect);
             retry_attempts_ = 1;
             next_retry_ = std::chrono::steady_clock::now(); // immediate retry
+        }
+        else {
+            set_state_(State::Disconnected);
         }
     }
 

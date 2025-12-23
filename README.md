@@ -336,16 +336,6 @@ This example demonstrates how to subscribe to Kraken order book updates using Wi
 
 ---
 
-## ⚠️ Notes on Platform Behaviors <a name="platform-notes"></a>
-
-➡️ **[WinHTTP WebSocket close delay on Windows](./docs/notes/WinhttpCloseDelay.md)**
-
-On Windows, WebSocket closure via WinHTTP/SChannel is asynchronous and may take
-~10 seconds to fully complete. This is expected OS behavior and does not affect
-Wirekrak’s reconnection logic.
-
----
-
 ## ⚠️ Notes on Kraken WebSocket Behavior
 
 While testing against the live Kraken WebSocket API, a few minor differences between the documentation and actual behavior were observed.
