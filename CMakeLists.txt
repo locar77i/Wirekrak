@@ -60,3 +60,12 @@ if (WIREKRAK_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+
+# ------------------------------------------------------------------
+# Experimental wirekrak builds
+# ----------------------------
+# Experimental integrations are gated behind an explicit CMake 
+# option and preset to avoid impacting normal Debug/Release builds.
+# ------------------------------------------------------------------
+option(WIREKRAK_EXPERIMENTAL_BUILD "Build experimental / external integration examples" OFF)

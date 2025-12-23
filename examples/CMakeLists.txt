@@ -32,3 +32,9 @@ target_link_libraries(wirekrak_minimal_for_trade_requests PRIVATE wirekrak)
 
 add_executable(wirekrak_minimal_for_book_requests minimal_for_book_requests.cpp)
 target_link_libraries(wirekrak_minimal_for_book_requests PRIVATE wirekrak)
+
+
+# -------------------------------------------------------------
+# Experimental examples
+# -------------------------------------------------------------
+add_subdirectory(experimental)

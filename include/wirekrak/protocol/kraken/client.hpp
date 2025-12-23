@@ -159,7 +159,22 @@ public:
         unsubscribe_with_ack_(req);
     }
 
-    // Poll for incoming messages and events
+    // -----------------------------------------------------------------------------
+    // NOTE (Hackathon scope)
+    // -----------------------------------------------------------------------------
+    // The current poll() implementation explicitly drains each ring buffer in-line.
+    // While functionally correct, this results in repetitive boilerplate and mixes
+    // event-loop orchestration with message-specific handling.
+    //
+    // A future refactor should introduce a generic ring-draining helper and/or
+    // group ring processing by domain (system, trade, book, etc.) to improve
+    // readability, extensibility, and maintainability.
+    //
+    // This refactor was intentionally deferred to prioritize correctness,
+    // stability, and timely hackathon submission.
+    // -----------------------------------------------------------------------
+
+    // TODO: Refactor poll method for incoming messages and events
     inline void poll() {
         // === Heartbeat liveness & reconnection logic ===
         stream_.poll();
@@ -202,9 +217,10 @@ public:
         while (ctx_.trade_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
-                return;
             }
-            trade_channel_manager_.process_subscribe_ack(Channel::Trade, ack.req_id.value(), ack.symbol, ack.success);
+            else {
+                trade_channel_manager_.process_subscribe_ack(Channel::Trade, ack.req_id.value(), ack.symbol, ack.success);
+            }
         }}
         { // === Process trade unsubscribe ring ===
         trade::UnsubscribeAck ack;
@@ -212,9 +228,10 @@ public:
             dispatcher_.remove_symbol_handlers<trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
-                return;
             }
-            trade_channel_manager_.process_unsubscribe_ack(Channel::Trade, ack.req_id.value(), ack.symbol, ack.success);
+            else {
+                trade_channel_manager_.process_unsubscribe_ack(Channel::Trade, ack.req_id.value(), ack.symbol, ack.success);
+            }
         }}
         // ===============================================================================
         // PROCESS BOOK UPDATES
@@ -229,9 +246,10 @@ public:
         while (ctx_.book_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
-                return;
             }
-            book_channel_manager_.process_subscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
+            else {
+                book_channel_manager_.process_subscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
+            }
         }}
         { // === Process book unsubscribe ring ===
         book::UnsubscribeAck ack;
@@ -239,9 +257,10 @@ public:
             dispatcher_.remove_symbol_handlers<book::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
-                return;
             }
-            book_channel_manager_.process_unsubscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
+            else {
+                book_channel_manager_.process_unsubscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
+            }
         }}
     }
 
