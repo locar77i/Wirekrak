@@ -5,6 +5,7 @@
 #include <functional>
 #include <atomic>
 #include <chrono>
+#include <memory>
 
 #include "wirekrak/transport/concepts.hpp"
 #include "wirekrak/stream/state.hpp"
@@ -92,18 +93,9 @@ public:
         : heartbeat_timeout_(heartbeat_timeout)
         ,  message_timeout_(message_timeout)
     {
-        last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        ws_.set_message_callback([this](const std::string& msg){
-            on_message_received_(msg);
-        });
-        ws_.set_close_callback([this]() {
-            on_transport_closed_();
-        });
     }
 
     ~Client() {
-        ws_.close();
     }
 
     // Connection lifecycle
@@ -114,14 +106,20 @@ public:
             return false;
         }
         last_url_ = url;
+        // 1) Clear runtime state
         set_state_(State::Connecting);
-    
+        last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+        last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+        // 2) Create a fresh transport instance
+        create_transport_();
+        // 3) Attempt reconnection
         WK_INFO("[STREAM] Connecting to: " << url);
         if (!parse_and_connect_(url)) {
             set_state_(State::Disconnected);
             WK_ERROR("[STREAM] Connection failed.");
             return false;
         }
+        // 4) Update state
         set_state_(State::Connected);
         retry_attempts_ = 0;
         WK_INFO("[STREAM] Connected successfully.");
@@ -132,7 +130,7 @@ public:
     }
 
     inline void close() noexcept {
-        ws_.close();
+        ws_->close();
     }
 
     // Sending
@@ -142,7 +140,7 @@ public:
             WK_WARN("[STREAM] send() called while not connected (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
-        if (ws_.send(std::string(text))) {
+        if (ws_->send(std::string(text))) {
             last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
             return true;
         }
@@ -154,12 +152,13 @@ public:
         // === Heartbeat liveness check ===
         if (get_state_() == State::Connected) {
             if (is_liveness_stale_()) {
+                WK_TRACE("[STREAM] Liveness timeout exceeded. Forcing reconnect.");
                 set_state_(State::Disconnecting);
                 if (hooks_.on_liveness_timeout_cb_) {
                     hooks_.on_liveness_timeout_cb_();
                 }
                 // Force transport failure → triggers reconnection
-                ws_.close();
+                ws_->close();
             }
         }
         // === Reconnection logic ===
@@ -239,13 +238,14 @@ public:
     }
 
     WS& ws() {
-        return ws_;
+        return old_ws_;
     }
 #endif // WK_UNIT_TEST
 
 private:
     std::string last_url_;
-    WS ws_;
+    WS old_ws_;
+    std::unique_ptr<WS> ws_;
 
     // The kraken heartbeats count is used as deterministic liveness signal that drives reconnection.
     // If no heartbeat is received for N seconds:
@@ -277,7 +277,7 @@ private:
     // Handlers bundle
     Hooks hooks_;
     
-private:
+    // State machine 
     State state_{State::Disconnected};
     std::chrono::steady_clock::time_point next_retry_{};
     int retry_attempts_{0};
@@ -303,16 +303,22 @@ private:
         // last heartbeat liveness
         auto last_hb  = last_heartbeat_ts_.load(std::memory_order_relaxed);
         bool heartbeat_stale = (now - last_hb) > heartbeat_timeout_;
-/*
-        auto last_hb_duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_hb);
-        auto last_msg_duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_msg);
-        WK_TRACE("[STREAM] Liveness timeout exceeded (no heartbeat for " << last_hb_duration.count()
-                << " ms and no message for " << last_msg_duration.count() << " ms). Forcing reconnect.");
-*/
         // Conservative: only true if BOTH are stale
         return message_stale && heartbeat_stale;
     }
-                
+
+    void create_transport_() {
+        // Initialize transport
+        ws_ = std::make_unique<WS>();
+        // Set callbacks
+        ws_->set_message_callback([this](const std::string& msg) {
+            on_message_received_(msg);
+        });
+        ws_->set_close_callback([this]() {
+            on_transport_closed_();
+        });
+    }
+                    
     // Placeholder for user-defined behavior on message receipt
     inline void on_message_received_(std::string_view msg) {
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
@@ -381,7 +387,7 @@ private:
         path = (slash == std::string::npos) ? "/" : url.substr(slash);
         // ---------------------------------------------------
         // 5) try connect
-        return ws_.connect(host, port, path);
+        return ws_->connect(host, port, path);
     }
 
     [[nodiscard]]
@@ -393,14 +399,19 @@ private:
         WK_INFO("[STREAM] Attempting reconnection... (attempt " << (retry_attempts_) << ")");
         // 1) Clear runtime state
         set_state_(State::Connecting);
-        // 2) Attempt reconnection
+        last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+        last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+        // 2) Recreate transport
+        ws_.reset();          // DESTROY old WinHTTP stack
+        create_transport_();  // fresh transport
+        // 3) Attempt reconnection
         WK_INFO("[STREAM] Reconnecting to: " << last_url_);
         if (!parse_and_connect_(last_url_)) {
             set_state_(State::WaitingReconnect);
             WK_ERROR("[STREAM] Reconnection failed.");
             return false;
         }
-        // 3) Set new state
+        // 4) Set new state
         set_state_(State::Connected);
         retry_attempts_ = 0;
         auto now =  std::chrono::steady_clock::now();

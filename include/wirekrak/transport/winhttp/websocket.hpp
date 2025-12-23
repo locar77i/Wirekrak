@@ -1,24 +1,23 @@
 #pragma once
 
-#include <windows.h>
-#include <winhttp.h>
-
 #include <string>
 #include <thread>
 #include <functional>
 #include <atomic>
 #include <vector>
 #include <cassert>
-#include <windows.h>
 
 #include "wirekrak/transport/concepts.hpp"
 #include "wirekrak/transport/winhttp/real_api.hpp"
 #include "lcr/log/logger.hpp"
 
+#include <windows.h>
+#include <winhttp.h>
+#include <winerror.h>
 
 /*
 ================================================================================
-WebSocket Transport (WinHTTP)
+WebSocket Transport (WinHTTP minimal implementation)
 ================================================================================
 
 This header implements the WireKrak WebSocket transport using WinHTTP, following
@@ -68,6 +67,7 @@ public:
 
 public:
     explicit WebSocketImpl() noexcept {
+        message_buffer_.reserve(WINHTTP_WEB_SOCKET_BUFFER_MAX_SIZE);
     }
 
     ~WebSocketImpl() {
@@ -79,7 +79,7 @@ public:
     }
 
     [[nodiscard]]
-    bool connect(const std::string& host,
+    inline bool connect(const std::string& host,
                  const std::string& port,
                  const std::string& path) noexcept {
         hSession_ = WinHttpOpen(
@@ -141,12 +141,12 @@ public:
         }
 
         running_.store(true, std::memory_order_relaxed);
-        recv_thread_ = std::thread(&WebSocketImpl::receive_loop, this);
+        recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
         return true;
     }
 
     [[nodiscard]]
-    bool send(const std::string& msg) noexcept {
+    inline bool send(const std::string& msg) noexcept {
         if (!hWebSocket_) {
             WK_ERROR("[WS] send() called on unconnected WebSocket");
             return false;
@@ -159,7 +159,7 @@ public:
                    (DWORD)msg.size()) == ERROR_SUCCESS;
     }
 
-    void close() noexcept {
+    inline void close() noexcept {
         // Close the WebSocket (idempotent)
         if (hWebSocket_) {
             WK_DEBUG("[WS:API] Closing WebSocket ...");
@@ -180,12 +180,12 @@ public:
         WK_TRACE("[WS] WebSocket closed.");
     }
 
-    void set_message_callback(MessageCallback cb) noexcept { on_message_ = std::move(cb); }
-    void set_close_callback(CloseCallback cb) noexcept     { on_close_   = std::move(cb); }
-    void set_error_callback(ErrorCallback cb) noexcept     { on_error_   = std::move(cb); }
+    inline void set_message_callback(MessageCallback cb) noexcept { on_message_ = std::move(cb); }
+    inline void set_close_callback(CloseCallback cb) noexcept     { on_close_   = std::move(cb); }
+    inline void set_error_callback(ErrorCallback cb) noexcept     { on_error_   = std::move(cb); }
 
 private:
-    void receive_loop() noexcept {
+    inline void receive_loop_() noexcept {
 #ifdef WK_UNIT_TEST
     // Debug builds exposed a race in the test harness.
     // Fixed it by adding a test-only synchronization hook to the transport so
@@ -200,7 +200,7 @@ private:
         while (running_.load(std::memory_order_acquire)) {
             DWORD bytes = 0;
             WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
-            WK_DEBUG("[WS:API] Receiving message ...");
+            WK_DEBUG("[WS] Receiving message ...");
             DWORD result = api_.websocket_receive(
                 hWebSocket_,
                 buffer.data(),
@@ -210,6 +210,7 @@ private:
             );
             // Handle errors
             if (result != ERROR_SUCCESS) { // abnormal termination
+                handle_receive_error_(result);
                 if (on_error_) {
                     on_error_(result);
                 }
@@ -219,21 +220,64 @@ private:
             }
             // Handle close frame
             if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) { // normal termination
+                WK_INFO("[WS] Received WebSocket close frame.");
                 running_.store(false, std::memory_order_release);
                 signal_close_();
                 break;
             }
-            // Handle message
-
-            if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE) {
+            // Handle final message frame
+            if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE)  [[likely]] {
+                message_buffer_.append(buffer.data(), bytes);
                 if (on_message_) {
-                    on_message_(std::string(buffer.data(), bytes));
+                    on_message_(message_buffer_);
                 }
+                message_buffer_.clear();
+            }
+            else // Handle message fragments
+            if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
+                WK_DEBUG("[WS] Received message fragment (size " << bytes << ")");
+                message_buffer_.append(buffer.data(), bytes);
             }
         }
     }
 
-    void signal_close_() noexcept {
+    inline void handle_receive_error_(DWORD error) noexcept {
+        // WinHTTP uses WinINet-style numeric error codes
+        constexpr DWORD ERR_OPERATION_CANCELLED  = 12017; // local close
+        constexpr DWORD ERR_CONNECTION_ABORTED   = 12030; // peer closed
+        constexpr DWORD ERR_CANNOT_CONNECT       = 12029; // connect failed
+        constexpr DWORD ERR_TIMEOUT              = 12002; // timeout
+
+        switch (error) {
+        case ERR_OPERATION_CANCELLED:
+            // Local shutdown, expected during close()
+            WK_TRACE("[WS] Receive cancelled (local shutdown)");
+            break;
+
+        case ERR_CONNECTION_ABORTED:
+            // Remote closed connection (no CLOSE frame)
+            WK_INFO("[WS] Connection closed by peer");
+            break;
+
+        case ERR_TIMEOUT:
+            // Network stalled or idle timeout
+            WK_WARN("[WS] Receive timeout");
+            break;
+
+        case ERR_CANNOT_CONNECT:
+            // Usually handshake or DNS issues
+            WK_ERROR("[WS] Cannot connect to remote host");
+            break;
+
+        default:
+            // Anything else is unexpected
+            WK_ERROR("[WS] Receive failed with error code " << error);
+            break;
+        }
+    }
+
+    inline void signal_close_() noexcept {
+        message_buffer_.clear();
         if (closed_.exchange(true)) {
             return;
         }
@@ -244,6 +288,8 @@ private:
 
 private:
     Api api_;
+
+    std::string message_buffer_{};
 
     HINTERNET hSession_   = nullptr;
     HINTERNET hConnect_   = nullptr;
@@ -274,14 +320,14 @@ public:
         // Fake non-null WebSocket handle
         hWebSocket_ = reinterpret_cast<HINTERNET>(1);
         running_.store(true, std::memory_order_release);
-        recv_thread_ = std::thread(&WebSocketImpl::receive_loop, this);
+        recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
     }
 
 private:
     bool test_receive_loop_started_ = false;
 
 public:
-    // Test-only hook: signals when receive_loop() starts
+    // Test-only hook: signals when receive_loop_() starts
     //
     // Debug builds exposed a race in the test harness.
     // Fixed it by adding a test-only synchronization hook to the transport so
