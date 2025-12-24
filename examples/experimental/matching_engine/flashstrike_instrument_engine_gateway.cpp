@@ -5,11 +5,14 @@
 #include <atomic>
 #include <iostream>
 
-#include "wirekrak/client.hpp"
+#include <CLI/CLI.hpp>
 
 #include "flashstrike/globals.hpp"
 #include "flashstrike/matching_engine/manager.hpp"
 
+#include "wirekrak/client.hpp"
+
+#include "common/book_clip.hpp"
 #include "lcr/log/logger.hpp"
 
 namespace wpk = wirekrak::protocol::kraken;
@@ -30,20 +33,23 @@ void on_signal(int) {
 
 
 
-// -----------------------------------------------------------------------------
-// -----------------------------------------------------------------------------
+// --------------------------------------------------------------------------------
+// Gateway class: handles order book updates and feeds them to the matching engine
+// --------------------------------------------------------------------------------
 
-
-
-
-namespace wireflash {
+namespace flashstrike {
 
 class Gateway {
+    // uint64_t max_orders constant defined:
+    static constexpr uint64_t max_orders = 1ull << 19;       // 2^19 = 524,288 orders. Ideally must be factor of 2 for best performance.
+    static constexpr uint32_t target_num_partitions = 256;   // number of partitions
+
 public:
-    Gateway(fme::Manager& engine, fme::Telemetry& metrics)
-        : engine_(engine)
-        , metrics_(metrics)
-    {}
+    Gateway(const std::string& instrument_name)
+        : metrics_()
+        , engine_(max_orders, fs::get_instrument_by_name(instrument_name), target_num_partitions, metrics_)
+    {
+    }
 
     void on_book(const wpk::book::Book& book) {
         fs::Trades trade_count;
@@ -94,8 +100,8 @@ private:
     }
 
 private:
-    fme::Telemetry& metrics_;
-    fme::Manager& engine_;
+    fme::Telemetry metrics_;
+    fme::Manager engine_;
 
     // demo / metrics
     std::size_t trades_ = 0;
@@ -130,89 +136,18 @@ private:
     }
 };
 
-} // namespace wireflash
-
-
-
+} // namespace flashstrike
 
 
 // -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
 
 
-
-
-
-
-// Define matching engine telemetry (global for simplicity)
-fme::Telemetry metrics{};
-// Define some global stats for demo purposes
-size_t processed_orders = 0;
-size_t omitted_orders = 0;
-double last_price = 0.0;
-double volume = 0.0;
-std::size_t trades = 0;
-
-
-inline void increment() {
-    ++processed_orders;
-    if (processed_orders && processed_orders % 1000 == 0) {
-        WK_DEBUG("[WWE] Processed " << processed_orders << " operations... (ommitted " << omitted_orders << " orders)");
-        WK_INFO("[FME] Trades processed: " << trades << ", Last Price: " << last_price << ", Total Volume: " << volume);
-    }
-    if (processed_orders && processed_orders % 10000 == 0) {
-            metrics.dump("Matching Engine", std::cout);
-    }
-}
-
-inline void generate_order(fme::Order &out, fs::Side side, fs::Price price, fs::Quantity qty) {
-    // Sequential order ID generator
-    static lcr::sequence id_seq_{};
-    // Fill order fields
-    out.id      = id_seq_.next();
-    out.type    = fs::OrderType::LIMIT;
-    out.side    = side;
-    out.price   = price;
-    out.qty     = qty;
-    out.filled  = 0;
-}
-
-inline void feed(fme::Manager &engine, const wpk::book::Book& book) {
-    fs::Trades trade_count;
-    fs::Price last_price;
-    fs::OrderIdx order_idx;
-    for (const auto& bid : book.bids) {
-        fme::Order order{};
-        generate_order(order, fs::Side::BID, engine.normalize_price(bid.price), engine.normalize_quantity(bid.qty));
-        if (order.qty == 0) {
-            omitted_orders++;
-            continue;
-        }
-        auto status = engine.process_order<fs::Side::BID>(order, trade_count, last_price, order_idx);
-        (void)status;
-        increment();
-    }
-    for (const auto& ask : book.asks) {
-        fme::Order order{};
-        generate_order(order, fs::Side::ASK, engine.normalize_price(ask.price), engine.normalize_quantity(ask.qty));
-        if (order.qty == 0) {
-            omitted_orders++;
-            continue;
-        }
-        auto status = engine.process_order<fs::Side::ASK>(order, trade_count, last_price, order_idx);
-        (void)status;
-        increment();
-    }
-}
-
-
-int main()
+int main(int argc, char** argv)
 {
     using namespace lcr::log;
 
-    Logger::instance().set_level(Level::Debug);
     WK_WARN("===  Wirekrak Kraken Book + Flashstrike Matching Engine Example ===");
-    WK_INFO("Press Ctrl+C to exit");
 
     // -------------------------------------------------------------
     // Signal handling
@@ -220,18 +155,37 @@ int main()
     std::signal(SIGINT, on_signal);
 
     // -------------------------------------------------------------
-    // Matching Engine setup
+    // CLI parsing
     // -------------------------------------------------------------
-    WK_DEBUG("[ME] Initializing flashstrike::matching_engine::Manager...");
+    wirekrak::examples::cli::Params params;
+    auto app = wirekrak::examples::cli::build_app(
+        "This example show you how to integrate Flashstrike Matching Engine with Wirekrak Kraken WebSocket API v2.\n",
+        params
+    );
 
-    uint64_t max_orders = 1ull << 19;       // 2^19 = 524,288 orders. Ideally must be factor of 2 for best performance.
-    uint32_t target_num_partitions = 256;   // number of partitions
+    CLI11_PARSE(app, argc, argv);
 
-    auto instrument = flashstrike::BTC_USD; // Global predefined instrument
-    instrument.price_tick_units = 0.1;      // override for stress test: fine tick size
-    instrument.price_max_units = 200'000.0; // override max price to allow wider range
-    
-    fme::Manager engine(max_orders, instrument, target_num_partitions, metrics);
+    // -------------------------------------------------------------
+    // Logging
+    // -------------------------------------------------------------
+    if (log_level == "trace") Logger::instance().set_level(Level::Trace);
+    else if (log_level == "debug") Logger::instance().set_level(Level::Debug);
+    else if (log_level == "warn")  Logger::instance().set_level(Level::Warn);
+    else if (log_level == "error") Logger::instance().set_level(Level::Error);
+    else                           Logger::instance().set_level(Level::Info);
+
+    std::cout << "=== WireKrak & Flashstrike Example ===\n"
+              << "URL      : " << url << "\n"
+              << "Symbol   : " << symbol << "\n"
+              << "Depth    : " << depth << "\n"
+              << "Snapshot : " << (snapshot ? "true" : "false") << "\n"
+              << "Press Ctrl+C to exit\n\n";
+
+    // -------------------------------------------------------------
+    // Gateway setup
+    // -------------------------------------------------------------
+    WK_DEBUG("[ME] Initializing flashstrike::Gateway...");
+    flashstrike::Gateway gateway(symbol);
 
     // -------------------------------------------------------------
     // Client setup
@@ -250,39 +204,24 @@ int main()
     client.on_rejection([&](const wpk::rejection::Notice& notice) {  WK_WARN(" -> " << notice.str() << "");  });
 
     // Connect to Kraken WebSocket API v2
-    std::string url = "wss://ws.kraken.com/v2";
     if (!client.connect(url)) {
         return -1;
     }
 
     // Subscribe to book updates
-    std::uint32_t depth = 1000;
-    client.subscribe(wpk::book::Subscribe{.symbols = {instrument.name}, .depth = depth, .snapshot = true},
-                     [&](const wpk::book::Response& msg) { feed(engine, msg.book); }
+    client.subscribe(wpk::book::Subscribe{.symbols = {symbol}, .depth = depth, .snapshot = snapshot},
+                     [&](const wpk::book::Response& msg) { gateway.on_book(msg.book); }
     );
 
     // Main polling loop
     while (running.load()) {
-        // 1) Poll WireKrak client (required to process incoming messages)
-        client.poll();
-        // 2) Drain trades from matching engine
-        if (!engine.trades_ring().empty()) {
-            fs::TradeEvent ev;
-            while (engine.trades_ring().pop(ev)) {
-                double price = engine.instrument().denormalize_price(ev.price);
-                double qty   = engine.instrument().denormalize_quantity(ev.qty);
-                // Update some global stats for demo purposes
-                last_price = price;
-                volume += qty;
-                ++trades;
-            }
-        }
-        // 3) Sleep a bit to avoid busy loop
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        client.poll();                // 1) Poll WireKrak client (required to process incoming messages)
+        gateway.drain_trades();       // 2) Drain trades from matching engine
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));  // 3) Sleep a bit to avoid busy loop
     }
 
     // Ctrl+C received
-    client.unsubscribe(wpk::book::Unsubscribe{.symbols = {instrument.name}, .depth = depth});
+    client.unsubscribe(wpk::book::Unsubscribe{.symbols = {symbol}, .depth = depth});
 
     // Drain events for 2 seconds approx.
     for (int i = 0; i < 200; ++i) {

@@ -154,14 +154,12 @@ Only then will:
 
 ---
 
-## Summary for Judges
+## Summary
 
 - The 2-thread model is **deliberate and professional**
 - It prioritizes correctness, clarity, and latency
 - The system is already architected for future scaling
 - The 3-thread model is postponed until data justifies it
-
-This reflects **production-grade engineering discipline**.
 
 ---
 

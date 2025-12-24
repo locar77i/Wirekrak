@@ -22,7 +22,21 @@ bootstrap-vcpkg.bat
 ## 2. Install required libraries
 
 ```bash
-C:/vcpkg/vcpkg install simdjson spdlog cli11 --triplet x64-mingw-dynamic
+vcpkg install simdjson spdlog cli11 --triplet x64-mingw-dynamic
+```
+
+## 2. Install optional libraries
+
+### 2.1 Experimental examples
+
+```bash
+vcpkg install lz4 xxhash --triplet x64-mingw-dynamic
+```
+
+### 2.2 Flashstrike benchmarks
+
+```bash
+vcpkg install lz4 xxhash prometheus-cpp --triplet x64-mingw-dynamic
 ```
 
 ## 3. Configure environment

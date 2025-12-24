@@ -37,7 +37,7 @@ void on_signal(int) {
 // Gateway class: handles order book updates and feeds them to the matching engine
 // --------------------------------------------------------------------------------
 
-namespace wireflash {
+namespace flashstrike {
 
 class Gateway {
     // uint64_t max_orders constant defined:
@@ -136,7 +136,7 @@ private:
     }
 };
 
-} // namespace wireflash
+} // namespace flashstrike
 
 
 // -----------------------------------------------------------------------------
@@ -246,8 +246,8 @@ int main(int argc, char** argv)
     // -------------------------------------------------------------
     // Gateway setup
     // -------------------------------------------------------------
-    WK_DEBUG("[ME] Initializing wireflash::Gateway...");
-    wireflash::Gateway gateway(symbol);
+    WK_DEBUG("[ME] Initializing flashstrike::Gateway...");
+    flashstrike::Gateway gateway(symbol);
 
     // -------------------------------------------------------------
     // Client setup

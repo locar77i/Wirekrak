@@ -29,34 +29,43 @@ if (WIREKRAK_BUILD_EXPERIMENTAL)
 
     message(STATUS "Building WireKrak experimental integrations")
 
-    # 
-    add_executable(wirekrak_instrument_gateway
-        instrument_gateway.cpp
-    )
-    target_link_libraries(wirekrak_instrument_gateway
-        PRIVATE
-            wirekrak
-    )
-    target_include_directories(wirekrak_instrument_gateway
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    )
 
-
-    # 
-    add_executable(wireflash_matching_gateway
-        wireflash_matching_gateway.cpp
+    # flashstrike_matching_gateway
+    add_executable(flashstrike_matching_gateway
+        flashstrike_matching_gateway.cpp
     )
-    target_link_libraries(wireflash_matching_gateway
+    target_link_libraries(flashstrike_matching_gateway
         PRIVATE
             wirekrak
             CLI11::CLI11
     )
-    target_include_directories(wireflash_matching_gateway
+    target_include_directories(flashstrike_matching_gateway
         PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/..
             ${CMAKE_CURRENT_SOURCE_DIR}/../include
     )
 
-    target_compile_features(wireflash_matching_gateway PRIVATE cxx_std_20)
+    target_compile_features(flashstrike_matching_gateway PRIVATE cxx_std_20)
+
+
+
+    # flashstrike_instrument_engine_gateway
+    add_executable(flashstrike_instrument_engine_gateway
+        flashstrike_instrument_engine_gateway.cpp
+    )
+    target_link_libraries(flashstrike_instrument_engine_gateway
+        PRIVATE
+            wirekrak
+            CLI11::CLI11
+    )
+    target_include_directories(flashstrike_instrument_engine_gateway
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/..
+            ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    )
+
+    target_compile_features(flashstrike_instrument_engine_gateway PRIVATE cxx_std_20)
+
+
 
 endif()
