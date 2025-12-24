@@ -45,12 +45,12 @@ public:
             << ", max_orders=" << max_orders
             << ", trades_ring_capacity=" << trades_ring_.capacity()
         );
-        //pplan_.debug_dump(std::cout);
-        //instrument_.debug_dump(std::cout);
-        //normalized_instrument_.debug_dump(std::cout);
+        pplan_.debug_dump(std::cout);
+        instrument_.debug_dump(std::cout);
+        normalized_instrument_.debug_dump(std::cout);
         init_metrics_updater_.on_create_matching_engine(start_ns_, memory_usage().total_bytes());
         init_metrics_updater_.on_create_trades_ring(trades_ring_.capacity(), trades_ring_.memory_usage().total_bytes());
-        //init_metrics_updater_.dump(instrument_.get_symbol(), std::cout);
+        init_metrics_updater_.dump(instrument_.get_symbol(), std::cout);
     }
 
     // OrderBook accessor

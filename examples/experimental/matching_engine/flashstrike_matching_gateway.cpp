@@ -12,7 +12,7 @@
 
 #include "wirekrak/client.hpp"
 
-
+#include "common/book_clip.hpp"
 #include "lcr/log/logger.hpp"
 
 namespace wpk = wirekrak::protocol::kraken;
@@ -158,96 +158,22 @@ int main(int argc, char** argv)
     // CLI parsing
     // -------------------------------------------------------------
     CLI::App app{"This example show you how to integrate Flashstrike Matching Engine with Wirekrak Kraken WebSocket API v2.\n"};
-
-    std::string url       = "wss://ws.kraken.com/v2";
-    std::string symbol    = "BTC/USD";
-    std::uint32_t depth   = 10;
-    bool snapshot         = false;
-    std::string log_level = "info";
-
-    // WebSocket URL validator
-    auto ws_url_validator = CLI::Validator(
-        [](std::string &value) -> std::string {
-            if (value.rfind("ws://", 0) == 0 || value.rfind("wss://", 0) == 0) {
-                return {}; // OK
-            }
-            return "URL must start with ws:// or wss://";
-        },
-        "WebSocket URL validator"
-    );
-
-    // Instrument validator
-    static constexpr std::array<std::string_view, 6> valid_instruments = {
-        "BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD", "XRP/USD", "DOGE/USD"
-    };
-    auto instrument_validator = CLI::Validator(
-        [](std::string& value) -> std::string {
-            for (auto v : valid_instruments) {
-                if (value == v) {
-                    return {};
-                }
-            }
-            return "Instrument must be one of: BTC/USD, ETH/USD, SOL/USD, LTC/USD, XRP/USD, DOGE/USD";
-        },
-        "Instrument validator"
-    );
-
-    // Depth validator
-    auto depth_validator = CLI::Validator(
-        [](std::string& value) -> std::string {
-            try {
-                auto depth = std::stoul(value);
-                switch (depth) {
-                    case 10:
-                    case 25:
-                    case 100:
-                    case 500:
-                    case 1000:
-                        return {}; // valid
-                    default:
-                        return "Depth must be one of: 10, 25, 100, 500, 1000";
-                }
-            } catch (...) {
-                return "Depth must be a valid integer";
-            }
-        },
-        "Order book depth validator"
-    );
-
-    app.add_option("--url", url, "Kraken WebSocket URL")->check(ws_url_validator)->default_val(url);
-    app.add_option("-s,--symbol", symbol, "Trading symbol(s) (e.g. -s BTC/USD)")->check(instrument_validator)->default_val(symbol);
-    app.add_option("-d,--depth", depth, "Order book depth (10, 25, 100, 500, 1000)")->check(depth_validator)->default_val(depth);
-    app.add_flag("--snapshot", snapshot, "Request book snapshot");
-    app.add_option("-l, --log-level", log_level, "Log level: trace | debug | info | warn | error")->default_val(log_level);
-    app.footer(
-        "This example runs indefinitely until interrupted.\n"
-        "Press Ctrl+C to unsubscribe and exit cleanly.\n"
-        "Let's enjoy trading with WireKrak & Flashstrike!"
-    );
+    wirekrak::examples::cli::Params params;
+    wirekrak::examples::cli::configure(app, params);
 
     CLI11_PARSE(app, argc, argv);
+    params.dump("=== Wirekrak & Flashstrike Parameters ===", std::cout);
 
     // -------------------------------------------------------------
     // Logging
     // -------------------------------------------------------------
-    if (log_level == "trace") Logger::instance().set_level(Level::Trace);
-    else if (log_level == "debug") Logger::instance().set_level(Level::Debug);
-    else if (log_level == "warn")  Logger::instance().set_level(Level::Warn);
-    else if (log_level == "error") Logger::instance().set_level(Level::Error);
-    else                           Logger::instance().set_level(Level::Info);
-
-    std::cout << "=== WireKrak & Flashstrike Example ===\n"
-              << "URL      : " << url << "\n"
-              << "Symbol   : " << symbol << "\n"
-              << "Depth    : " << depth << "\n"
-              << "Snapshot : " << (snapshot ? "true" : "false") << "\n"
-              << "Press Ctrl+C to exit\n\n";
+    Logger::instance().set_level(params.get_log_level());
 
     // -------------------------------------------------------------
     // Gateway setup
     // -------------------------------------------------------------
     WK_DEBUG("[ME] Initializing flashstrike::Gateway...");
-    flashstrike::Gateway gateway(symbol);
+    flashstrike::Gateway gateway(params.symbol);
 
     // -------------------------------------------------------------
     // Client setup
@@ -266,24 +192,24 @@ int main(int argc, char** argv)
     client.on_rejection([&](const wpk::rejection::Notice& notice) {  WK_WARN(" -> " << notice.str() << "");  });
 
     // Connect to Kraken WebSocket API v2
-    if (!client.connect(url)) {
+    if (!client.connect(params.url)) {
         return -1;
     }
 
     // Subscribe to book updates
-    client.subscribe(wpk::book::Subscribe{.symbols = {symbol}, .depth = depth, .snapshot = snapshot},
+    client.subscribe(wpk::book::Subscribe{.symbols = {params.symbol}, .depth = params.depth, .snapshot = params.snapshot},
                      [&](const wpk::book::Response& msg) { gateway.on_book(msg.book); }
     );
 
     // Main polling loop
     while (running.load()) {
-        client.poll();                // 1) Poll WireKrak client (required to process incoming messages)
+        client.poll();                // 1) Poll Wirekrak client (required to process incoming messages)
         gateway.drain_trades();       // 2) Drain trades from matching engine
         std::this_thread::sleep_for(std::chrono::milliseconds(10));  // 3) Sleep a bit to avoid busy loop
     }
 
     // Ctrl+C received
-    client.unsubscribe(wpk::book::Unsubscribe{.symbols = {symbol}, .depth = depth});
+    client.unsubscribe(wpk::book::Unsubscribe{.symbols = {params.symbol}, .depth = params.depth});
 
     // Drain events for 2 seconds approx.
     for (int i = 0; i < 200; ++i) {

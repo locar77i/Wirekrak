@@ -41,31 +41,11 @@ if (WIREKRAK_BUILD_EXPERIMENTAL)
     )
     target_include_directories(flashstrike_matching_gateway
         PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/..
+            ${CMAKE_CURRENT_SOURCE_DIR}/../..
             ${CMAKE_CURRENT_SOURCE_DIR}/../include
     )
 
     target_compile_features(flashstrike_matching_gateway PRIVATE cxx_std_20)
-
-
-
-    # flashstrike_instrument_engine_gateway
-    add_executable(flashstrike_instrument_engine_gateway
-        flashstrike_instrument_engine_gateway.cpp
-    )
-    target_link_libraries(flashstrike_instrument_engine_gateway
-        PRIVATE
-            wirekrak
-            CLI11::CLI11
-    )
-    target_include_directories(flashstrike_instrument_engine_gateway
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/..
-            ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    )
-
-    target_compile_features(flashstrike_instrument_engine_gateway PRIVATE cxx_std_20)
-
 
 
 endif()

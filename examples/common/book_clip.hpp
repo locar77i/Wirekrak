@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <sstream>
+#include <ostream>
 
 #include <CLI/CLI.hpp>
 
@@ -17,6 +19,23 @@ namespace wirekrak::examples::cli {
         std::uint32_t depth   = 10;
         bool snapshot         = true;
         std::string log_level = "info";
+
+        inline lcr::log::Level get_log_level() const {
+            if (log_level == "trace")      return lcr::log::Level::Trace;
+            else if (log_level == "debug") return lcr::log::Level::Debug;
+            else if (log_level == "warn")  return lcr::log::Level::Warn;
+            else if (log_level == "error") return lcr::log::Level::Error;
+            else                           return lcr::log::Level::Info;
+        }
+
+        inline void dump(const std::string& header, std::ostream& os) const {
+            os << header << ":\n"
+                      << "  URL       : " << url << "\n"
+                      << "  Symbol    : " << symbol << "\n"
+                      << "  Depth     : " << depth << "\n"
+                      << "  Snapshot  : " << (snapshot ? "true" : "false") << "\n"
+                      << "  Log Level : " << log_level << "\n";
+        }
     };
 
     // WebSocket URL validator
@@ -71,21 +90,18 @@ namespace wirekrak::examples::cli {
     // -------------------------------------------------------------
     // Build CLI for examples
     // -------------------------------------------------------------
-    inline CLI::App build_app(const std::string& description, Params& params) {
-        CLI::App app{description};
+    inline void configure(CLI::App& app, Params& params) {
 
-        app.add_option("--url", url, "Kraken WebSocket URL")->check(ws_url_validator)->default_val(url);
-        app.add_option("-s,--symbol", symbol, "Trading symbol(s) (e.g. -s BTC/USD)")->check(instrument_validator)->default_val(symbol);
-        app.add_option("-d,--depth", depth, "Order book depth (10, 25, 100, 500, 1000)")->check(depth_validator)->default_val(depth);
-        app.add_flag("--snapshot", snapshot, "Request book snapshot");
-        app.add_option("-l, --log-level", log_level, "Log level: trace | debug | info | warn | error")->default_val(log_level);
+        app.add_option("--url", params.url, "Kraken WebSocket URL")->check(ws_url_validator)->default_val(params.url);
+        app.add_option("-s,--symbol", params.symbol, "Trading symbol(s) (e.g. -s BTC/USD)")->check(instrument_validator)->default_val(params.symbol);
+        app.add_option("-d,--depth", params.depth, "Order book depth (10, 25, 100, 500, 1000)")->check(depth_validator)->default_val(params.depth);
+        app.add_flag("--snapshot", params.snapshot, "Request book snapshot");
+        app.add_option("-l, --log-level", params.log_level, "Log level: trace | debug | info | warn | error")->default_val(params.log_level);
         app.footer(
             "This example runs indefinitely until interrupted.\n"
             "Press Ctrl+C to unsubscribe and exit cleanly.\n"
             "Let's enjoy trading with WireKrak & Flashstrike!"
         );
-
-        return app;
     }
 
 } // namespace wirekrak::examples::cli
