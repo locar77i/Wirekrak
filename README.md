@@ -433,7 +433,7 @@ cmake --build --preset experimental
 
 Experimental examples demonstrate integration with **flashstrike**, a **high-performance Matching Engine System** built for **ultra-low latency trading**. Optimized for HFT environments, it demonstrates **exchange-grade design principles** in a clean, efficient codebase.
 
-➡️ **[Flashstrike documentation](./docs/flashstrike/docs/README.md)**
+➡️ **[Flashstrike documentation](./docs/flashStrike/README.md)**
 
 The examples highlight architectural interoperability between real-time market data ingestion and a production-grade matching engine design.
 Flashstrike is a header-only experimental integration used exclusively by opt-in examples and is not part of the core Wirekrak library.
