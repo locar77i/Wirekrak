@@ -9,6 +9,7 @@
 #include "lcr/metrics/counter.hpp"
 #include "lcr/metrics/gauge.hpp"
 #include "lcr/system/cpu_relax.hpp"
+#include "lcr/format.hpp"
 
 
 namespace lcr {
@@ -84,11 +85,11 @@ struct alignas(64) size {
     // String formatter (for human-readable or Prometheus output)
     inline std::string str() const {
         std::ostringstream oss;
-        oss << "last=" << last_.load()
-            << " avg=" << avg()
-            << " min=" << min_.load()
-            << " max=" << max_.load()
-            << " samples=" << samples_.load();
+        oss << "samples=" << lcr::format_number_exact(samples_.load())
+            << " last=" << lcr::format_number_exact(last_.load())
+            << " min=" << lcr::format_number_exact(min_.load())
+            << " max=" << lcr::format_number_exact(max_.load())
+            << " avg=" << avg();
         return oss.str();
     }
 

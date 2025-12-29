@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <thread>
 #include <functional>
 #include <atomic>
@@ -9,6 +10,9 @@
 
 #include "wirekrak/transport/concepts.hpp"
 #include "wirekrak/transport/winhttp/real_api.hpp"
+#include "wirekrak/transport/telemetry/websocket.hpp"
+#include "wirekrak/telemetry.hpp"
+#include "lcr/system/monotonic_clock.hpp"
 #include "lcr/log/logger.hpp"
 
 #include <windows.h>
@@ -58,16 +62,28 @@ namespace winhttp {
 
 template<ApiConcept Api = RealApi>
 class WebSocketImpl {
-    constexpr static size_t WINHTTP_WEB_SOCKET_BUFFER_MAX_SIZE = 16 * 1024;
+
+    // The receive buffer will be sized for the common case (not the worst case). Why RX_BUFFER_SIZE = 8 KB:
+    // - fits comfortably in L1/L2 cache
+    // - covers >99% of messages in one call
+    // - snapshots still handled correctly
+    // - fragmentation remains rare
+    // - minimal memory waste
+    //
+    // Telemetry shows 8–16 KB is optimal: 
+    // Big enough to hold the 99th percentile message comfortably, small enough to stay cache-friendly.
+    // 8 KB buffers give us the best balance of cache locality and correctness, with no measurable downside for Kraken traffic.
+    constexpr static size_t RX_BUFFER_SIZE = 8 * 1024;
 
 public:
-    using MessageCallback = std::function<void(const std::string&)>;
+    using MessageCallback = std::function<void(std::string_view)>;
     using CloseCallback   = std::function<void()>;
     using ErrorCallback   = std::function<void(DWORD)>;
 
 public:
-    explicit WebSocketImpl() noexcept {
-        message_buffer_.reserve(WINHTTP_WEB_SOCKET_BUFFER_MAX_SIZE);
+    explicit WebSocketImpl(telemetry::WebSocket& telemetry) noexcept
+        : telemetry_(telemetry) {
+        message_buffer_.reserve(RX_BUFFER_SIZE);
     }
 
     ~WebSocketImpl() {
@@ -152,11 +168,13 @@ public:
             return false;
         }
         WK_TRACE("[WS:API] Sending message ... (size " << msg.size() << ")");
-        return api_.websocket_send(
+        const bool ok = api_.websocket_send(
                    hWebSocket_,
                    WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE,
                    (void*)msg.data(),
                    (DWORD)msg.size()) == ERROR_SUCCESS;
+        WK_TL1( if (ok) [[likely]] { telemetry_.on_send(msg.size()); } );
+        return ok;
     }
 
     inline void close() noexcept {
@@ -180,22 +198,23 @@ public:
         WK_TRACE("[WS] WebSocket closed.");
     }
 
-    inline void set_message_callback(MessageCallback cb) noexcept { on_message_ = std::move(cb); }
-    inline void set_close_callback(CloseCallback cb) noexcept     { on_close_   = std::move(cb); }
-    inline void set_error_callback(ErrorCallback cb) noexcept     { on_error_   = std::move(cb); }
+    inline void set_message_callback(MessageCallback cb) noexcept     { on_message_ = std::move(cb); }
+    inline void set_close_callback(CloseCallback cb) noexcept         { on_close_   = std::move(cb); }
+    inline void set_error_callback(ErrorCallback cb) noexcept         { on_error_   = std::move(cb); }
 
 private:
     inline void receive_loop_() noexcept {
 #ifdef WK_UNIT_TEST
-    // Debug builds exposed a race in the test harness.
-    // Fixed it by adding a test-only synchronization hook to the transport so
-    // tests wait on real transport state instead of timing assumptions.
-    if (receive_started_flag_) {
-        receive_started_flag_->store(true, std::memory_order_release);
-    }
+        // Debug builds exposed a race in the test harness.
+        // Fixed it by adding a test-only synchronization hook to the transport so
+        // tests wait on real transport state instead of timing assumptions.
+        if (receive_started_flag_) {
+            receive_started_flag_->store(true, std::memory_order_release);
+        }
 #endif // WK_UNIT_TEST
-        std::vector<char> buffer(WINHTTP_WEB_SOCKET_BUFFER_MAX_SIZE);
+        std::vector<char> buffer(RX_BUFFER_SIZE);
         std::string message;
+        WK_TL1( uint32_t fragments = 0 );
         // Receive internal loop
         while (running_.load(std::memory_order_acquire)) {
             DWORD bytes = 0;
@@ -209,7 +228,8 @@ private:
                 &type
             );
             // Handle errors
-            if (result != ERROR_SUCCESS) { // abnormal termination
+            if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
+            WK_TL1( telemetry_.on_receive_failure() );
                 handle_receive_error_(result);
                 if (on_error_) {
                     on_error_(result);
@@ -217,6 +237,9 @@ private:
                 running_.store(false, std::memory_order_release);
                 signal_close_();
                 break;
+            }
+            else { // successful receive
+                WK_TL1( telemetry_.on_receive(bytes) );
             }
             // Handle close frame
             if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) { // normal termination
@@ -227,16 +250,32 @@ private:
             }
             // Handle final message frame
             if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE)  [[likely]] {
-                message_buffer_.append(buffer.data(), bytes);
-                if (on_message_) {
-                    on_message_(message_buffer_);
+                if (message_buffer_.empty()) { // single-frame message
+                    if (on_message_) {
+                        on_message_(std::string_view(buffer.data(), bytes));
+                    }
+                    WK_TL1( telemetry_.on_receive_message(bytes, 1) );
                 }
-                message_buffer_.clear();
+                else { // completing fragmented message
+                    WK_TL3( const auto t0 = lcr::system::monotonic_clock::instance().now_ns() );
+                    message_buffer_.append(buffer.data(), bytes);
+                    WK_TL3( telemetry_.on_message_assembly_copy(lcr::system::monotonic_clock::instance().now_ns() - t0) );
+                    WK_TL1( telemetry_.on_receive_message(message_buffer_.size(), fragments + 1); fragments = 0 );
+                    if (on_message_) {
+                        on_message_(std::string_view(message_buffer_.data(), message_buffer_.size()));
+                    }
+                    message_buffer_.clear();
+                }
+                
             }
             else // Handle message fragments
             if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
                 WK_DEBUG("[WS] Received message fragment (size " << bytes << ")");
+                WK_TL3( const auto t0 = lcr::system::monotonic_clock::instance().now_ns() );
                 message_buffer_.append(buffer.data(), bytes);
+                WK_TL3( telemetry_.on_message_assembly_copy(lcr::system::monotonic_clock::instance().now_ns() - t0) );
+                // Track fragments for telemetry
+                WK_TL1( telemetry_.on_message_assembly(message_buffer_.size()); ++fragments );
             }
         }
     }
@@ -281,12 +320,14 @@ private:
         if (closed_.exchange(true)) {
             return;
         }
+        WK_TL1( telemetry_.on_close_event() );
         if (on_close_) {
             on_close_();
         }
     }
 
 private:
+    telemetry::WebSocket& telemetry_;
     Api api_;
 
     std::string message_buffer_{};

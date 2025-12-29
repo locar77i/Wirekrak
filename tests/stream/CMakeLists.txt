@@ -7,10 +7,5 @@ file(GLOB PROTOCOL_KRAKEN_TESTS test_*.cpp)
 
 foreach(test_src ${PROTOCOL_KRAKEN_TESTS})
     get_filename_component(test_name ${test_src} NAME_WE)
-    wirekrak_add_parser_test(${test_name} ${test_src})
-    target_include_directories(${test_name}
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/include
-        ${PROJECT_SOURCE_DIR}/tests
-    )
+    wirekrak_add_test(${test_name} ${test_src})
 endforeach()

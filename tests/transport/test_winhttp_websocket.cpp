@@ -91,7 +91,8 @@ using TestWebSocket = transport::winhttp::WebSocketImpl<transport::winhttp::Fake
 
 void test_close_called_once() {
     std::cout << "[TEST] Running close() called once test..." << std::endl;
-    TestWebSocket ws;
+    transport::telemetry::WebSocket telemetry;
+    TestWebSocket ws(telemetry);
 
     // Flag to detect when receive loop has started
     std::atomic<bool> receive_started{false};
@@ -125,7 +126,8 @@ void test_close_called_once() {
 void test_error_triggers_close() {
     std::cout << "[TEST] Running error triggers close test..." << std::endl;
 
-    TestWebSocket ws;
+    transport::telemetry::WebSocket telemetry;
+    TestWebSocket ws(telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
@@ -169,13 +171,14 @@ void test_error_triggers_close() {
 void test_message_callback() {
     std::cout << "[TEST] Running message callback test..." << std::endl;
 
-    TestWebSocket ws;
+    transport::telemetry::WebSocket telemetry;
+    TestWebSocket ws(telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
 
     std::atomic<int> msg_count{0};
-    ws.set_message_callback([&](const std::string&) {
+    ws.set_message_callback([&](std::string_view) {
         msg_count++;
     });
 
@@ -209,7 +212,8 @@ void test_message_callback() {
 void test_send_success() {
     std::cout << "[TEST] Running send success test..." << std::endl;
 
-    TestWebSocket ws;
+    transport::telemetry::WebSocket telemetry;
+    TestWebSocket ws(telemetry);
 
     // Establish fake connection (sets hWebSocket_)
     ws.test_start_receive_loop();
@@ -227,7 +231,8 @@ void test_send_success() {
 void test_send_failure() {
     std::cout << "[TEST] Running send failure test..." << std::endl;
 
-    TestWebSocket ws;
+    transport::telemetry::WebSocket telemetry;
+    TestWebSocket ws(telemetry);
 
     ws.test_api().send_result = ERROR_CONNECTION_ABORTED;
 
@@ -247,7 +252,8 @@ void test_send_failure() {
 void test_error_then_close_order() {
     std::cout << "[TEST] Running error -> close ordering test..." << std::endl;
 
-    TestWebSocket ws;
+    transport::telemetry::WebSocket telemetry;
+    TestWebSocket ws(telemetry);
 
     std::vector<std::string> events;
 
@@ -276,10 +282,11 @@ void test_error_then_close_order() {
 void test_multiple_messages() {
     std::cout << "[TEST] Running multiple message test..." << std::endl;
 
-    TestWebSocket ws;
+    transport::telemetry::WebSocket telemetry;
+    TestWebSocket ws(telemetry);
 
     std::atomic<int> msg_count{0};
-    ws.set_message_callback([&](const std::string&) {
+    ws.set_message_callback([&](std::string_view) {
         msg_count++;
     });
 

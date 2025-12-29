@@ -6,6 +6,7 @@
 #include <concepts>
 
 #include "wirekrak/transport/concepts.hpp"
+#include "wirekrak/transport/telemetry/websocket.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -22,7 +23,8 @@ class MockWebSocket {
     ErrorCallback   on_error_cb_;
 
 public:
-    MockWebSocket() {
+    MockWebSocket(telemetry::WebSocket& telemetry) noexcept {
+        (void)telemetry;
         WK_DEBUG("[MockWebSocket] constructed");
     }
 
@@ -34,18 +36,18 @@ public:
     // transport::WebSocket API
     // ---------------------------------------------------------------------
 
-    inline bool connect(const std::string&, const std::string&, const std::string&) {
+    inline bool connect(const std::string&, const std::string&, const std::string&) noexcept {
         WK_DEBUG("[MockWebSocket] connect() called");
         connected_ = true;
         return true;
     }
 
-    inline bool send(const std::string&) {
+    inline bool send(const std::string&) noexcept {
         WK_DEBUG("[MockWebSocket] send() called");
         return connected_;
     }
 
-    inline void close() {
+    inline void close() noexcept {
         WK_DEBUG("[MockWebSocket] close() called");
         if (!connected_) return;
         connected_ = false;
@@ -55,15 +57,15 @@ public:
         }
     }
 
-    inline void set_message_callback(MessageCallback cb) {
+    inline void set_message_callback(MessageCallback cb) noexcept {
         on_message_cb_ = std::move(cb);
     }
 
-    inline void set_close_callback(CloseCallback cb) {
+    inline void set_close_callback(CloseCallback cb) noexcept {
         on_close_cb_ = std::move(cb);
     }
 
-    inline void set_error_callback(ErrorCallback cb) {
+    inline void set_error_callback(ErrorCallback cb) noexcept {
         on_error_cb_ = std::move(cb);
     }
 
@@ -71,13 +73,13 @@ public:
     // Test helpers
     // ---------------------------------------------------------------------
 
-    inline void emit_message(const std::string& msg) {
+    inline void emit_message(const std::string& msg) noexcept {
         if (on_message_cb_) {
             on_message_cb_(msg);
         }
     }
 
-    inline void emit_error(unsigned long code = 1) {
+    inline void emit_error(unsigned long code = 1) noexcept {
         error_count_++;
         if (on_error_cb_) {
             on_error_cb_(code);
@@ -85,18 +87,18 @@ public:
     }
 
     // Accessors
-    inline bool is_connected() const {
+    inline bool is_connected() const noexcept {
         return connected_;
     }
-    inline int close_count() const {
+    inline int close_count() const noexcept {
         return close_count_;
     }
-    inline int error_count() const {
+    inline int error_count() const noexcept {
         return error_count_;
     }
 
     // mutators
-    static inline void reset() {
+    static inline void reset() noexcept {
         connected_   = false;
         close_count_ = 0;
         error_count_ = 0;

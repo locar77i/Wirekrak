@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <functional>
 #include <concepts>
 
@@ -21,7 +22,7 @@ concept WebSocketConcept =
         const std::string& port,
         const std::string& path,
         const std::string& msg,
-        std::function<void(const std::string&)> on_message,
+        std::function<void(std::string_view msg)> on_message,
         std::function<void()> on_close,
         std::function<void(unsigned long)> on_error
     )

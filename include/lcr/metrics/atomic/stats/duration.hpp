@@ -6,8 +6,8 @@
 #include <type_traits>
 #include <cstdint>
 
-#include "lcr/metrics/counter.hpp"
-#include "lcr/metrics/gauge.hpp"
+#include "lcr/metrics/atomic/counter.hpp"
+#include "lcr/metrics/atomic/gauge.hpp"
 #include "lcr/system/cpu_relax.hpp"
 #include "lcr/time_unit.hpp"
 #include "lcr/format.hpp"
@@ -109,6 +109,7 @@ struct alignas(64) duration {
     }
 
     // Optional string formatter (for debug or Prometheus output)
+    // TODO: use lcr::format() helpers to enhance readability
     inline std::string str(time_unit tunit = time_unit::seconds, time_unit unit = time_unit::milliseconds) const {
         std::ostringstream oss;
         T samples = samples_.load();

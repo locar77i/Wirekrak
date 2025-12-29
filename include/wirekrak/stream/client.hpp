@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "wirekrak/transport/concepts.hpp"
+#include "wirekrak/transport/telemetry/websocket.hpp"
 #include "wirekrak/stream/state.hpp"
 #include "lcr/log/logger.hpp"
 
@@ -247,6 +248,7 @@ public:
 
 private:
     std::string last_url_;
+    transport::telemetry::WebSocket telemetry_;
     std::unique_ptr<WS> ws_;
 
     // The kraken heartbeats count is used as deterministic liveness signal that drives reconnection.
@@ -311,9 +313,9 @@ private:
 
     void create_transport_() {
         // Initialize transport
-        ws_ = std::make_unique<WS>();
+        ws_ = std::make_unique<WS>(telemetry_);
         // Set callbacks
-        ws_->set_message_callback([this](const std::string& msg) {
+        ws_->set_message_callback([this](std::string_view msg) {
             on_message_received_(msg);
         });
         ws_->set_close_callback([this]() {

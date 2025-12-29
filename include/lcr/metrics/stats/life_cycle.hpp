@@ -84,6 +84,7 @@ struct alignas(64) life_cycle {
     }
 
     // String formatter (for debug/logs)
+    // TODO: use lcr::format() helpers to enhance readability
     inline std::string str(time_unit tunit = time_unit::seconds, time_unit unit = time_unit::milliseconds) const {
         std::ostringstream oss;
         oss << "cycles=" << cycle_count_.load()

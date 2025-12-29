@@ -6,8 +6,8 @@
 #include <type_traits>
 #include <cstdint>
 
-#include "lcr/metrics/counter.hpp"
-#include "lcr/metrics/gauge.hpp"
+#include "lcr/metrics/atomic/counter.hpp"
+#include "lcr/metrics/atomic/gauge.hpp"
 #include "lcr/system/cpu_relax.hpp"
 #include "lcr/format.hpp"
 
@@ -76,13 +76,6 @@ struct alignas(64) sampler {
         return static_cast<double>(total_.load()) / static_cast<double>(n);
     }
 
-    inline double rate_per_sec() const noexcept {
-        const auto n = samples_.load();
-        const auto t = total_.load();
-        if (n == 0 || t == 0) return 0.0;
-        return (static_cast<double>(n) * 1'000'000'000.0) / static_cast<double>(t);
-    }
-
     // Reset (careful — only call from single-threaded context)
     inline void reset() noexcept {
         total_.reset();
@@ -94,15 +87,14 @@ struct alignas(64) sampler {
     inline std::string str() const {
         std::ostringstream oss;
         T samples = samples_.load();
-        oss << "samples=" << samples;
+        oss << "samples=" << lcr::format_number_exact(samples);
         if (samples >= 1) {
-            oss << " total=" << total_.load();
+            oss << " total=" << lcr::format_number_exact(total_.load());
         }
         if (samples >= 2) {
-            oss << " min=" << min_.load()
-                << " max=" << max_.load()
-                << " avg=" << avg()
-                << " rate=" << lcr::format_throughput(rate_per_sec());
+            oss << " min=" << lcr::format_number_exact(min_.load())
+                << " max=" << lcr::format_number_exact(max_.load())
+                << " avg=" << avg();
         }
         return oss.str();
     }
@@ -119,7 +111,6 @@ struct alignas(64) sampler {
             min_.collect(prefix + "_min", "Minimum observed value", collector);
             max_.collect(prefix + "_max", "Maximum observed value", collector);
             collector.add_gauge(avg(), prefix + "_avg", "Average observed value");
-            collector.add_gauge(rate_per_sec(), prefix + "_rate_per_second", "Rate of observed samples per second");
         }
     }
 

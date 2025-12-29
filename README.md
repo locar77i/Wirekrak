@@ -231,6 +231,38 @@ a configurable timeout, the client assumes the connection is unhealthy and and s
 
 ---
 
+## 📡 Telemetry Overview <a name="telemetry"></a>
+
+Wirekrak provides **compile-time, zero-overhead telemetry** designed for low-latency and infrastructure-grade systems.
+
+Telemetry is:
+- observational only (never affects behavior)
+- fully removable at compile time
+- safe for latency-critical paths
+
+### Telemetry Levels
+
+| Level | Description | Default |
+|------|------------|---------|
+| **L1** | Mechanical metrics (bytes, messages, errors, message shape) | **ON** |
+| **L2** | Diagnostic metrics (deeper timing and pressure insight) | OFF |
+| **L3** | Analytical metrics (profiling, tracing, experimentation) | OFF |
+
+Higher levels automatically enable lower ones.
+
+### Enabling Telemetry
+
+```bash
+-DWIREKRAK_ENABLE_TELEMETRY_L1=ON
+-DWIREKRAK_ENABLE_TELEMETRY_L2=OFF
+-DWIREKRAK_ENABLE_TELEMETRY_L3=OFF
+```
+When disabled, telemetry is completely compiled out.
+
+➡️ **[Tlelemetry Level Policy](docs/architecture/TelemetryLevelPolicy.md)**
+
+---
+
 ### Low-latency Common Resources (`lcr`)
 
 Wirekrak includes a small internal utility layer named **LCR** (Low-latency Common Resources).

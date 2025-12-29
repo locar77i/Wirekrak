@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <iostream>
 
-#include "flashstrike/constants.hpp"
 #include "lcr/system/monotonic_clock.hpp"
 
 using lcr::system::monotonic_clock;

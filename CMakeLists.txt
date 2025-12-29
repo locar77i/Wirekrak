@@ -18,6 +18,7 @@ find_package(simdjson REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(CLI11 REQUIRED)
 
+
 # -------------------------------------------------------------
 # Create Wirekrak Library
 # -------------------------------------------------------------
@@ -28,28 +29,58 @@ target_include_directories(wirekrak INTERFACE
 )
 
 target_link_libraries(wirekrak INTERFACE
-    winhttp
+
     simdjson::simdjson
     spdlog::spdlog
 )
 
 
+if (WIN32)
+    # -------------------------------------------------------------
+    # Windows TLS (SChannel) - No OpenSSL required
+    # -------------------------------------------------------------
+    target_compile_definitions(wirekrak INTERFACE WIREKRAK_USE_SCHANNEL)
+    target_link_libraries(wirekrak INTERFACE
+        winhttp
+        crypt32
+        secur32
+    )
+endif()
 
-# -------------------------------------------------------------
-# Windows TLS (SChannel)
-# No OpenSSL required
-# -------------------------------------------------------------
-target_compile_definitions(wirekrak INTERFACE WIREKRAK_USE_SCHANNEL)
 
-target_link_libraries(wirekrak INTERFACE
-    crypt32
-    secur32
-)
+# -----------------------
+# Telemetry configuration
+# -----------------------
+option(WIREKRAK_ENABLE_TELEMETRY_L1 "Enable Wirekrak Telemetry Level 1" ON)
+option(WIREKRAK_ENABLE_TELEMETRY_L2 "Enable Wirekrak Telemetry Level 2" OFF)
+option(WIREKRAK_ENABLE_TELEMETRY_L3 "Enable Wirekrak Telemetry Level 3" OFF)
 
-# -------------------------------------------------------------
-# Examples
-# -------------------------------------------------------------
-add_subdirectory(examples)
+# Enforce hierarchy
+if(WIREKRAK_ENABLE_TELEMETRY_L3)
+    set(WIREKRAK_ENABLE_TELEMETRY_L2 ON)
+    set(WIREKRAK_ENABLE_TELEMETRY_L1 ON)
+endif()
+
+if(WIREKRAK_ENABLE_TELEMETRY_L2)
+    set(WIREKRAK_ENABLE_TELEMETRY_L1 ON)
+endif()
+
+# Apply only to Wirekrak targets
+if(WIREKRAK_ENABLE_TELEMETRY_L1)
+    message(STATUS "Building with Wirekrak Telemetry L1 enabled")
+    target_compile_definitions(wirekrak INTERFACE WIREKRAK_ENABLE_TELEMETRY_L1)
+endif()
+
+if(WIREKRAK_ENABLE_TELEMETRY_L2)
+    message(STATUS "Building with Wirekrak Telemetry L2 enabled")
+    target_compile_definitions(wirekrak INTERFACE WIREKRAK_ENABLE_TELEMETRY_L2)
+endif()
+
+if(WIREKRAK_ENABLE_TELEMETRY_L3)
+    message(STATUS "Building with Wirekrak Telemetry L3 enabled")
+    target_compile_definitions(wirekrak INTERFACE WIREKRAK_ENABLE_TELEMETRY_L3)
+endif()
+
 
 # -------------------------------------------------------------
 # Tests
@@ -60,6 +91,18 @@ if (WIREKRAK_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+
+# -------------------------------------------------------------
+# Examples
+# -------------------------------------------------------------
+add_subdirectory(examples)
+
+
+# -------------------------------------------------------------
+# Benchmarks
+# -------------------------------------------------------------
+add_subdirectory(benchmark)
 
 
 # ------------------------------------------------------------------

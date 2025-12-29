@@ -1,5 +1,5 @@
 #include <iostream>
-#include <string>
+#include <string_view>
 #include <chrono>
 #include <thread>
 #include <atomic>
@@ -21,9 +21,10 @@ void on_signal(int) {
 int main() {
     std::signal(SIGINT, on_signal);  // Handle Ctrl+C
 
-    transport::winhttp::WebSocket ws;
+    transport::telemetry::WebSocket telemetry;
+    transport::winhttp::WebSocket ws(telemetry);
 
-    ws.set_message_callback([](const std::string& msg) {
+    ws.set_message_callback([](std::string_view msg) {
         std::cout << "Received: " << msg << "\n\n";
     });
 
@@ -36,8 +37,8 @@ int main() {
         return 1;
     }
 
-    // Give Kraken a moment to send the system status
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    // wait a bit for messages
+    std::this_thread::sleep_for(std::chrono::seconds(2));
 
     // -------------------------------------------------------------------------
     // Subscribe to BOOK channel with SNAPSHOT
@@ -62,10 +63,10 @@ int main() {
     std::cout << "Subscribed to book snapshot. Waiting for messages... (Ctrl+C to exit)\n";
 
     // -------------------------------------------------------------------------
-    // Event loop
+    // Event loop - Keep running until interrupted
     // -------------------------------------------------------------------------
     while (running.load(std::memory_order_relaxed)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     std::cout << "Shutting down...\n";

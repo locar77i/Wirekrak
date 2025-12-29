@@ -101,6 +101,7 @@ struct alignas(64) duration {
     }
 
     // Optional string formatter (for debug or Prometheus output)
+    // TODO: use lcr::format() helpers to enhance readability
     inline std::string str(time_unit tunit = time_unit::seconds, time_unit unit = time_unit::milliseconds) const {
         std::ostringstream oss;
         T samples = samples_.load();

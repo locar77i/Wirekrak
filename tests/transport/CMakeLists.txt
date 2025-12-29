@@ -1,4 +1,4 @@
-# tests/wal/recorder/CMakeLists.txt
+# tests/transport/CMakeLists.txt
 
 include(${PROJECT_SOURCE_DIR}/cmake/Wirekrak.TestHelpers.cmake)
 
