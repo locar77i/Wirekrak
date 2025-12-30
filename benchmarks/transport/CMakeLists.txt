@@ -1,4 +1,4 @@
-# benchmark/transport/CMakeLists.txt
+# benchmarks/transport/CMakeLists.txt
 
 
 # -------------------------------------------------------------

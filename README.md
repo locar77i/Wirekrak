@@ -482,6 +482,20 @@ ingestion pipelines.
 
 ---
 
+## 📊 Benchmarks <a name="benchmarks"></a>
+
+Wirekrak includes a growing set of **layered performance benchmarks** designed to
+measure isolated system behavior with clear scope and reproducible results.
+
+Benchmarks are organized by subsystem (transport, protocol, stream, end-to-end) and
+each lives in its own directory alongside source code, configuration, and documented
+observations.
+
+➡️ **[Benchmarks Overview](./docs/benchmarks/README.md)**
+
+
+---
+
 ## ✨ Why Wirekrak
 
 **Wirekrak** is a production-oriented C++ SDK for the Kraken WebSocket API, designed not just to consume real-time data, but to make it reliable, testable, and replayable.

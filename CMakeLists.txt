@@ -88,6 +88,7 @@ endif()
 option(WIREKRAK_BUILD_TESTS "Build Wirekrak tests" OFF)
 
 if (WIREKRAK_BUILD_TESTS)
+    message(STATUS "Building Wirekrak tests")
     enable_testing()
     add_subdirectory(tests)
 endif()
@@ -96,13 +97,23 @@ endif()
 # -------------------------------------------------------------
 # Examples
 # -------------------------------------------------------------
-add_subdirectory(examples)
+option(WIREKRAK_BUILD_EXAMPLES "Build Wirekrak examples" OFF)
+
+if (WIREKRAK_BUILD_EXAMPLES)
+    message(STATUS "Building Wirekrak examples")
+    add_subdirectory(examples)
+endif()
 
 
 # -------------------------------------------------------------
 # Benchmarks
 # -------------------------------------------------------------
-add_subdirectory(benchmark)
+option(WIREKRAK_BUILD_BENCHMARKS "Build Wirekrak benchmarks" OFF)
+
+if (WIREKRAK_BUILD_BENCHMARKS)
+    message(STATUS "Building Wirekrak benchmarks")
+    add_subdirectory(benchmarks)
+endif()
 
 
 # ------------------------------------------------------------------
