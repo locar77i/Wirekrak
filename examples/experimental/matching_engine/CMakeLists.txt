@@ -25,27 +25,21 @@ if(ENABLE_FS3_METRICS)
 endif()
 
 
-if (WIREKRAK_BUILD_EXPERIMENTAL)
-
-    message(STATUS "Building WireKrak experimental integrations")
 
 
-    # flashstrike_matching_gateway
-    add_executable(flashstrike_matching_gateway
-        flashstrike_matching_gateway.cpp
-    )
-    target_link_libraries(flashstrike_matching_gateway
-        PRIVATE
-            wirekrak
-            CLI11::CLI11
-    )
-    target_include_directories(flashstrike_matching_gateway
-        PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/../..
-            ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    )
+# flashstrike_matching_gateway
+add_executable(flashstrike_matching_gateway
+    flashstrike_matching_gateway.cpp
+)
+target_link_libraries(flashstrike_matching_gateway
+    PRIVATE
+        wirekrak
+        CLI11::CLI11
+)
+target_include_directories(flashstrike_matching_gateway
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+)
 
-    target_compile_features(flashstrike_matching_gateway PRIVATE cxx_std_20)
-
-
-endif()
+target_compile_features(flashstrike_matching_gateway PRIVATE cxx_std_20)

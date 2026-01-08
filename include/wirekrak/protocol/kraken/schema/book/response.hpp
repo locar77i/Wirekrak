@@ -16,6 +16,7 @@
 namespace wirekrak {
 namespace protocol {
 namespace kraken {
+namespace schema {
 namespace book {
 
 // ===============================================
@@ -135,6 +136,7 @@ inline std::ostream& operator<<(std::ostream& os, const Response& r) {
 }
 
 } // namespace book
+} // namespace schema
 } // namespace kraken
 } // namespace protocol
 } // namespace wirekrak

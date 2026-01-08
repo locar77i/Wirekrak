@@ -27,7 +27,7 @@ that only valid engine state updates propagate into higher layers.
 ================================================================================
 */
 
-static bool parse(std::string_view json, status::Update& out) {
+static bool parse(std::string_view json, schema::status::Update& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
@@ -54,7 +54,7 @@ void test_status_update_success_online() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(parse(json, upd));
 
     assert(upd.system == SystemState::Online);
@@ -81,7 +81,7 @@ void test_status_update_success_maintenance() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(parse(json, upd));
 
     assert(upd.system == SystemState::Maintenance);
@@ -103,7 +103,7 @@ void test_status_update_missing_data() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(!parse(json, upd));
 
     std::cout << "[TEST] OK\n";
@@ -120,7 +120,7 @@ void test_status_update_empty_data_array() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(!parse(json, upd));
 
     std::cout << "[TEST] OK\n";
@@ -141,7 +141,7 @@ void test_status_update_missing_system() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(!parse(json, upd));
 
     std::cout << "[TEST] OK\n";
@@ -162,7 +162,7 @@ void test_status_update_missing_api_version() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(!parse(json, upd));
 
     std::cout << "[TEST] OK\n";
@@ -183,7 +183,7 @@ void test_status_update_missing_connection_id() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(!parse(json, upd));
 
     std::cout << "[TEST] OK\n";
@@ -204,7 +204,7 @@ void test_status_update_missing_version() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(!parse(json, upd));
 
     std::cout << "[TEST] OK\n";
@@ -221,7 +221,7 @@ void test_status_update_wrong_channel() {
     }
     )json";
 
-    status::Update upd{};
+    schema::status::Update upd{};
     assert(!parse(json, upd));
 
     std::cout << "[TEST] OK\n";

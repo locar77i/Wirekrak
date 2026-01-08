@@ -30,7 +30,7 @@ and server-side validation are intentionally out of scope.
 void test_book_unsubscribe_minimal() {
     std::cout << "[TEST] Book unsubscribe request (minimal)..." << std::endl;
 
-    book::Unsubscribe unsub;
+    schema::book::Unsubscribe unsub;
     unsub.symbols = { Symbol{"BTC/USD"} };
 
     std::string json = unsub.to_json();
@@ -53,7 +53,7 @@ void test_book_unsubscribe_minimal() {
 void test_book_unsubscribe_multiple_symbols() {
     std::cout << "[TEST] Book unsubscribe request (multiple symbols)..." << std::endl;
 
-    book::Unsubscribe unsub;
+    schema::book::Unsubscribe unsub;
     unsub.symbols = {
         Symbol{"BTC/USD"},
         Symbol{"ETH/USD"},
@@ -71,7 +71,7 @@ void test_book_unsubscribe_multiple_symbols() {
 void test_book_unsubscribe_with_depth_and_req_id() {
     std::cout << "[TEST] Book unsubscribe request (depth + req_id)..." << std::endl;
 
-    book::Unsubscribe unsub;
+    schema::book::Unsubscribe unsub;
     unsub.symbols = { Symbol{"BTC/USD"} };
     unsub.depth   = 25;
     unsub.req_id  = 98765;
@@ -88,7 +88,7 @@ void test_book_unsubscribe_with_depth_and_req_id() {
 void test_book_unsubscribe_empty_symbols_asserts() {
     std::cout << "[TEST] Book unsubscribe request (empty symbols — debug assert)..." << std::endl;
 
-    book::Unsubscribe unsub;
+    schema::book::Unsubscribe unsub;
 
     // NOTE:
     // We cannot reliably catch assert(), but this test exists
@@ -101,7 +101,7 @@ void test_book_unsubscribe_empty_symbols_asserts() {
 void test_book_unsubscribe_invalid_depth_asserts() {
     std::cout << "[TEST] Book unsubscribe request (invalid depth — debug assert)..." << std::endl;
 
-    book::Unsubscribe unsub;
+    schema::book::Unsubscribe unsub;
     unsub.symbols = { Symbol{"BTC/USD"} };
     unsub.depth   = 42; // invalid Kraken depth
 

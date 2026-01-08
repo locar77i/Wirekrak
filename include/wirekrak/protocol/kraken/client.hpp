@@ -80,9 +80,9 @@ Advanced users may still customize behavior by:
 
 template<transport::WebSocketConcept WS>
 class Client {
-    using pong_handler_t = std::function<void(const system::Pong&)>;
-    using rejection_handler_t = std::function<void(const rejection::Notice&)>;
-    using status_handler_t = std::function<void(const status::Update&)>;
+    using pong_handler_t = std::function<void(const schema::system::Pong&)>;
+    using rejection_handler_t = std::function<void(const schema::rejection::Notice&)>;
+    using status_handler_t = std::function<void(const schema::status::Update&)>;
 
 public:
     Client()
@@ -129,8 +129,8 @@ public:
 
     // Send ping
     inline void ping(lcr::optional<std::uint64_t> req_id = {}) noexcept{
-        system::Ping ping{.req_id = req_id};
-        send_raw_request_(system::Ping{.req_id = req_id});
+        schema::system::Ping ping{.req_id = req_id};
+        send_raw_request_(schema::system::Ping{.req_id = req_id});
     }
 
     template <request::Subscription RequestT, class Callback>
@@ -182,7 +182,7 @@ public:
         // PROCESS PONG MESSAGES
         // ===============================================================================
         { // === Process pong ring ===
-        system::Pong pong;
+        schema::system::Pong pong;
         while (ctx_.pong_ring.pop(pong)) {
             handle_pong_(pong);
         }}
@@ -190,7 +190,7 @@ public:
         // PROCESS REJECTION NOTICES
         // ===============================================================================
         { // === Process rejection ring ===
-        rejection::Notice notice;
+        schema::rejection::Notice notice;
         while (ctx_.rejection_ring.pop(notice)) {
             handle_rejection_(notice);
         }}
@@ -198,7 +198,7 @@ public:
         // PROCESS STATUS MESSAGES
         // ===============================================================================
         { // === Process status ring ===
-        status::Update update;
+        schema::status::Update update;
         while (ctx_.status_ring.pop(update)) {
             handle_status_(update);
         }}
@@ -206,14 +206,14 @@ public:
         // PROCESS TRADE MESSAGES
         // ===============================================================================
         { // === Process trade ring ===
-        trade::Response resp;
+        schema::trade::Response resp;
         while (ctx_.trade_ring.pop(resp)) {
             for (auto& trade_msg : resp.trades) {
                 dispatcher_.dispatch(trade_msg);
             }
         }}
         { // === Process trade subscribe ring ===
-        trade::SubscribeAck ack;
+        schema::trade::SubscribeAck ack;
         while (ctx_.trade_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
@@ -223,9 +223,9 @@ public:
             }
         }}
         { // === Process trade unsubscribe ring ===
-        trade::UnsubscribeAck ack;
+        schema::trade::UnsubscribeAck ack;
         while (ctx_.trade_unsubscribe_ring.pop(ack)) {
-            dispatcher_.remove_symbol_handlers<trade::UnsubscribeAck>(ack.symbol);
+            dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
             }
@@ -237,12 +237,12 @@ public:
         // PROCESS BOOK UPDATES
         // ===============================================================================
         { // === Process book ring ===
-        book::Response resp;
+        schema::book::Response resp;
         while (ctx_.book_ring.pop(resp)) {
             dispatcher_.dispatch(resp);
         }}
         { // === Process book subscribe ring ===
-        book::SubscribeAck ack;
+        schema::book::SubscribeAck ack;
         while (ctx_.book_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
@@ -252,9 +252,9 @@ public:
             }
         }}
         { // === Process book unsubscribe ring ===
-        book::UnsubscribeAck ack;
+        schema::book::UnsubscribeAck ack;
         while (ctx_.book_unsubscribe_ring.pop(ack)) {
-            dispatcher_.remove_symbol_handlers<book::UnsubscribeAck>(ack.symbol);
+            dispatcher_.remove_symbol_handlers<schema::book::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
             }
@@ -326,12 +326,12 @@ private:
         trade_channel_manager_.clear_all();
         book_channel_manager_.clear_all();
         // 2) Replay trade subscriptions
-        auto trade_subscriptions = replay_db_.take_subscriptions<trade::Subscribe>();
+        auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
         for (const auto& subscription : trade_subscriptions) {
             subscribe(subscription.request(), subscription.callback());
         }
         // 3) Replay book subscriptions
-        auto book_subscriptions = replay_db_.take_subscriptions<book::Subscribe>();
+        auto book_subscriptions = replay_db_.take_subscriptions<schema::book::Subscribe>();
         for (const auto& subscription : book_subscriptions) {
             subscribe(subscription.request(), subscription.callback());
         }
@@ -349,20 +349,20 @@ private:
         // handle liveness timeout
     }
 
-    inline void handle_pong_(const system::Pong& pong) noexcept {
+    inline void handle_pong_(const schema::system::Pong& pong) noexcept {
         if (hooks_.handle_pong) {
             hooks_.handle_pong(pong);
         }
     }
 
-    inline void handle_rejection_(const rejection::Notice& notice) noexcept {
+    inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
         if (hooks_.handle_rejection) {
             WK_WARN("[!!] TODO: Rejection internal management (f. ex. drop invalid symbols, ...)");
             hooks_.handle_rejection(notice);
         }
     }
     
-    inline void handle_status_(const status::Update& status) noexcept {
+    inline void handle_status_(const schema::status::Update& status) noexcept {
         if (hooks_.handle_status) {
             hooks_.handle_status(status);
         }

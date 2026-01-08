@@ -53,8 +53,8 @@ public:
     }
 
 private:
-    std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::trade::Trade>>> trade_handlers_;
-    std::unordered_map<SymbolId, std::vector<Callback<protocol::kraken::book::Response>>> book_handlers_;
+    std::unordered_map<SymbolId, std::vector<Callback<schema::trade::Trade>>> trade_handlers_;
+    std::unordered_map<SymbolId, std::vector<Callback<schema::book::Response>>> book_handlers_;
 
 private:
     // Helpers to get the correct handler table for a response type

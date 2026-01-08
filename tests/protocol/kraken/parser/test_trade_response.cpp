@@ -66,7 +66,7 @@ void test_trade_snapshot_success() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    trade::Response resp{};
+    schema::trade::Response resp{};
     bool ok = parser::trade::response::parse(doc.value(), resp);
 
     assert(ok);
@@ -106,7 +106,7 @@ void test_trade_update_success() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    trade::Response resp{};
+    schema::trade::Response resp{};
     bool ok = parser::trade::response::parse(doc.value(), resp);
 
     assert(ok);
@@ -132,7 +132,7 @@ void test_trade_missing_type() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    trade::Response resp{};
+    schema::trade::Response resp{};
     assert(!parser::trade::response::parse(doc.value(), resp));
 
     std::cout << "[TEST] OK\n";
@@ -149,7 +149,7 @@ void test_trade_invalid_type() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    trade::Response resp{};
+    schema::trade::Response resp{};
     assert(!parser::trade::response::parse(doc.value(), resp));
 
     std::cout << "[TEST] OK\n";
@@ -186,7 +186,7 @@ void test_trade_update_multiple_trades_rejected() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    trade::Response resp{};
+    schema::trade::Response resp{};
     assert(parser::trade::response::parse(doc.value(), resp));
     assert(resp.trades.size() == 2);
 
@@ -215,7 +215,7 @@ void test_trade_missing_required_field() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    trade::Response resp{};
+    schema::trade::Response resp{};
     assert(!parser::trade::response::parse(doc.value(), resp));
 
     std::cout << "[TEST] OK\n";
@@ -232,7 +232,7 @@ void test_trade_root_not_object() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    trade::Response resp{};
+    schema::trade::Response resp{};
     assert(!parser::trade::response::parse(doc.value(), resp));
 
     std::cout << "[TEST] OK\n";

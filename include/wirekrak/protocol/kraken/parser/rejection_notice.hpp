@@ -13,8 +13,8 @@ namespace wirekrak::protocol::kraken::parser {
 
 struct rejection_notice {
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, kraken::rejection::Notice& out) noexcept {
-        out = kraken::rejection::Notice{};
+    static inline bool parse(const simdjson::dom::element& root, schema::rejection::Notice& out) noexcept {
+        out = schema::rejection::Notice{};
 
         // Root must be object
         auto r = helper::require_object(root);

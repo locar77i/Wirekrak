@@ -30,7 +30,7 @@ and server-side validation are intentionally out of scope.
 void test_book_subscribe_minimal() {
     std::cout << "[TEST] Book subscribe request (minimal)..." << std::endl;
 
-    book::Subscribe sub;
+    schema::book::Subscribe sub;
     sub.symbols = { Symbol{"BTC/USD"} };
 
     std::string json = sub.to_json();
@@ -53,7 +53,7 @@ void test_book_subscribe_minimal() {
 void test_book_subscribe_multiple_symbols() {
     std::cout << "[TEST] Book subscribe request (multiple symbols)..." << std::endl;
 
-    book::Subscribe sub;
+    schema::book::Subscribe sub;
     sub.symbols = {
         Symbol{"BTC/USD"},
         Symbol{"ETH/USD"},
@@ -71,7 +71,7 @@ void test_book_subscribe_multiple_symbols() {
 void test_book_subscribe_with_snapshot_and_req_id() {
     std::cout << "[TEST] Book subscribe request (snapshot + req_id)..." << std::endl;
 
-    book::Subscribe sub;
+    schema::book::Subscribe sub;
     sub.symbols  = { Symbol{"BTC/USD"} };
     sub.snapshot = true;
     sub.req_id   = 12345;
@@ -87,7 +87,7 @@ void test_book_subscribe_with_snapshot_and_req_id() {
 void test_book_subscribe_snapshot_false() {
     std::cout << "[TEST] Book subscribe request (snapshot=false)..." << std::endl;
 
-    book::Subscribe sub;
+    schema::book::Subscribe sub;
     sub.symbols  = { Symbol{"BTC/USD"} };
     sub.snapshot = false;
 
@@ -102,7 +102,7 @@ void test_book_subscribe_snapshot_false() {
 void test_book_subscribe_empty_symbols_asserts() {
     std::cout << "[TEST] Book subscribe request (empty symbols — debug assert)..." << std::endl;
 
-    book::Subscribe sub;
+    schema::book::Subscribe sub;
 
     bool asserted = false;
     try {
@@ -120,7 +120,7 @@ void test_book_subscribe_empty_symbols_asserts() {
 void test_book_subscribe_invalid_depth_asserts() {
     std::cout << "[TEST] Book subscribe request (invalid depth — debug assert)..." << std::endl;
 
-    book::Subscribe sub;
+    schema::book::Subscribe sub;
     sub.symbols = { Symbol{"BTC/USD"} };
     sub.depth   = 48; // invalid Kraken depth
 

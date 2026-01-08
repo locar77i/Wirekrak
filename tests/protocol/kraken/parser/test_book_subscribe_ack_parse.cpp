@@ -59,7 +59,7 @@ void test_book_subscribe_ack_success() {
     assert(!doc.error());
     simdjson::dom::element root = doc.value();
 
-    book::SubscribeAck ack{};
+    schema::book::SubscribeAck ack{};
     bool ok = parser::book::subscribe_ack::parse(root, ack);
 
     assert(ok);
@@ -109,7 +109,7 @@ void test_book_subscribe_ack_error() {
     assert(!doc.error());
     simdjson::dom::element root = doc.value();
 
-    book::SubscribeAck ack{};
+    schema::book::SubscribeAck ack{};
     bool ok = parser::book::subscribe_ack::parse(root, ack);
 
     assert(ok);
@@ -142,7 +142,7 @@ void test_book_subscribe_ack_wrong_method() {
     assert(!doc.error());
     simdjson::dom::element root = doc.value();
 
-    book::SubscribeAck ack{};
+    schema::book::SubscribeAck ack{};
     bool ok = parser::book::subscribe_ack::parse(root, ack);
 
     assert(!ok);
@@ -172,7 +172,7 @@ void test_book_subscribe_ack_wrong_channel() {
     assert(!doc.error());
     simdjson::dom::element root = doc.value();
 
-    book::SubscribeAck ack{};
+    schema::book::SubscribeAck ack{};
     bool ok = parser::book::subscribe_ack::parse(root, ack);
 
     assert(!ok);
@@ -201,7 +201,7 @@ void test_book_subscribe_ack_missing_symbol() {
     assert(!doc.error());
     simdjson::dom::element root = doc.value();
 
-    book::SubscribeAck ack{};
+    schema::book::SubscribeAck ack{};
     bool ok = parser::book::subscribe_ack::parse(root, ack);
 
     assert(!ok);
@@ -230,7 +230,7 @@ void test_book_subscribe_ack_invalid_depth_type() {
     assert(!doc.error());
     simdjson::dom::element root = doc.value();
 
-    book::SubscribeAck ack{};
+    schema::book::SubscribeAck ack{};
     bool ok = parser::book::subscribe_ack::parse(root, ack);
 
     assert(!ok);
@@ -252,7 +252,7 @@ void test_book_subscribe_ack_missing_result() {
     assert(!doc.error());
     simdjson::dom::element root = doc.value();
 
-    book::SubscribeAck ack{};
+    schema::book::SubscribeAck ack{};
     bool ok = parser::book::subscribe_ack::parse(root, ack);
 
     assert(!ok);

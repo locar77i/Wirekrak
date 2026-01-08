@@ -34,7 +34,7 @@ int main() {
     std::uint64_t connection_id;    // Unique connection identifier
     std::string version;            // WebSocket service version
     */
-    client.on_status([&](const status::Update& update) {
+    client.on_status([&](const schema::status::Update& update) {
         WK_INFO("[STATUS] received update: system=" << to_string(update.system)
                 << " api_version=" << update.api_version
                 << " connection_id=" << update.connection_id
@@ -44,7 +44,7 @@ int main() {
     // ---------------------------------------------------------------------
     // Register pong handler
     // ---------------------------------------------------------------------
-    client.on_pong([&](const system::Pong& pong) {
+    client.on_pong([&](const schema::system::Pong& pong) {
         WK_INFO("[PONG] received: " << pong.str());
         std::cout << " -> [PONG] received: " << pong << std::endl;
 

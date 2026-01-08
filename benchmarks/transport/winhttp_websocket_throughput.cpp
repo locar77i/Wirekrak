@@ -176,7 +176,7 @@ int main() {
     // Subscribe to BOOK channel with SNAPSHOT
     // Use the intrument with more volume to see telemetry effects
     // -------------------------------------------------------------------------
-    protocol::kraken::book::Subscribe subscription{
+    protocol::kraken::schema::book::Subscribe subscription{
         .symbols = {"BTC/USD", "BTC/EUR", "ETH/USD", "ETH/EUR", "SOL/USD", "XRP/USD", "ADA/USD", "DOGE/USD", "AVAX/USD", "LINK/USD", "DOT/USD", "MATIC/USD", "LTC/USD"},
         .depth = 1000,
         .snapshot = true

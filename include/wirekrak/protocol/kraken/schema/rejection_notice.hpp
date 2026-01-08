@@ -13,6 +13,7 @@
 namespace wirekrak {
 namespace protocol {
 namespace kraken {
+namespace schema {
 namespace rejection {
 
 // ===============================================
@@ -67,6 +68,7 @@ inline std::ostream& operator<<(std::ostream& os, const Notice& n) {
 }
 
 } // namespace rejection
+} // namespace schema
 } // namespace kraken
 } // namespace protocol
 } // namespace wirekrak

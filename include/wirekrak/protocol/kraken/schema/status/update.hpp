@@ -12,6 +12,7 @@
 namespace wirekrak {
 namespace protocol {
 namespace kraken {
+namespace schema {
 namespace status {
 
 /*
@@ -74,6 +75,7 @@ inline std::ostream& operator<<(std::ostream& os, const Update& u) {
 }
 
 } // namespace status
+} // namespace schema
 } // namespace kraken
 } // namespace protocol
 } // namespace wirekrak

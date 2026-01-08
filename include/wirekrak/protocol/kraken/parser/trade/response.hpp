@@ -15,8 +15,8 @@ namespace wirekrak::protocol::kraken::parser::trade {
 struct response {
 
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, kraken::trade::Response& out) noexcept {
-        out = kraken::trade::Response{};
+    static inline bool parse(const simdjson::dom::element& root, schema::trade::Response& out) noexcept {
+        out = schema::trade::Response{};
 
         // Root
         auto r = helper::require_object(root);
@@ -61,7 +61,7 @@ struct response {
                 return false;
             }
 
-            kraken::trade::Trade trade{};
+            schema::trade::Trade trade{};
 
             // symbol (required)
             r = adapter::parse_symbol_required(obj, "symbol", trade.symbol);

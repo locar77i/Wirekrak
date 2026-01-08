@@ -63,7 +63,7 @@ void test_pong_success_minimal() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     bool ok = parser::system::pong::parse(doc.value(), pong);
 
     assert(ok);
@@ -97,7 +97,7 @@ void test_pong_success_full() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     bool ok = parser::system::pong::parse(doc.value(), pong);
 
     assert(ok);
@@ -132,7 +132,7 @@ void test_pong_success_empty_warnings_array() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     bool ok = parser::system::pong::parse(doc.value(), pong);
 
     assert(ok);
@@ -161,7 +161,7 @@ void test_pong_error_minimal() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     bool ok = parser::system::pong::parse(doc.value(), pong);
 
     assert(ok);
@@ -192,7 +192,7 @@ void test_pong_error_with_req_id() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     bool ok = parser::system::pong::parse(doc.value(), pong);
 
     assert(ok);
@@ -219,7 +219,7 @@ void test_pong_missing_success() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     assert(!parser::system::pong::parse(doc.value(), pong));
 
     std::cout << "[TEST] OK\n";
@@ -239,7 +239,7 @@ void test_pong_success_missing_result() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     assert(!parser::system::pong::parse(doc.value(), pong));
 
     std::cout << "[TEST] OK\n";
@@ -259,7 +259,7 @@ void test_pong_error_missing_error_field() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     assert(!parser::system::pong::parse(doc.value(), pong));
 
     std::cout << "[TEST] OK\n";
@@ -282,7 +282,7 @@ void test_pong_invalid_warnings_type() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     assert(!parser::system::pong::parse(doc.value(), pong));
 
     std::cout << "[TEST] OK\n";
@@ -299,7 +299,7 @@ void test_pong_root_not_object() {
     auto doc = parser.parse(json);
     assert(!doc.error());
 
-    system::Pong pong{};
+    schema::system::Pong pong{};
     assert(!parser::system::pong::parse(doc.value(), pong));
 
     std::cout << "[TEST] OK\n";

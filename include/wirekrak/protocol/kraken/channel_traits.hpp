@@ -10,8 +10,6 @@
 #include "wirekrak/protocol/kraken/schema/book/subscribe.hpp"
 #include "wirekrak/protocol/kraken/schema/book/unsubscribe.hpp"
 #include "wirekrak/protocol/kraken/schema/book/response.hpp"
-#include "wirekrak/protocol/kraken/schema/book/snapshot.hpp"
-#include "wirekrak/protocol/kraken/schema/book/update.hpp"
 #include "wirekrak/protocol/kraken/schema/book/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/schema/book/unsubscribe_ack.hpp"
 
@@ -36,32 +34,32 @@ inline constexpr Channel channel_of_v = channel_of<T>::value;
 // ---------------------------------------------------------------------------
 
 template<>
-struct channel_of<trade::Subscribe> {
+struct channel_of<schema::trade::Subscribe> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<trade::Unsubscribe> {
+struct channel_of<schema::trade::Unsubscribe> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<trade::Response> {
+struct channel_of<schema::trade::Response> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<trade::Trade> {
+struct channel_of<schema::trade::Trade> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<trade::SubscribeAck> {
+struct channel_of<schema::trade::SubscribeAck> {
     static constexpr Channel value = Channel::Trade;
 };
 
 template<>
-struct channel_of<trade::UnsubscribeAck> {
+struct channel_of<schema::trade::UnsubscribeAck> {
     static constexpr Channel value = Channel::Trade;
 };
 
@@ -71,37 +69,27 @@ struct channel_of<trade::UnsubscribeAck> {
 // ---------------------------------------------------------------------------
 
 template<>
-struct channel_of<book::Subscribe> {
+struct channel_of<schema::book::Subscribe> {
     static constexpr Channel value = Channel::Book;
 };
 
 template<>
-struct channel_of<book::Unsubscribe> {
+struct channel_of<schema::book::Unsubscribe> {
     static constexpr Channel value = Channel::Book;
 };
 
 template<>
-struct channel_of<book::Response> {
+struct channel_of<schema::book::Response> {
     static constexpr Channel value = Channel::Book;
 };
 
 template<>
-struct channel_of<book::Snapshot> {  // Deprecated, kept for completeness
+struct channel_of<schema::book::SubscribeAck> {
     static constexpr Channel value = Channel::Book;
 };
 
 template<>
-struct channel_of<book::Update> {  // Deprecated, kept for completeness
-    static constexpr Channel value = Channel::Book;
-};
-
-template<>
-struct channel_of<book::SubscribeAck> {
-    static constexpr Channel value = Channel::Book;
-};
-
-template<>
-struct channel_of<book::UnsubscribeAck> {
+struct channel_of<schema::book::UnsubscribeAck> {
     static constexpr Channel value = Channel::Book;
 };
 
@@ -124,15 +112,15 @@ struct channel_traits;
 // ---------------------------------------------------------------------------
 
 template<>
-struct channel_traits<trade::Subscribe> {
+struct channel_traits<schema::trade::Subscribe> {
     static constexpr Channel channel = Channel::Trade;
-    using response_type = trade::Trade;
+    using response_type = schema::trade::Trade;
 };
 
 template<>
-struct channel_traits<trade::Unsubscribe> {
+struct channel_traits<schema::trade::Unsubscribe> {
     static constexpr Channel channel = Channel::Trade;
-    using response_type = trade::Trade;
+    using response_type = schema::trade::Trade;
 };
 
 
@@ -141,15 +129,15 @@ struct channel_traits<trade::Unsubscribe> {
 // ---------------------------------------------------------------------------
 
 template<>
-struct channel_traits<book::Subscribe> {
+struct channel_traits<schema::book::Subscribe> {
     static constexpr Channel channel = Channel::Book;
-    using response_type = book::Response;
+    using response_type = schema::book::Response;
 };
 
 template<>
-struct channel_traits<book::Unsubscribe> {
+struct channel_traits<schema::book::Unsubscribe> {
     static constexpr Channel channel = Channel::Book;
-    using response_type = book::Response;
+    using response_type = schema::book::Response;
 };
 
 } // namespace kraken

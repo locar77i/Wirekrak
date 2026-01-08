@@ -13,7 +13,11 @@
 #include "wirekrak/core/timestamp.hpp"
 #include "lcr/optional.hpp"
 
-namespace wirekrak::protocol::kraken::trade {
+namespace wirekrak {
+namespace protocol {
+namespace kraken {
+namespace schema {
+namespace trade {
 
 // ===============================================
 // TRADE EVENT (single element in data[])
@@ -109,4 +113,8 @@ inline std::ostream& operator<<(std::ostream& os, const Response& r) {
     return os;
 }
 
-} // namespace wirekrak::protocol::kraken::trade
+} // namespace trade
+} // namespace schema
+} // namespace kraken
+} // namespace protocol
+} // namespace wirekrak

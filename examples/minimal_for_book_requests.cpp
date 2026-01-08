@@ -26,8 +26,8 @@ int main() {
     }
 
     int messages_received = 0;   // 2) Subscribe to BTC/EUR book updates
-    client.subscribe(protocol::kraken::book::Subscribe{.symbols = {"BTC/EUR"}},
-                     [&](const protocol::kraken::book::Response& msg) {
+    client.subscribe(protocol::kraken::schema::book::Subscribe{.symbols = {"BTC/EUR"}},
+                     [&](const protocol::kraken::schema::book::Response& msg) {
                             std::cout << " -> " << msg << std::endl;
                             ++messages_received;
                      }
@@ -38,7 +38,7 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    client.unsubscribe(protocol::kraken::book::Unsubscribe{.symbols = {"BTC/EUR"}});   // 3) Unsubscribe from BTC/EUR book updates
+    client.unsubscribe(protocol::kraken::schema::book::Unsubscribe{.symbols = {"BTC/EUR"}});   // 3) Unsubscribe from BTC/EUR book updates
     
     std::cout << "\n[wirekrak] Heartbeats received so far: " << client.heartbeat_total() << std::endl;
     return 0;

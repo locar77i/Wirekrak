@@ -51,7 +51,7 @@ public:
     {
     }
 
-    void on_book(const wpk::book::Book& book) {
+    void on_book(const wpk::schema::book::Book& book) {
         fs::Trades trade_count;
         fs::Price last_price;
         fs::OrderIdx order_idx;
@@ -83,7 +83,7 @@ public:
 
 private:
     template<fs::Side S>
-    inline void process_level_(const wpk::book::Level& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
+    inline void process_level_(const wpk::schema::book::Level& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
         fme::Order order{};
         generate_order_<S>(order,
             engine_.normalize_price(lvl.price),
@@ -183,13 +183,13 @@ int main(int argc, char** argv)
     wirekrak::WinClient client;
 
     // Register pong handler
-    client.on_pong([&](const wpk::system::Pong& pong) { WK_INFO(" -> " << pong.str() << ""); });
+    client.on_pong([&](const wpk::schema::system::Pong& pong) { WK_INFO(" -> " << pong.str() << ""); });
 
     // Register status handler
-    client.on_status([&](const wpk::status::Update& update) { WK_INFO(" -> " << update.str() << ""); });
+    client.on_status([&](const wpk::schema::status::Update& update) { WK_INFO(" -> " << update.str() << ""); });
 
     // Register regection handler
-    client.on_rejection([&](const wpk::rejection::Notice& notice) {  WK_WARN(" -> " << notice.str() << "");  });
+    client.on_rejection([&](const wpk::schema::rejection::Notice& notice) {  WK_WARN(" -> " << notice.str() << "");  });
 
     // Connect to Kraken WebSocket API v2
     if (!client.connect(params.url)) {
@@ -197,8 +197,8 @@ int main(int argc, char** argv)
     }
 
     // Subscribe to book updates
-    client.subscribe(wpk::book::Subscribe{.symbols = {params.symbol}, .depth = params.depth, .snapshot = params.snapshot},
-                     [&](const wpk::book::Response& msg) { gateway.on_book(msg.book); }
+    client.subscribe(wpk::schema::book::Subscribe{.symbols = {params.symbol}, .depth = params.depth, .snapshot = params.snapshot},
+                     [&](const wpk::schema::book::Response& msg) { gateway.on_book(msg.book); }
     );
 
     // Main polling loop
@@ -209,7 +209,7 @@ int main(int argc, char** argv)
     }
 
     // Ctrl+C received
-    client.unsubscribe(wpk::book::Unsubscribe{.symbols = {params.symbol}, .depth = params.depth});
+    client.unsubscribe(wpk::schema::book::Unsubscribe{.symbols = {params.symbol}, .depth = params.depth});
 
     // Drain events for 2 seconds approx.
     for (int i = 0; i < 200; ++i) {

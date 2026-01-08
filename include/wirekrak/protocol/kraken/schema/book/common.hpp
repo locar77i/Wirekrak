@@ -5,6 +5,7 @@
 namespace wirekrak {
 namespace protocol {
 namespace kraken {
+namespace schema {
 namespace book {
 
 // -----------------------------------------------
@@ -42,6 +43,7 @@ constexpr inline bool is_valid_depth(std::uint32_t depth) noexcept {
 }
 
 } // namespace book
+} // namespace schema
 } // namespace kraken
 } // namespace protocol
 } // namespace wirekrak

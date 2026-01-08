@@ -30,7 +30,7 @@ and server-side validation are intentionally out of scope.
 void test_ping_minimal() {
     std::cout << "[TEST] Ping request (minimal)..." << std::endl;
 
-    system::Ping ping;
+    schema::system::Ping ping;
 
     std::string json = ping.to_json();
 
@@ -46,7 +46,7 @@ void test_ping_minimal() {
 void test_ping_with_req_id() {
     std::cout << "[TEST] Ping request (with req_id)..." << std::endl;
 
-    system::Ping ping;
+    schema::system::Ping ping;
     ping.req_id = 42;
 
     std::string json = ping.to_json();
@@ -63,7 +63,7 @@ void test_ping_with_req_id() {
 void test_ping_large_req_id() {
     std::cout << "[TEST] Ping request (large req_id)..." << std::endl;
 
-    system::Ping ping;
+    schema::system::Ping ping;
     ping.req_id = 9'223'372'036'854'775'807ULL;
 
     std::string json = ping.to_json();
@@ -76,7 +76,7 @@ void test_ping_large_req_id() {
 void test_ping_json_is_compact() {
     std::cout << "[TEST] Ping request (compact JSON)..." << std::endl;
 
-    system::Ping ping;
+    schema::system::Ping ping;
     ping.req_id = 1;
 
     std::string json = ping.to_json();
@@ -93,7 +93,7 @@ void test_ping_json_is_compact() {
 void test_ping_invalid_req_id_asserts() {
     std::cout << "[TEST] Ping request (invalid req_id — debug assert)..." << std::endl;
 
-    system::Ping ping;
+    schema::system::Ping ping;
     ping.req_id = 0; // invalid by contract
 
     // NOTE:

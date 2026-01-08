@@ -12,7 +12,7 @@ using namespace wirekrak::protocol::kraken;
 // Helper
 // -----------------------------------------------------------------------------
 
-static bool parse(std::string_view json, trade::UnsubscribeAck& out) {
+static bool parse(std::string_view json, schema::trade::UnsubscribeAck& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
@@ -54,7 +54,7 @@ void test_trade_unsubscribe_ack_success_minimal() {
     }
     )json";
 
-    trade::UnsubscribeAck ack{};
+    schema::trade::UnsubscribeAck ack{};
     assert(parse(json, ack));
 
     assert(ack.success == true);
@@ -80,7 +80,7 @@ void test_trade_unsubscribe_ack_success_full() {
     }
     )json";
 
-    trade::UnsubscribeAck ack{};
+    schema::trade::UnsubscribeAck ack{};
     assert(parse(json, ack));
 
     assert(ack.success == true);
@@ -106,7 +106,7 @@ void test_trade_unsubscribe_ack_error_case() {
     }
     )json";
 
-    trade::UnsubscribeAck ack{};
+    schema::trade::UnsubscribeAck ack{};
     assert(parse(json, ack));
 
     assert(ack.success == false);
@@ -125,7 +125,7 @@ void test_trade_unsubscribe_ack_missing_success() {
     }
     )json";
 
-    trade::UnsubscribeAck ack{};
+    schema::trade::UnsubscribeAck ack{};
     assert(!parse(json, ack));
 
     std::cout << "[TEST] OK\n";
@@ -140,7 +140,7 @@ void test_trade_unsubscribe_ack_success_missing_result() {
     }
     )json";
 
-    trade::UnsubscribeAck ack{};
+    schema::trade::UnsubscribeAck ack{};
     assert(!parse(json, ack));
 
     std::cout << "[TEST] OK\n";
@@ -156,7 +156,7 @@ void test_trade_unsubscribe_ack_missing_symbol() {
     }
     )json";
 
-    trade::UnsubscribeAck ack{};
+    schema::trade::UnsubscribeAck ack{};
     assert(!parse(json, ack));
 
     std::cout << "[TEST] OK\n";
@@ -171,7 +171,7 @@ void test_trade_unsubscribe_ack_root_not_object() {
 
     constexpr std::string_view json = R"json(42)json";
 
-    trade::UnsubscribeAck ack{};
+    schema::trade::UnsubscribeAck ack{};
     assert(!parse(json, ack));
 
     std::cout << "[TEST] OK\n";

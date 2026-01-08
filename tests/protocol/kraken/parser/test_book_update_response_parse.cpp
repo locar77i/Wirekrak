@@ -32,7 +32,7 @@ initial book state handling and incremental order book updates.
 ================================================================================
 */
 
-static bool parse(std::string_view json, book::Response& out) {
+static bool parse(std::string_view json, schema::book::Response& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
@@ -59,7 +59,7 @@ void test_book_update_success_bids_only() {
     }
     )json";
 
-    book::Response resp{};
+    schema::book::Response resp{};
     assert(parse(json, resp));
     assert(resp.book.bids.size() == 1);
     assert(resp.book.asks.empty());
@@ -83,7 +83,7 @@ void test_book_update_success_asks_only() {
     }
     )json";
 
-    book::Response resp{};
+    schema::book::Response resp{};
     assert(parse(json, resp));
     assert(resp.book.asks.size() == 1);
     assert(resp.book.bids.empty());
@@ -108,7 +108,7 @@ void test_book_update_success_bids_and_asks() {
     }
     )json";
 
-    book::Response resp{};
+    schema::book::Response resp{};
     assert(parse(json, resp));
     assert(resp.book.asks.size() == 1);
     assert(resp.book.bids.size() == 1);
@@ -135,7 +135,7 @@ void test_book_update_missing_timestamp() {
     }
     )json";
 
-    book::Response resp{};
+    schema::book::Response resp{};
     assert(parse(json, resp));
     assert(resp.book.timestamp.has() == false);
 
@@ -157,7 +157,7 @@ void test_book_update_missing_checksum() {
     }
     )json";
 
-    book::Response resp{};
+    schema::book::Response resp{};
     assert(!parse(json, resp));
 
     std::cout << "[TEST] OK\n";
@@ -178,7 +178,7 @@ void test_book_update_missing_symbol() {
     }
     )json";
 
-    book::Response resp{};
+    schema::book::Response resp{};
     assert(!parse(json, resp));
 
     std::cout << "[TEST] OK\n";
@@ -199,7 +199,7 @@ void test_book_update_missing_bids_and_asks() {
     }
     )json";
 
-    book::Response resp{};
+    schema::book::Response resp{};
     assert(!parse(json, resp));
 
     std::cout << "[TEST] OK\n";
@@ -216,7 +216,7 @@ void test_book_update_wrong_type() {
     }
     )json";
 
-    book::Response resp{};
+    schema::book::Response resp{};
     assert(!parse(json, resp));
 
     std::cout << "[TEST] OK\n";

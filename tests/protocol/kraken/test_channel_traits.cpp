@@ -46,65 +46,61 @@ struct has_channel_traits<T, std::void_t<
 // ============================================================================
 
 // ---- Trade ----
-static_assert(channel_of_v<trade::Subscribe>        == Channel::Trade);
-static_assert(channel_of_v<trade::Unsubscribe>      == Channel::Trade);
-static_assert(channel_of_v<trade::Trade>            == Channel::Trade);
-static_assert(channel_of_v<trade::SubscribeAck>     == Channel::Trade);
-static_assert(channel_of_v<trade::UnsubscribeAck>   == Channel::Trade);
+static_assert(channel_of_v<schema::trade::Subscribe>      == Channel::Trade);
+static_assert(channel_of_v<schema::trade::Unsubscribe>    == Channel::Trade);
+static_assert(channel_of_v<schema::trade::Trade>          == Channel::Trade);
+static_assert(channel_of_v<schema::trade::SubscribeAck>   == Channel::Trade);
+static_assert(channel_of_v<schema::trade::UnsubscribeAck> == Channel::Trade);
 
 // ---- Book ----
-static_assert(channel_of_v<book::Subscribe>         == Channel::Book);
-static_assert(channel_of_v<book::Unsubscribe>       == Channel::Book);
-static_assert(channel_of_v<book::Response>          == Channel::Book);
-static_assert(channel_of_v<book::Snapshot>          == Channel::Book);
-static_assert(channel_of_v<book::Update>            == Channel::Book);
-static_assert(channel_of_v<book::SubscribeAck>      == Channel::Book);
-static_assert(channel_of_v<book::UnsubscribeAck>    == Channel::Book);
+static_assert(channel_of_v<schema::book::Subscribe>      == Channel::Book);
+static_assert(channel_of_v<schema::book::Unsubscribe>    == Channel::Book);
+static_assert(channel_of_v<schema::book::Response>       == Channel::Book);
+static_assert(channel_of_v<schema::book::SubscribeAck>   == Channel::Book);
+static_assert(channel_of_v<schema::book::UnsubscribeAck> == Channel::Book);
 
 // ============================================================================
 // CHANNEL NAME — STRING REPRESENTATION
 // ============================================================================
 
 // ---- Trade ----
-static_assert(channel_name_of_v<trade::Subscribe>      == "trade");
-static_assert(channel_name_of_v<trade::Unsubscribe>    == "trade");
-static_assert(channel_name_of_v<trade::Trade>          == "trade");
+static_assert(channel_name_of_v<schema::trade::Subscribe>   == "trade");
+static_assert(channel_name_of_v<schema::trade::Unsubscribe> == "trade");
+static_assert(channel_name_of_v<schema::trade::Trade>       == "trade");
 
 // ---- Book ----
-static_assert(channel_name_of_v<book::Subscribe>       == "book");
-static_assert(channel_name_of_v<book::Unsubscribe>     == "book");
-static_assert(channel_name_of_v<book::Response>        == "book");
-static_assert(channel_name_of_v<book::Snapshot>        == "book");
-static_assert(channel_name_of_v<book::Update>          == "book");
+static_assert(channel_name_of_v<schema::book::Subscribe>   == "book");
+static_assert(channel_name_of_v<schema::book::Unsubscribe> == "book");
+static_assert(channel_name_of_v<schema::book::Response>    == "book");
 
 // ============================================================================
 // CHANNEL TRAITS — REQUEST → RESPONSE TYPE
 // ============================================================================
 
 // ---- Trade requests produce Trade events ----
-static_assert(channel_traits<trade::Subscribe>::channel == Channel::Trade);
+static_assert(channel_traits<schema::trade::Subscribe>::channel == Channel::Trade);
 static_assert(std::is_same_v<
-    channel_traits<trade::Subscribe>::response_type,
-    trade::Trade
+    channel_traits<schema::trade::Subscribe>::response_type,
+    schema::trade::Trade
 >);
 
-static_assert(channel_traits<trade::Unsubscribe>::channel == Channel::Trade);
+static_assert(channel_traits<schema::trade::Unsubscribe>::channel == Channel::Trade);
 static_assert(std::is_same_v<
-    channel_traits<trade::Unsubscribe>::response_type,
-    trade::Trade
+    channel_traits<schema::trade::Unsubscribe>::response_type,
+    schema::trade::Trade
 >);
 
-// ---- Book requests produce Update events ----
-static_assert(channel_traits<book::Subscribe>::channel == Channel::Book);
+// ---- Book requests produce Response events ----
+static_assert(channel_traits<schema::book::Subscribe>::channel == Channel::Book);
 static_assert(std::is_same_v<
-    channel_traits<book::Subscribe>::response_type,
-    book::Response
+    channel_traits<schema::book::Subscribe>::response_type,
+    schema::book::Response
 >);
 
-static_assert(channel_traits<book::Unsubscribe>::channel == Channel::Book);
+static_assert(channel_traits<schema::book::Unsubscribe>::channel == Channel::Book);
 static_assert(std::is_same_v<
-    channel_traits<book::Unsubscribe>::response_type,
-    book::Response
+    channel_traits<schema::book::Unsubscribe>::response_type,
+    schema::book::Response
 >);
 
 // ============================================================================
@@ -112,16 +108,14 @@ static_assert(std::is_same_v<
 // ============================================================================
 
 // ---- Trade ----
-static_assert(!has_channel_traits<trade::Trade>::value);
-static_assert(!has_channel_traits<trade::SubscribeAck>::value);
-static_assert(!has_channel_traits<trade::UnsubscribeAck>::value);
+static_assert(!has_channel_traits<schema::trade::Trade>::value);
+static_assert(!has_channel_traits<schema::trade::SubscribeAck>::value);
+static_assert(!has_channel_traits<schema::trade::UnsubscribeAck>::value);
 
 // ---- Book ----
-static_assert(!has_channel_traits<book::Response>::value);
-static_assert(!has_channel_traits<book::Snapshot>::value);
-static_assert(!has_channel_traits<book::Update>::value);
-static_assert(!has_channel_traits<book::SubscribeAck>::value);
-static_assert(!has_channel_traits<book::UnsubscribeAck>::value);
+static_assert(!has_channel_traits<schema::book::Response>::value);
+static_assert(!has_channel_traits<schema::book::SubscribeAck>::value);
+static_assert(!has_channel_traits<schema::book::UnsubscribeAck>::value);
 
 } // namespace wirekrak
 

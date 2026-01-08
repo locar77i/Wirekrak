@@ -9,7 +9,11 @@
 #include "wirekrak/core/timestamp.hpp"
 #include "lcr/optional.hpp"
 
-namespace wirekrak::protocol::kraken::system {
+namespace wirekrak {
+namespace protocol {
+namespace kraken {
+namespace schema {
+namespace system {
 
 // ===============================================
 // PING RESPONSE (pong)
@@ -73,4 +77,8 @@ inline std::ostream& operator<<(std::ostream& os, const Pong& p) {
     return os;
 }
 
-} // namespace wirekrak::protocol::kraken::system
+} // namespace system
+} // namespace schema
+} // namespace kraken
+} // namespace protocol
+} // namespace wirekrak

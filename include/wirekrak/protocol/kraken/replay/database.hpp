@@ -55,9 +55,9 @@ public:
     }
 
 private:
-    Table<protocol::kraken::trade::Subscribe> trade_;
-    // Table<protocol::kraken::ticker::Subscribe> ticker_;
-    Table<protocol::kraken::book::Subscribe> book_;
+    Table<schema::trade::Subscribe> trade_;
+    // Table<ticker::Subscribe> ticker_;
+    Table<schema::book::Subscribe> book_;
 
 private:
     // Helpers to get the correct handler table for a response type

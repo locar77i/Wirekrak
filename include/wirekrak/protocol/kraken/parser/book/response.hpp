@@ -16,7 +16,7 @@ namespace book {
 
 struct response {
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, kraken::book::Book& out) noexcept {
+    static inline bool parse(const simdjson::dom::element& root, schema::book::Book& out) noexcept {
         using namespace simdjson;
 
         // data array (required, exactly one element)
@@ -81,8 +81,8 @@ struct response {
     }
 
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, kraken::book::Response& out) noexcept {
-        out = kraken::book::Response{};
+    static inline bool parse(const simdjson::dom::element& root, schema::book::Response& out) noexcept {
+        out = schema::book::Response{};
         using namespace simdjson;
 
         // Root

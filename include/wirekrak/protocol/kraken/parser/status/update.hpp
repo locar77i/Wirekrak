@@ -23,7 +23,7 @@ public:
     //   "data": [ { ... } ]
     // }
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, kraken::status::Update& out) noexcept
+    static inline bool parse(const simdjson::dom::element& root, schema::status::Update& out) noexcept
     {
         using namespace simdjson;
 

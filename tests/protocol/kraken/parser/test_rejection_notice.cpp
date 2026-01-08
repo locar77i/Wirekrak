@@ -28,7 +28,7 @@ to have already occurred upstream.
 ================================================================================
 */
 
-static bool parse(std::string_view json, rejection::Notice& out) {
+static bool parse(std::string_view json, schema::rejection::Notice& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
@@ -48,7 +48,7 @@ void test_rejection_notice_minimal() {
     }
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(parse(json, notice));
 
     assert(notice.error == "Already subscribed");
@@ -73,7 +73,7 @@ void test_rejection_notice_full_payload() {
     }
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(parse(json, notice));
 
     assert(notice.error == "Already subscribed");
@@ -95,7 +95,7 @@ void test_rejection_notice_without_symbol() {
     }
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(parse(json, notice));
 
     assert(notice.error == "Invalid request");
@@ -118,7 +118,7 @@ void test_rejection_notice_missing_error() {
     }
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(!parse(json, notice));
 
     std::cout << "[TEST] OK\n";
@@ -134,7 +134,7 @@ void test_rejection_notice_invalid_req_id_type() {
     }
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(!parse(json, notice));
 
     std::cout << "[TEST] OK\n";
@@ -150,7 +150,7 @@ void test_rejection_notice_invalid_symbol_empty_string() {
     }
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(!parse(json, notice));
 
     std::cout << "[TEST] OK\n";
@@ -166,7 +166,7 @@ void test_rejection_notice_invalid_time_format() {
     }
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(!parse(json, notice));
 
     std::cout << "[TEST] OK\n";
@@ -185,7 +185,7 @@ void test_rejection_notice_root_not_object_array() {
     ]
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(!parse(json, notice));
 
     std::cout << "[TEST] OK\n";
@@ -198,7 +198,7 @@ void test_rejection_notice_root_not_object_string() {
     "not-an-object"
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(!parse(json, notice));
 
     std::cout << "[TEST] OK\n";
@@ -211,7 +211,7 @@ void test_rejection_notice_root_not_object_number() {
     12345
     )json";
 
-    rejection::Notice notice{};
+    schema::rejection::Notice notice{};
     assert(!parse(json, notice));
 
     std::cout << "[TEST] OK\n";

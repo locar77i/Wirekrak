@@ -99,17 +99,17 @@ int main(int argc, char** argv) {
     WinClient client;
 
     // Register pong handler
-    client.on_pong([&](const system::Pong& pong) {
+    client.on_pong([&](const schema::system::Pong& pong) {
         WK_INFO(" -> " << pong.str() << "");
     });
 
     // Register status handler
-    client.on_status([&](const status::Update& update) {
+    client.on_status([&](const schema::status::Update& update) {
         WK_INFO(" -> " << update.str() << "");
     });
 
     // Register regection handler
-    client.on_rejection([&](const rejection::Notice& notice) {
+    client.on_rejection([&](const schema::rejection::Notice& notice) {
         WK_WARN(" -> " << notice.str() << "");
     });
 
@@ -119,16 +119,16 @@ int main(int argc, char** argv) {
     }
 
     // Subscribe to BTC/USD trades
-    client.subscribe(trade::Subscribe{.symbols = symbols, .snapshot = snapshot},
-                     [](const trade::Trade& msg) {
+    client.subscribe(schema::trade::Subscribe{.symbols = symbols, .snapshot = snapshot},
+                     [](const schema::trade::Trade& msg) {
                         std::cout << " -> " << msg << std::endl;
                      }
     );
 
     if (double_sub) {
         // Subscribe again to demonstrate rejection handling
-        client.subscribe(trade::Subscribe{.symbols = symbols, .snapshot = snapshot},
-                         [](const trade::Trade& msg) {
+        client.subscribe(schema::trade::Subscribe{.symbols = symbols, .snapshot = snapshot},
+                         [](const schema::trade::Trade& msg) {
                             std::cout << " -> " << msg << std::endl;
                          }
         );
@@ -141,9 +141,9 @@ int main(int argc, char** argv) {
     }
 
     // Ctrl+C received
-    client.unsubscribe(trade::Unsubscribe{.symbols = symbols});
+    client.unsubscribe(schema::trade::Unsubscribe{.symbols = symbols});
     if (double_sub) {
-        client.unsubscribe(trade::Unsubscribe{.symbols = symbols});
+        client.unsubscribe(schema::trade::Unsubscribe{.symbols = symbols});
     }
 
     // Drain events

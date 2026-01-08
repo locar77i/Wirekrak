@@ -10,6 +10,7 @@
 namespace wirekrak {
 namespace protocol {
 namespace kraken {
+namespace schema {
 namespace system {
 
 struct Ping {
@@ -39,6 +40,7 @@ struct Ping {
 };
 
 } // namespace system
+} // namespace schema
 } // namespace kraken
 } // namespace protocol
 } // namespace wirekrak

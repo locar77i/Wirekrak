@@ -2,7 +2,7 @@
 
 #include "wirekrak/protocol/kraken/schema/book/common.hpp"
 
-using wirekrak::protocol::kraken::book::is_valid_depth;
+using wirekrak::protocol::kraken::schema::book::is_valid_depth;
 
 int main() {
     assert(is_valid_depth(10));

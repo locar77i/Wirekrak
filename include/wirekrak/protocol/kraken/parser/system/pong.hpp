@@ -14,7 +14,7 @@ namespace wirekrak::protocol::kraken::parser::system {
 struct pong {
 
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, kraken::system::Pong& out) noexcept {
+    static inline bool parse(const simdjson::dom::element& root, schema::system::Pong& out) noexcept {
         using namespace simdjson;
 
 /* Kraken API doc says:
