@@ -128,3 +128,14 @@ if (WIREKRAK_BUILD_BENCHMARKS)
     message(STATUS "Building Wirekrak benchmarks")
     add_subdirectory(benchmarks)
 endif()
+
+
+# -------------------------------------------------------------
+# Wirekrak Lite (compiled facade)
+# -------------------------------------------------------------
+option(WIREKRAK_BUILD_LITE "Build Wirekrak Lite client library" ON)
+
+if (WIREKRAK_BUILD_LITE)
+    message(STATUS "Building WireKrak Lite client library")
+    add_subdirectory(src)
+endif()

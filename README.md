@@ -1,8 +1,12 @@
 # Wirekrak ⚡  
-**A High-Performance WebSocket SDK for Real-Time Kraken Trading**
+
+**A High-Performance WebSocket Infrastructure SDK for Real-Time Kraken Trading**
 
 Wirekrak is a modern C++ WebSocket SDK designed for **low-latency, real-time trading applications** on the Kraken exchange.  
-It is built with **production-grade architecture**, focusing on reliability, determinism, and extensibility.
+It is built as **infrastructure**, not an opinionated client or framework, with a strong focus on reliability, determinism, and extensibility.
+
+Wirekrak is closer in spirit to infrastructure like **Boost.Asio** than to a typical SDK: it favors composition, explicit architectural boundaries, and strong invariants over ad-hoc customization.
+
 
 > 🚀 Built for the **Kraken Forge Hackathon**
 
@@ -10,15 +14,19 @@ It is built with **production-grade architecture**, focusing on reliability, det
 
 ## 🧩 Problem Statement
 
-Developers integrating with the Kraken WebSocket API must manage complex, error-prone concerns such as subscription state tracking, reconnect logic, and fragile JSON message handling. Existing solutions often expose low-level streams without strong typing or lifecycle guarantees, increasing the risk of bugs in real-time systems. Wirekrak addresses this by providing a lightweight, strongly typed C++ SDK that abstracts protocol complexity and delivers reliable, deterministic WebSocket interactions.
+Developers integrating with the Kraken WebSocket API must manage complex, error-prone concerns such as subscription state tracking, reconnect logic, and fragile JSON message handling. Existing solutions often expose low-level streams without strong typing or lifecycle guarantees, increasing the risk of subtle bugs in real-time trading systems.
+
+Wirekrak addresses this by providing a lightweight, strongly typed C++ infrastructure SDK that abstracts protocol complexity and delivers reliable, deterministic WebSocket interactions.
 
 ---
 
 ## 🛠️ What I Built
 
-Wirekrak is a lightweight C++ SDK for the Kraken WebSocket API, designed around a clean, layered architecture that separates transport, client policy, protocol handling, and subscription management. The current implementation focuses on **trade and order book subscriptions**, providing strongly typed message handling and deterministic lifecycle management across acknowledgements and reconnects.
+Wirekrak is a lightweight C++ infrastructure SDK for the Kraken WebSocket API, designed around a clean, layered architecture that separates transport, connection policy, protocol handling, and subscription management.
 
-What makes it unique is its modular, layered design, which makes the SDK easy to extend with additional channels, transports, or features over time, while maintaining reliability, testability, and scalability. This makes Wirekrak well suited as a foundation for production-grade trading and market-data systems.
+The current implementation focuses on **trade and order book subscriptions**, providing strongly typed message handling and deterministic lifecycle management across acknowledgements, reconnects, and recovery.
+
+What makes Wirekrak distinct is its **compositional, layered design**: functionality is extended by adding or replacing components rather than mutating internal execution flow. This allows the system to evolve safely over time while preserving correctness, testability, and performance—making Wirekrak well suited as a foundation for production-grade trading and market-data systems.
 
 ---
 
@@ -106,6 +114,44 @@ wirekrak/
 
 ![Alt text](docs/images/ProjectOverview.jpg)
 
+---
+
+### Core vs Lite Architecture
+
+Wirekrak is intentionally split into Core and Lite, with a strict, one-way dependency model.
+
+- Core is a header-only, ultra-low-latency infrastructure layer
+- Lite is a compiled, user-facing SDK facade built on top of Core
+
+Core can be used independently for ULL systems, while Lite provides a simpler API for application and SDK users.
+
+```
+┌───────────────────────────────┐
+│        Application Code       │
+│   (examples, SDK users, apps) │
+└──────────────▲────────────────┘
+               │
+        ┌──────┴──────┐
+        │  Wirekrak   │
+        │     Lite    │   ← Compiled library (facade)
+        │  (src/lite) │
+        └──────▲──────┘
+               │
+        ┌──────┴──────┐
+        │  Wirekrak   │
+        │     Core    │   ← Header-only, ULL infrastructure
+        │  (include/) │
+        └─────────────┘
+```
+
+**Design rules**:
+
+- Core never depends on Lite
+- Lite depends on Core
+- Core remains header-only and allocation-free
+- Lite may use std::function, DTOs, and higher-level abstractions
+
+---
 
 ### Threading Model <a name="threading-model"></a>
 
@@ -216,7 +262,7 @@ ensuring continuity after transient network failures.
 ## ✨ Liveness Detection
 
 Wirekrak uses dual liveness detection: protocol heartbeats and real message flow.
-Reconnection only occurs when both signals stop, preventing false reconnects during quiet markets.”
+Reconnection only occurs when both signals stop, preventing false reconnects during quiet markets.
 
 ### Heartbeats monitoring
 
@@ -259,7 +305,21 @@ Higher levels automatically enable lower ones.
 ```
 When disabled, telemetry is completely compiled out.
 
-➡️ **[Tlelemetry Level Policy](docs/architecture/TelemetryLevelPolicy.md)**
+➡️ **[Telemetry Level Policy](docs/architecture/TelemetryLevelPolicy.md)**
+
+---
+
+## 🧩 Extensibility <a name="extensibility"></a>
+
+
+Wirekrak is designed as **infrastructure**, not as an opinionated client or framework.  
+It is extensible by **composition**, not by customization, in order to preserve determinism and correctness.
+
+Instead of exposing plugin APIs or runtime hooks, Wirekrak is extensible in the way serious infrastructure is extensible: through replaceable layers and **well-defined architectural extension points** (transport, policy, protocol, channel, replay), rather than user-level hooks. It deliberately prioritizes determinism and correctness over ad-hoc customization.
+
+Extensibility in Wirekrak is **deliberate, explicit, and testable**.
+
+➡️ **[Extension Philosophy](docs/architecture/ExtensionPhilosophy.md)**
 
 ---
 
@@ -353,6 +413,20 @@ int main() {
 ```
 
 ```Note:``` Subscribe, Unsubscribe, and Control requests are modeled as distinct types and constrained using C++20 concepts, ensuring request misuse fails at compile time with zero runtime overhead.
+
+---
+
+## 🧱 Build Presets <a name="presets"></a>
+
+Wirekrak uses **CMake Presets** to make build intent explicit.
+
+- **`ninja-core-only`** builds *Core only*: header-only, no Lite, no examples, no tests, no telemetry — recommended for **ULL / infrastructure use**.
+- Example and experimental presets explicitly enable **Wirekrak Lite** and higher-level SDK features.
+- Benchmark presets are isolated to avoid accidental coupling with SDK or telemetry logic.
+
+➡️ **[Detailed preset guide](docs/build/Presets.md)**
+
+Use presets to choose what you build, not just how you build.
 
 ---
 
