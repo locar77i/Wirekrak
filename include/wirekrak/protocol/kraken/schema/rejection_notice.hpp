@@ -50,18 +50,21 @@ struct Notice {
         os << " }";
     }
 
-    // ------------------------------------------------------------
-    // String helper
-    // ------------------------------------------------------------
+#ifndef NDEBUG
+    // ---------------------------------------------------------
+    // String helper (debug / logging)
+    // NOTE: Allocates. Intended for debugging/logging only.
+    // ---------------------------------------------------------
     [[nodiscard]]
     inline std::string str() const {
         std::ostringstream oss;
         dump(oss);
         return oss.str();
     }
+#endif
 };
 
-// Stream operator
+// Stream operator<< delegates to dump(); allocation-free.
 inline std::ostream& operator<<(std::ostream& os, const Notice& n) {
     n.dump(os);
     return os;

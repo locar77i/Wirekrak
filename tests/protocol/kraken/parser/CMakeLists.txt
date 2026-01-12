@@ -1,6 +1,6 @@
 # tests/protocol/kraken/parser/CMakeLists.txt
 
-include(${PROJECT_SOURCE_DIR}/cmake/Wirekrak.TestHelpers.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/WirekrakTests.cmake)
 
 
 file(GLOB PROTOCOL_KRAKEN_PARSER_TESTS test_*.cpp)

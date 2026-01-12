@@ -33,8 +33,8 @@ std::ostream& operator<<(std::ostream& os, const trade& t) {
     if (t.order_type) {
         os << ", ord_type=" << *t.order_type;
     }
-
-    os << "}";
+    os << ", origin=" << to_string(t.origin)
+       << "}";
 
     return os;
 }

@@ -45,6 +45,8 @@ public:
   using trade_handler = std::function<void(const dto::trade&)>;
   using error_handler = std::function<void(const error&)>;
 
+  // Lite API have one obvious way to do the common thing, and one explicit way to do the advanced thing.
+  explicit Client(std::string endpoint);
   explicit Client(client_config cfg = {});
   ~Client();
 

@@ -1,7 +1,7 @@
 # cmake/WirekrakTestHelpers.cmake
 
 # ==============================================================================
-# Wirekrak test helper functions
+# Wirekrak test helpers
 # ==============================================================================
 
 function(wirekrak_add_test target source)

@@ -12,11 +12,10 @@
 
 #include "wirekrak/client.hpp"
 
-#include "common/book_clip.hpp"
-#include "lcr/log/logger.hpp"
+#include "common/cli/book_params.hpp"
+namespace cli = wirekrak::examples::cli;
 
-namespace wpk = wirekrak::protocol::kraken;
-
+namespace kraken = wirekrak::protocol::kraken;
 namespace fs = flashstrike;
 namespace fme = flashstrike::matching_engine;
 
@@ -51,7 +50,7 @@ public:
     {
     }
 
-    void on_book(const wpk::schema::book::Book& book) {
+    void on_book(const kraken::schema::book::Book& book) {
         fs::Trades trade_count;
         fs::Price last_price;
         fs::OrderIdx order_idx;
@@ -83,7 +82,7 @@ public:
 
 private:
     template<fs::Side S>
-    inline void process_level_(const wpk::schema::book::Level& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
+    inline void process_level_(const kraken::schema::book::Level& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
         fme::Order order{};
         generate_order_<S>(order,
             engine_.normalize_price(lvl.price),
@@ -145,8 +144,6 @@ private:
 
 int main(int argc, char** argv)
 {
-    using namespace lcr::log;
-
     WK_WARN("===  Wirekrak Kraken Book + Flashstrike Matching Engine Example ===");
 
     // -------------------------------------------------------------
@@ -157,23 +154,17 @@ int main(int argc, char** argv)
     // -------------------------------------------------------------
     // CLI parsing
     // -------------------------------------------------------------
-    CLI::App app{"This example show you how to integrate Flashstrike Matching Engine with Wirekrak Kraken WebSocket API v2.\n"};
-    wirekrak::examples::cli::Params params;
-    wirekrak::examples::cli::configure(app, params);
-
-    CLI11_PARSE(app, argc, argv);
+    const auto& params = cli::book::configure(argc, argv,
+        "This example show you how to integrate Flashstrike Matching Engine with Wirekrak Kraken WebSocket API v2.\n"
+    );
     params.dump("=== Wirekrak & Flashstrike Parameters ===", std::cout);
-
-    // -------------------------------------------------------------
-    // Logging
-    // -------------------------------------------------------------
-    Logger::instance().set_level(params.get_log_level());
+    const std::string& symbol = params.symbols.back(); // use last symbol for simplicity
 
     // -------------------------------------------------------------
     // Gateway setup
     // -------------------------------------------------------------
     WK_DEBUG("[ME] Initializing flashstrike::Gateway...");
-    flashstrike::Gateway gateway(params.symbol);
+    flashstrike::Gateway gateway(symbol);
 
     // -------------------------------------------------------------
     // Client setup
@@ -183,13 +174,13 @@ int main(int argc, char** argv)
     wirekrak::WinClient client;
 
     // Register pong handler
-    client.on_pong([&](const wpk::schema::system::Pong& pong) { WK_INFO(" -> " << pong.str() << ""); });
+    client.on_pong([&](const kraken::schema::system::Pong& pong) { WK_INFO(" -> " << pong.str() << ""); });
 
     // Register status handler
-    client.on_status([&](const wpk::schema::status::Update& update) { WK_INFO(" -> " << update.str() << ""); });
+    client.on_status([&](const kraken::schema::status::Update& update) { WK_INFO(" -> " << update.str() << ""); });
 
     // Register regection handler
-    client.on_rejection([&](const wpk::schema::rejection::Notice& notice) {  WK_WARN(" -> " << notice.str() << "");  });
+    client.on_rejection([&](const kraken::schema::rejection::Notice& notice) {  WK_WARN(" -> " << notice.str() << "");  });
 
     // Connect to Kraken WebSocket API v2
     if (!client.connect(params.url)) {
@@ -197,8 +188,8 @@ int main(int argc, char** argv)
     }
 
     // Subscribe to book updates
-    client.subscribe(wpk::schema::book::Subscribe{.symbols = {params.symbol}, .depth = params.depth, .snapshot = params.snapshot},
-                     [&](const wpk::schema::book::Response& msg) { gateway.on_book(msg.book); }
+    client.subscribe(kraken::schema::book::Subscribe{.symbols = {symbol}, .depth = params.depth, .snapshot = params.snapshot},
+                     [&](const kraken::schema::book::Response& msg) { gateway.on_book(msg.book); }
     );
 
     // Main polling loop
@@ -209,7 +200,7 @@ int main(int argc, char** argv)
     }
 
     // Ctrl+C received
-    client.unsubscribe(wpk::schema::book::Unsubscribe{.symbols = {params.symbol}, .depth = params.depth});
+    client.unsubscribe(kraken::schema::book::Unsubscribe{.symbols = {symbol}, .depth = params.depth});
 
     // Drain events for 2 seconds approx.
     for (int i = 0; i < 200; ++i) {

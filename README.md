@@ -397,7 +397,7 @@ int main() {
 
     // Subscribe to BTC/USD trades with snapshot enabled
     client.subscribe(trade::Subscribe{.symbols = {"BTC/USD"}, .snapshot = true},
-                     [](const trade::Trade& msg) { std::cout << " -> " << msg << std::endl; }
+                     [](const trade::Response& msg) { std::cout << " -> " << msg << std::endl; }
     );
 
     // Main polling loop
@@ -522,9 +522,9 @@ This example demonstrates how to subscribe to Kraken order book updates using Wi
 
 ---
 
-## 🧪 Experimental Integration Examples <a name="experimental-examples"></a>
+## 🧪 Experimental Integrations <a name="experimental-examples"></a>
 
-The examples/experimental/ directory contains opt-in experimental examples that explore advanced or external integrations built on top of Wirekrak.
+The experimental/ directory contains opt-in experimental examples that explore advanced or external integrations built on top of Wirekrak.
 
 These examples are not compiled by default and are gated behind an explicit CMake option and preset to avoid impacting normal Debug/Release builds. They may depend on additional code, prototypes, or header-only projects that are intentionally kept outside the core library.
 
@@ -552,7 +552,7 @@ The example introduces a Gateway layer that normalizes prices and quantities, tr
 the flashstrike matching engine. This showcases clean separation between transport, protocol, and execution layers, and mirrors real-world exchange
 ingestion pipelines.
 
-➡️ **[flashstrike Gateway Example](./docs/examples/experimental/FlashstrikeMatchingGateway.md)**
+➡️ **[flashstrike Gateway Example](./docs/experimental/FlashstrikeMatchingGateway.md)**
 
 ---
 

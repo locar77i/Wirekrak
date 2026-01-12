@@ -45,7 +45,7 @@ int main() {
     // Register pong handler
     // ---------------------------------------------------------------------
     client.on_pong([&](const schema::system::Pong& pong) {
-        WK_INFO("[PONG] received: " << pong.str());
+        WK_INFO("[PONG] received: " << pong);
         std::cout << " -> [PONG] received: " << pong << std::endl;
 
         // RTT measurement (engine timestamps, if present)

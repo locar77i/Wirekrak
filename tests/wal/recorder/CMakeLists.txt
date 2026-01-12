@@ -1,6 +1,6 @@
 # tests/wal/recorder/CMakeLists.txt
 
-include(${PROJECT_SOURCE_DIR}/cmake/Wirekrak.TestHelpers.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/WirekrakTests.cmake)
 
 
 file(GLOB WAL_RECORDER_TESTS test_*.cpp)

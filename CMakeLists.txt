@@ -108,14 +108,11 @@ endif()
 # -------------------------------------------------------------
 # Experimental integrations
 # -------------------------------------------------------------
-# Experimental integrations are gated behind an explicit CMake 
-# option and preset to avoid impacting normal Debug/Release builds.
-# ------------------------------------------------------------------
 option(WIREKRAK_BUILD_EXPERIMENTAL "Build experimental / external integration examples" OFF)
 
 if (WIREKRAK_BUILD_EXPERIMENTAL)
     message(STATUS "Building WireKrak experimental integrations")
-    add_subdirectory(examples/experimental)
+    add_subdirectory(experimental)
 endif()
 
 

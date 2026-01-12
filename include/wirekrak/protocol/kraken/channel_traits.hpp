@@ -5,6 +5,7 @@
 #include "wirekrak/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/protocol/kraken/schema/trade/unsubscribe.hpp"
 #include "wirekrak/protocol/kraken/schema/trade/response.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/response_view.hpp"
 #include "wirekrak/protocol/kraken/schema/trade/subscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/schema/trade/unsubscribe_ack.hpp"
 #include "wirekrak/protocol/kraken/schema/book/subscribe.hpp"
@@ -44,12 +45,7 @@ struct channel_of<schema::trade::Unsubscribe> {
 };
 
 template<>
-struct channel_of<schema::trade::Response> {
-    static constexpr Channel value = Channel::Trade;
-};
-
-template<>
-struct channel_of<schema::trade::Trade> {
+struct channel_of<schema::trade::ResponseView> {
     static constexpr Channel value = Channel::Trade;
 };
 
@@ -108,19 +104,19 @@ template<typename RequestT>
 struct channel_traits;
 
 // ---------------------------------------------------------------------------
-// TRADE: Subscribe → Trade
+// TRADE: Subscribe → Response
 // ---------------------------------------------------------------------------
 
 template<>
 struct channel_traits<schema::trade::Subscribe> {
     static constexpr Channel channel = Channel::Trade;
-    using response_type = schema::trade::Trade;
+    using response_type = schema::trade::ResponseView;
 };
 
 template<>
 struct channel_traits<schema::trade::Unsubscribe> {
     static constexpr Channel channel = Channel::Trade;
-    using response_type = schema::trade::Trade;
+    using response_type = schema::trade::ResponseView;
 };
 
 

@@ -62,6 +62,9 @@ struct Client::Impl {
 Client::Client(client_config cfg)
   : impl_(std::make_unique<Impl>(cfg)) {}
 
+Client::Client(std::string endpoint)
+  : Client(client_config{ .endpoint = std::move(endpoint) }) {}
+
 Client::~Client() = default;
 
 bool Client::connect() {
@@ -86,16 +89,21 @@ void Client::on_error(error_handler cb) {
 
 void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb, bool snapshot) {
     impl_->core.subscribe(schema::trade::Subscribe{ .symbols  = symbols, .snapshot = snapshot },
-        [cb = std::move(cb)](const schema::trade::Trade& msg) {
-            cb(dto::trade{
-                .trade_id     = msg.trade_id,
-                .symbol       = msg.symbol,
-                .price        = msg.price,
-                .quantity     = msg.qty,
-                .taker_side   = (msg.side == kraken::Side::Buy) ? side::buy : side::sell,
-                .timestamp_ns = static_cast<std::uint64_t>(msg.timestamp.time_since_epoch().count()),
-                .order_type = msg.ord_type.has() ? std::optional<std::string>{to_string(msg.ord_type.value())} : std::nullopt
-            });
+        [cb = std::move(cb)](const schema::trade::ResponseView& msg) {
+            origin data_origin = (msg.type == kraken::PayloadType::Snapshot ? origin::snapshot : origin::update);
+            // Map each trade pointer from the view to a lite dto::trade
+            for (const auto* trade : msg.trades) {
+              cb(dto::trade{
+                  .trade_id     = trade->trade_id,
+                  .symbol       = trade->symbol,
+                  .price        = trade->price,
+                  .quantity     = trade->qty,
+                  .taker_side   = (trade->side == kraken::Side::Buy) ? side::buy : side::sell,
+                  .timestamp_ns = static_cast<std::uint64_t>(trade->timestamp.time_since_epoch().count()),
+                  .order_type = trade->ord_type.has() ? std::optional<std::string>{to_string(trade->ord_type.value())} : std::nullopt,
+                  .origin       = data_origin
+              });
+            }
         }
     );
 }

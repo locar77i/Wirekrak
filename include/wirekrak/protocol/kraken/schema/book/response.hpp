@@ -78,18 +78,21 @@ struct Book {
         os << "}";
     }
 
+#ifndef NDEBUG
     // ---------------------------------------------------------
     // String helper (debug / logging)
+    // NOTE: Allocates. Intended for debugging/logging only.
     // ---------------------------------------------------------
     [[nodiscard]]
-    inline std::string to_json() const {
+    inline std::string str() const {
         std::ostringstream oss;
         dump(oss);
         return oss.str();
     }
+#endif
 };
 
-// Stream operator
+// Stream operator<< delegates to dump(); allocation-free.
 inline std::ostream& operator<<(std::ostream& os, const Book& u) {
     u.dump(os);
     return os;
@@ -119,17 +122,20 @@ struct Response {
         os << "}";
     }
 
+#ifndef NDEBUG
     // ---------------------------------------------------------
-    // String helper
+    // String helper (debug / logging)
+    // NOTE: Allocates. Intended for debugging/logging only.
     // ---------------------------------------------------------
     inline std::string str() const {
         std::ostringstream oss;
         dump(oss);
         return oss.str();
     }
+#endif
 };
 
-// Stream operator
+// Stream operator<< delegates to dump(); allocation-free.
 inline std::ostream& operator<<(std::ostream& os, const Response& r) {
     r.dump(os);
     return os;
