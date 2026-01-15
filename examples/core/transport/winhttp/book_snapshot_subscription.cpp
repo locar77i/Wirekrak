@@ -5,9 +5,8 @@
 #include <atomic>
 #include <csignal>
 
-#include "wirekrak/transport/winhttp/websocket.hpp"
-
-using namespace wirekrak;
+#include "wirekrak/core/transport/winhttp/websocket.hpp"
+using namespace wirekrak::core;
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling

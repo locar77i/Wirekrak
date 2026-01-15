@@ -3,17 +3,14 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
-#include <regex>
 
-#include <CLI/CLI.hpp>
-
-#include "wirekrak/client.hpp"
+#include "wirekrak/core.hpp"
+using namespace wirekrak::core;
+namespace schema = protocol::kraken::schema;
 
 #include "common/cli/book_params.hpp"
-
 namespace cli = wirekrak::examples::cli;
-using namespace wirekrak;
-using namespace wirekrak::protocol::kraken;
+
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -42,34 +39,34 @@ int main(int argc, char** argv) {
     params.dump("=== Book Example Parameters ===", std::cout);
 
     // -------------------------------------------------------------
-    // Client setup
+    // Session setup
     // -------------------------------------------------------------
-    WinClient client;
+    Session session;
 
     // Register pong handler
-    client.on_pong([&](const schema::system::Pong& pong) {
+    session.on_pong([&](const schema::system::Pong& pong) {
         WK_INFO(" -> " << pong << "");
     });
 
     // Register status handler
-    client.on_status([&](const schema::status::Update& update) {
+    session.on_status([&](const schema::status::Update& update) {
         WK_INFO(" -> " << update << "");
     });
 
     // Register regection handler
-    client.on_rejection([&](const schema::rejection::Notice& notice) {
+    session.on_rejection([&](const schema::rejection::Notice& notice) {
         WK_WARN(" -> " << notice << "");
     });
 
     // Connect
-    if (!client.connect(params.url)) {
+    if (!session.connect(params.url)) {
         return -1;
     }
 
     // -------------------------------------------------------------
     // Subscribe to book updates
     // -------------------------------------------------------------
-    client.subscribe(schema::book::Subscribe{.symbols = params.symbols, .depth = params.depth, .snapshot = params.snapshot},
+    session.subscribe(schema::book::Subscribe{.symbols = params.symbols, .depth = params.depth, .snapshot = params.snapshot},
                      [](const schema::book::Response& msg) {
                         std::cout << " -> " << msg << std::endl;
                      }
@@ -79,18 +76,18 @@ int main(int argc, char** argv) {
     // Main polling loop (runs until Ctrl+C)
     // -------------------------------------------------------------------------
     while (running.load()) {
-        client.poll();   // REQUIRED to process incoming messages
+        session.poll();   // REQUIRED to process incoming messages
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
     // Unsubscribe from book updates
     // -------------------------------------------------------------------------
-    client.unsubscribe(schema::book::Unsubscribe{.symbols = params.symbols, .depth = params.depth});
+    session.unsubscribe(schema::book::Unsubscribe{.symbols = params.symbols, .depth = params.depth});
 
     // Drain events before exit (approx. 2 seconds)
     for (int i = 0; i < 200; ++i) {
-        client.poll();
+        session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

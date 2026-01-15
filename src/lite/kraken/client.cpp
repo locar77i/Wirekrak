@@ -1,23 +1,22 @@
 #include "wirekrak/lite/kraken/client.hpp"
 
 // ---- Core includes (PRIVATE) ----
-#include "wirekrak/transport/winhttp/websocket.hpp"
-#include "wirekrak/protocol/kraken/client.hpp"
-#include "wirekrak/protocol/kraken/schema/trade/subscribe.hpp"
-#include "wirekrak/protocol/kraken/schema/trade/response_view.hpp"
-#include "wirekrak/protocol/kraken/schema/trade/unsubscribe.hpp"
-#include "wirekrak/protocol/kraken/schema/book/subscribe.hpp"
-#include "wirekrak/protocol/kraken/schema/book/unsubscribe.hpp"
-#include "wirekrak/protocol/kraken/schema/book/response.hpp"
-
+#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/protocol/kraken/session.hpp"
+#include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
+#include "wirekrak/core/protocol/kraken/schema/trade/response_view.hpp"
+#include "wirekrak/core/protocol/kraken/schema/trade/unsubscribe.hpp"
+#include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
+#include "wirekrak/core/protocol/kraken/schema/book/unsubscribe.hpp"
+#include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
 
 namespace wirekrak::lite {
 
-namespace kraken = protocol::kraken;
+namespace kraken = wirekrak::core::protocol::kraken;
 namespace schema = kraken::schema;
 
-using WS = wirekrak::transport::winhttp::WebSocket;
-using CoreClient = kraken::Client<WS>;
+using WS = wirekrak::core::transport::winhttp::WebSocket;
+using CoreClient = kraken::Session<WS>;
 
 // -----------------------------
 // Impl
@@ -123,7 +122,7 @@ void Client::unsubscribe_trades(std::vector<std::string> symbols) {
 
 void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, bool snapshot) {
     impl_->core.subscribe(schema::book::Subscribe{ .symbols  = std::move(symbols), .snapshot = snapshot },
-        [cb = std::move(cb)](const protocol::kraken::schema::book::Response& resp) {
+        [cb = std::move(cb)](const kraken::schema::book::Response& resp) {
             const auto origin = (resp.type == kraken::PayloadType::Snapshot) ? origin::snapshot : origin::update;
             const std::optional<std::uint64_t> ts_ns =
                 resp.book.timestamp.has() ? std::optional<std::uint64_t>{resp.book.timestamp.value().time_since_epoch().count()} : std::nullopt;

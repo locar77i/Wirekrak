@@ -5,7 +5,7 @@
 #include <vector>
 #include <sstream>
 
-namespace wirekrak {
+namespace wirekrak::core {
 
 using Symbol = std::string;
 
@@ -35,4 +35,4 @@ inline std::string to_string(const std::vector<std::string_view>& symbols) {
     return os.str();
 }
 
-} // namespace wirekrak
+} // namespace wirekrak::core

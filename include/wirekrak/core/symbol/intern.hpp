@@ -8,7 +8,7 @@
 
 #include "wirekrak/core/symbol.hpp"
 
-namespace wirekrak {
+namespace wirekrak::core {
 
 using SymbolId = uint32_t;
 
@@ -95,13 +95,13 @@ private:
 };
 
 } // namespace symbol
-} // namespace wirekrak
+} // namespace wirekrak::core
 
 
 // ============================================================================
 // Public API (inline, header-only)
 // ============================================================================
-namespace wirekrak {
+namespace wirekrak::core {
 
 [[nodiscard]] inline SymbolId intern_symbol(std::string_view s) {
     return symbol::InternTable::instance().intern(s);
@@ -111,4 +111,4 @@ namespace wirekrak {
     return symbol::InternTable::instance().name(id);
 }
 
-} // namespace wirekrak
+} // namespace wirekrak::core

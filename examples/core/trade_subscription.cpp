@@ -5,9 +5,9 @@
 #include <thread>
 #include <regex>
 
-#include "wirekrak/client.hpp"
-using namespace wirekrak;
-using namespace wirekrak::protocol::kraken;
+#include "wirekrak/core.hpp"
+using namespace wirekrak::core;
+namespace schema = protocol::kraken::schema;
 
 #include "common/cli/trade_params.hpp"
 namespace cli = wirekrak::examples::cli;
@@ -39,34 +39,34 @@ int main(int argc, char** argv) {
     params.dump("=== Trade Example Parameters ===", std::cout);
 
     // -------------------------------------------------------------
-    // Client setup
+    // Session setup
     // -------------------------------------------------------------
-    WinClient client;
+    Session session;
 
     // Register pong handler
-    client.on_pong([&](const schema::system::Pong& pong) {
+    session.on_pong([&](const schema::system::Pong& pong) {
         WK_INFO(" -> " << pong << "");
     });
 
     // Register status handler
-    client.on_status([&](const schema::status::Update& update) {
+    session.on_status([&](const schema::status::Update& update) {
         WK_INFO(" -> " << update << "");
     });
 
     // Register regection handler
-    client.on_rejection([&](const schema::rejection::Notice& notice) {
+    session.on_rejection([&](const schema::rejection::Notice& notice) {
         WK_WARN(" -> " << notice << "");
     });
 
     // Connect
-    if (!client.connect(params.url)) {
+    if (!session.connect(params.url)) {
         return -1;
     }
 
     // -------------------------------------------------------------
     // Subscribe to trade updates
     // -------------------------------------------------------------
-    client.subscribe(schema::trade::Subscribe{.symbols = params.symbols, .snapshot = params.snapshot},
+    session.subscribe(schema::trade::Subscribe{.symbols = params.symbols, .snapshot = params.snapshot},
                      [](const schema::trade::ResponseView& msg) {
                         std::cout << " -> " << msg << std::endl;
                      }
@@ -76,18 +76,18 @@ int main(int argc, char** argv) {
     // Main polling loop (runs until Ctrl+C)
     // -------------------------------------------------------------------------
     while (running.load()) {
-        client.poll();   // REQUIRED to process incoming messages
+        session.poll();   // REQUIRED to process incoming messages
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
     // Unsubscribe from trade updates
     // -------------------------------------------------------------------------
-    client.unsubscribe(schema::trade::Unsubscribe{.symbols = params.symbols});
+    session.unsubscribe(schema::trade::Unsubscribe{.symbols = params.symbols});
 
     // Drain events before exit (approx. 2 seconds)
     for (int i = 0; i < 200; ++i) {
-        client.poll();
+        session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

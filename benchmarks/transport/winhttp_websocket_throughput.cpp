@@ -5,13 +5,13 @@
 #include <locale>
 #include <csignal>
 
-#include "wirekrak/transport/winhttp/websocket.hpp"
-#include "wirekrak/protocol/kraken/schema/book/subscribe.hpp"
+#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
 #include "lcr/metrics/snapshot/manager.hpp"
 #include "lcr/format.hpp"
 #include "lcr/log/logger.hpp"
 
-using namespace wirekrak;
+using namespace wirekrak::core;
 using namespace lcr::log;
 
 

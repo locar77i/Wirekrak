@@ -151,6 +151,8 @@ Core can be used independently for ULL systems, while Lite provides a simpler AP
 - Core remains header-only and allocation-free
 - Lite may use std::function, DTOs, and higher-level abstractions
 
+```Important``` Core is a header-only infrastructure engine. Lite is the supported SDK surface. Applications should depend on Lite unless ultra-low-latency constraints require otherwise.
+
 ---
 
 ### 🧩 Wirekrak Lite (Stable API v1) <a name="wirekrak-lite"></a>
@@ -175,7 +177,7 @@ Wirekrak currently uses a deliberate **2-thread architecture** optimized for
 low latency and correctness. A 3-thread model (dedicated parser thread) is
 planned but intentionally postponed until full benchmarking is completed.
 
-➡️ **[Read the full threading model rationale](docs/notes/ThreadingModel_2T_VS_3T.md)**
+➡️ **[Read the full threading model rationale](docs/architecture/core/ThreadingModel.md)**
 
 ---
 
@@ -185,7 +187,7 @@ planned but intentionally postponed until full benchmarking is completed.
 - WebSocket and WinHTTP APIs are modeled as compile-time contracts
 - Enables mocking, testing, and reuse with zero runtime overhead
 
-➡️ **[Transport Overview](docs/architecture/transport/Overview.md)**
+➡️ **[Transport Overview](docs/architecture/core/transport/Overview.md)**
 
 ---
 
@@ -197,21 +199,21 @@ The stream client uses an explicit state machine and dual-signal liveness checks
 
 This design provides a deterministic, reusable foundation for exchange SDKs, real-time market data pipelines, and low-latency trading systems.
 
-➡️ **[Stream Client Overview](docs/architecture/stream/StreamClient.md)**
+➡️ **[Stream Client Overview](docs/architecture/core/stream/Client.md)**
 
 ---
 
-### Kraken Streaming Client <a name="kraken-client"></a>
+### Kraken Session <a name="kraken-session"></a>
 
-Wirekrak includes a dedicated **Kraken WebSocket v2 client** built on top of the generic stream layer.
+Wirekrak includes a dedicated **Kraken WebSocket v2 session** built on top of the generic stream layer.
 It exposes a protocol-oriented, type-safe API for subscribing to Kraken channels while fully
 abstracting transport, liveness, and reconnection concerns.
 
-The client uses an ACK-based subscription model with automatic replay on reconnect, explicit polling,
+The session uses an ACK-based subscription model with automatic replay on reconnect, explicit polling,
 and strongly typed message dispatch. This design enables deterministic behavior and clean integration
 with trading engines, analytics pipelines, and real-time systems.
 
-➡️ **[Kraken Client Overview](docs/architecture/protocol/kraken/KrakenClient.md)**
+➡️ **[Kraken Client Overview](docs/architecture/core/protocol/kraken/Session.md)**
 
 ---
 
@@ -237,7 +239,7 @@ Parsing distinguishes between invalid schema and invalid values using a lightwei
 
 ```Built as infrastructure, not a demo.```
 
-➡️ **[Parser Overview](docs/architecture/protocol/kraken/JsonParser.md)**
+➡️ **[Parser Overview](docs/architecture/core/protocol/kraken/Parser.md)**
 
 ---
 
@@ -251,7 +253,7 @@ Key features:
 - Multiple listeners per symbol
 - Extremely fast dispatch path
 
-➡️ **[Dispatcher Overview](docs/architecture/protocol/kraken/DispatcherModule.md)**
+➡️ **[Dispatcher Overview](docs/architecture/core/protocol/kraken/Dispatcher.md)**
 
 ---
 
@@ -261,7 +263,7 @@ The Subscription Manager is responsible for deterministic tracking of trade and 
 
 The manager supports Kraken’s multi-symbol subscription model by grouping symbols under a single request ID and tracking partial acknowledgements safely and efficiently. It maintains separate state for pending subscriptions, pending unsubscriptions, and active subscriptions, allowing the client to recover cleanly from reconnects by replaying only confirmed active subscriptions.
 
-➡️ **[Subscription Manager Overview](docs/architecture/protocol/kraken/SubscriptionManager.md)**
+➡️ **[Subscription Manager Overview](docs/architecture/core/protocol/kraken/SubscriptionManager.md)**
 
 ---
 
@@ -271,7 +273,7 @@ The **Replay Module** is designed to support resilient WebSocket-style subscript
 Its primary responsibility is to **record subscription requests** and **replay them automatically on reconnection**,
 ensuring continuity after transient network failures.
 
-➡️ **[Subscription Replay Overview](docs/architecture/protocol/kraken/SubscriptionReplay.md)**
+➡️ **[Subscription Replay Overview](docs/architecture/core/protocol/kraken/SubscriptionReplay.md)**
 
 ---
 
@@ -321,7 +323,7 @@ Higher levels automatically enable lower ones.
 ```
 When disabled, telemetry is completely compiled out.
 
-➡️ **[Telemetry Level Policy](docs/architecture/TelemetryLevelPolicy.md)**
+➡️ **[Telemetry Level Policy](docs/architecture/core/TelemetryLevelPolicy.md)**
 
 ---
 
@@ -335,7 +337,7 @@ Instead of exposing plugin APIs or runtime hooks, Wirekrak is extensible in the 
 
 Extensibility in Wirekrak is **deliberate, explicit, and testable**.
 
-➡️ **[Extension Philosophy](docs/architecture/ExtensionPhilosophy.md)**
+➡️ **[Extension Philosophy](docs/architecture/core/ExtensionPhilosophy.md)**
 
 ---
 
@@ -392,28 +394,29 @@ cmake --build build
 ## 📡 Example Usage
 
 ```cpp
-#include "wirekrak/client.hpp"
-
-using namespace wirekrak;
+#include "wirekrak/lite.hpp"
+using namespace wirekrak::lite;
 
 int main() {
-    
-    // Client setup
-    WinClient client;
+    // Client setup (Lite SDK)
+    Client client{"wss://ws.kraken.com/v2"};
 
-    // Register handlers
-    client.on_pong(...);
-    client.on_status(...);
-    client.on_rejection(...);
+    // Optional error handling
+    client.on_error([](const error& err) {
+        std::cerr << "[wirekrak-lite] error: " << err.message << std::endl;
+    });
 
     // Connect
-    if (!client.connect("wss://ws.kraken.com/v2")) {
+    if (!client.connect()) {
         return -1;
     }
 
-    // Subscribe to BTC/USD trades with snapshot enabled
-    client.subscribe(trade::Subscribe{.symbols = {"BTC/USD"}, .snapshot = true},
-                     [](const trade::Response& msg) { std::cout << " -> " << msg << std::endl; }
+    // Subscribe to BTC/USD trades (snapshot + updates)
+    client.subscribe_trades({"BTC/USD"},
+        [](const dto::trade& trade) {
+            std::cout << " -> " << trade << std::endl;
+        },
+        true // snapshot
     );
 
     // Main polling loop
@@ -421,14 +424,13 @@ int main() {
         client.poll();   // REQUIRED to process incoming messages
     }
 
-    client.unsubscribe(trade::Unsubscribe{.symbols = {"BTC/USD"}});
-    
+    client.unsubscribe_trades({"BTC/USD"});
     return 0;
 }
 
 ```
 
-```Note:``` Subscribe, Unsubscribe, and Control requests are modeled as distinct types and constrained using C++20 concepts, ensuring request misuse fails at compile time with zero runtime overhead.
+```Note:``` Wirekrak Lite provides a stable, user-facing SDK with simple DTOs and callback-based APIs. For ultra-low-latency or protocol-level control, applications may use Wirekrak Core directly, which exposes strongly typed protocol requests constrained by C++20 concepts.
 
 ---
 

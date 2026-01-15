@@ -5,12 +5,12 @@
 #include <utility>
 #include <concepts>
 
-#include "wirekrak/transport/concepts.hpp"
-#include "wirekrak/transport/telemetry/websocket.hpp"
+#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "lcr/log/logger.hpp"
 
 
-namespace wirekrak {
+namespace wirekrak::core {
 namespace transport {
 
 class MockWebSocket {
@@ -111,7 +111,7 @@ private:
 
 };
 // Assert that MockWebSocket conforms to transport::WebSocketConcept concept
-static_assert(wirekrak::transport::WebSocketConcept<MockWebSocket>);
+static_assert(wirekrak::core::transport::WebSocketConcept<MockWebSocket>);
 
 // ininitialize static members
 bool MockWebSocket::connected_   = false;
@@ -119,4 +119,4 @@ int  MockWebSocket::close_count_ = 0;
 int  MockWebSocket::error_count_ = 0;
 
 } // namespace transport
-} // namespace wirekrak
+} // namespace wirekrak::core

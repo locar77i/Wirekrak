@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cctype>
 
-namespace wirekrak {
+namespace wirekrak::core {
 
 // ============================================================================
 // Timestamp type
@@ -155,4 +155,4 @@ inline bool parse_ll(std::string_view sv, long long& out) noexcept {
     return std::string(buf);
 }
 
-} // namespace wirekrak
+} // namespace wirekrak::core

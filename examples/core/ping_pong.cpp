@@ -2,10 +2,9 @@
 #include <chrono>
 #include <thread>
 
-#include "wirekrak/client.hpp"
-
-using namespace wirekrak;
-using namespace wirekrak::protocol::kraken;
+#include "wirekrak/core.hpp"
+using namespace wirekrak::core;
+namespace schema = protocol::kraken::schema;
 using Logger = lcr::log::Logger;
 using Level  = lcr::log::Level;
 
@@ -20,7 +19,10 @@ This functionality is completely independent of channel subscriptions and is des
 int main() {
     Logger::instance().set_level(Level::Info);
 
-    WinClient client;
+    // -------------------------------------------------------------
+    // Session setup
+    // -------------------------------------------------------------
+    Session session;
 
     // Track when we send the ping (local wall clock)
     auto ping_sent_at = std::chrono::steady_clock::now();
@@ -34,7 +36,7 @@ int main() {
     std::uint64_t connection_id;    // Unique connection identifier
     std::string version;            // WebSocket service version
     */
-    client.on_status([&](const schema::status::Update& update) {
+    session.on_status([&](const schema::status::Update& update) {
         WK_INFO("[STATUS] received update: system=" << to_string(update.system)
                 << " api_version=" << update.api_version
                 << " connection_id=" << update.connection_id
@@ -44,7 +46,7 @@ int main() {
     // ---------------------------------------------------------------------
     // Register pong handler
     // ---------------------------------------------------------------------
-    client.on_pong([&](const schema::system::Pong& pong) {
+    session.on_pong([&](const schema::system::Pong& pong) {
         WK_INFO("[PONG] received: " << pong);
         std::cout << " -> [PONG] received: " << pong << std::endl;
 
@@ -61,9 +63,9 @@ int main() {
     });
 
     // ---------------------------------------------------------------------
-    // Connect and start client
+    // Connect and start session
     // ---------------------------------------------------------------------
-    if (!client.connect("wss://ws.kraken.com/v2")) {
+    if (!session.connect("wss://ws.kraken.com/v2")) {
         return -1;
     }
 
@@ -74,14 +76,14 @@ int main() {
     // Send ping
     // ---------------------------------------------------------------------
     WK_INFO("[PING] sending ping...");
-    client.ping(1);   // req_id = 1
+    session.ping(1);   // req_id = 1
 
     // ---------------------------------------------------------------------
     // Run for a short time to receive pong
     // ---------------------------------------------------------------------
     auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < end_time) {
-        client.poll();
+        session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
