@@ -4,8 +4,7 @@
 #include <string>
 #include <optional>
 
-#include "wirekrak/lite/enums/side.hpp"
-#include "wirekrak/lite/enums/origin.hpp"
+#include "wirekrak/lite/enums.hpp"
 
 
 namespace wirekrak::lite::dto {

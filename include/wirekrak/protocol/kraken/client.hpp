@@ -21,7 +21,7 @@
 #include "wirekrak/protocol/kraken/dispatcher.hpp"
 #include "wirekrak/protocol/kraken/channel/manager.hpp"
 #include "wirekrak/protocol/kraken/replay/database.hpp"
-#include "wirekrak/protocol/kraken/response/classifier.hpp"
+#include "wirekrak/protocol/kraken/response/partitioner.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/sequence.hpp"
@@ -209,8 +209,8 @@ public:
         { // === Process trade ring ===
         schema::trade::Response resp;
         while (ctx_.trade_ring.pop(resp)) {
-            trade_classifier_.reset(resp);
-            for (const auto& view : trade_classifier_.views()) {
+            trade_partitioner.reset(resp);
+            for (const auto& view : trade_partitioner.views()) {
                 dispatcher_.dispatch(view);
             }
         }}
@@ -319,7 +319,7 @@ private:
     channel::Manager book_channel_manager_;
 
     // Response classifiers (reused, allocation-stable)
-    response::Classifier<schema::trade::Response> trade_classifier_;
+    response::Partitioner<schema::trade::Response> trade_partitioner;
 
     // Replay database
     replay::Database replay_db_;

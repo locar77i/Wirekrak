@@ -4,22 +4,22 @@
 #include <vector>
 #include <span>
 
-#include "wirekrak/protocol/kraken/response/response_traits.hpp"
+#include "wirekrak/protocol/kraken/response/traits.hpp"
 
 
 namespace wirekrak::protocol::kraken::response {
 
 /*
 ===============================================================================
-Response Classifier (Core Infrastructure)
+Response Partitioner (Core Infrastructure)
 ===============================================================================
 
-The Classifier is a reusable, allocation-stable component that decomposes a
+The Partitioner is a reusable, allocation-stable component that decomposes a
 protocol Response into symbol-scoped ResponseView objects suitable for
 deterministic routing and dispatch.
 
 Key properties:
-  - Generic over ResponseT via response_traits<ResponseT>
+  - Generic over ResponseT via traits<ResponseT>
   - Header-only and fully inlineable
   - Zero-copy: never copies protocol messages
   - Allocation-free after warm-up (capacity reuse)
@@ -33,27 +33,27 @@ Design intent:
 
 Lifetime & usage rules:
   - ResponseView objects are valid only during synchronous dispatch
-  - The classifier must be reused via reset(), not reconstructed per message
-  - Classifier instances are not thread-safe and are intended to be owned
+  - The Partitioner must be reused via reset(), not reconstructed per message
+  - Partitioner instances are not thread-safe and are intended to be owned
     by a single client / event loop
 
 Extension:
   - Supporting a new Response type requires defining
-    response_traits<ResponseT>
+    traits<ResponseT>
   - No runtime polymorphism or hooks are involved
 
 ===============================================================================
 */
 template<class ResponseT>
-class Classifier {
-    using traits = response_traits<ResponseT>;
+class Partitioner {
+    using traits = traits<ResponseT>;
     using message_type = typename traits::message_type;
     using view_type    = typename traits::view_type;
 
 public:
-    Classifier() = default;
-    Classifier(const Classifier&) = delete;
-    Classifier& operator=(const Classifier&) = delete;
+    Partitioner() = default;
+    Partitioner(const Partitioner&) = delete;
+    Partitioner& operator=(const Partitioner&) = delete;
 
     inline void reset(const ResponseT& response) noexcept {
         response_ = &response;

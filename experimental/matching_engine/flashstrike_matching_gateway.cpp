@@ -5,17 +5,14 @@
 #include <atomic>
 #include <iostream>
 
-#include <CLI/CLI.hpp>
-
-#include "flashstrike/globals.hpp"
-#include "flashstrike/matching_engine/manager.hpp"
-
-#include "wirekrak/client.hpp"
+#include "wirekrak/lite.hpp"
+using namespace wirekrak::lite;
 
 #include "common/cli/book_params.hpp"
 namespace cli = wirekrak::examples::cli;
 
-namespace kraken = wirekrak::protocol::kraken;
+#include "flashstrike/globals.hpp"
+#include "flashstrike/matching_engine/manager.hpp"
 namespace fs = flashstrike;
 namespace fme = flashstrike::matching_engine;
 
@@ -27,9 +24,6 @@ std::atomic<bool> running{true};
 void on_signal(int) {
     running.store(false);
 }
-
-
-
 
 
 // --------------------------------------------------------------------------------
@@ -45,57 +39,34 @@ class Gateway {
 
 public:
     Gateway(const std::string& instrument_name)
-        : metrics_()
-        , engine_(max_orders, fs::get_instrument_by_name(instrument_name), target_num_partitions, metrics_)
+        : engine_(max_orders, fs::get_instrument_by_name(instrument_name), target_num_partitions, metrics_)
     {
     }
 
-    void on_book(const kraken::schema::book::Book& book) {
+    void on_book_level(const dto::book_level& lvl) {
         fs::Trades trade_count;
         fs::Price last_price;
         fs::OrderIdx order_idx;
 
-        for (const auto& bid : book.bids) {
-            process_level_<fs::Side::BID>(bid, trade_count, last_price, order_idx);
+        if (lvl.quantity == 0.0) {
+            ++omitted_orders_;
+            return;
         }
 
-        for (const auto& ask : book.asks) {
-            process_level_<fs::Side::ASK>(ask, trade_count, last_price, order_idx);
+        if (lvl.book_side == side::buy) {
+            process_<fs::Side::BID>(lvl, trade_count, last_price, order_idx);
+        } else {
+            process_<fs::Side::ASK>(lvl, trade_count, last_price, order_idx);
         }
     }
 
     void drain_trades() {
         fs::TradeEvent ev;
         while (engine_.trades_ring().pop(ev)) {
-            const double price = engine_.instrument().denormalize_price(ev.price);
-            const double qty   = engine_.instrument().denormalize_quantity(ev.qty);
-
-            last_price_ = price;
-            volume_    += qty;
+            last_price_ = engine_.instrument().denormalize_price(ev.price);
+            volume_    += engine_.instrument().denormalize_quantity(ev.qty);
             ++trades_;
         }
-    }
-
-    void stats_dump() const {
-        WK_INFO("[FME] Trades: " << trades_ << ", Last Price: " << last_price_ << ", Volume: " << volume_);
-    }
-
-private:
-    template<fs::Side S>
-    inline void process_level_(const kraken::schema::book::Level& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
-        fme::Order order{};
-        generate_order_<S>(order,
-            engine_.normalize_price(lvl.price),
-            engine_.normalize_quantity(lvl.qty)
-        );
-
-        if (order.qty == 0) {
-            ++omitted_orders_;
-            return;
-        }
-
-        (void)engine_.process_order<S>(order, trade_count, last_price, order_idx);
-        increment_();
     }
 
 private:
@@ -110,6 +81,18 @@ private:
     double volume_ = 0.0;
 
 private:
+    template<fs::Side S>
+    inline void process_(const dto::book_level& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
+        fme::Order order{};
+        generate_order_<S>(order,
+            engine_.normalize_price(lvl.price),
+            engine_.normalize_quantity(lvl.quantity)
+        );
+
+        (void)engine_.process_order<S>(order, trade_count, last_price, order_idx);
+        increment_();
+    }
+
     template<fs::Side SIDE>
     inline void generate_order_(fme::Order &out, fs::Price price, fs::Quantity qty) {
         // Sequential order ID generator
@@ -169,46 +152,48 @@ int main(int argc, char** argv)
     // -------------------------------------------------------------
     // Client setup
     // -------------------------------------------------------------
+    WK_DEBUG("[ME] Initializing Client...");
+    Client client{params.url};
 
-    WK_DEBUG("[ME] Initializing wirekrak::WinClient...");
-    wirekrak::WinClient client;
+    client.on_error([](const error& err) {
+        WK_WARN("[wirekrak-lite] error: " << err.message);
+    });
 
-    // Register pong handler
-    client.on_pong([&](const kraken::schema::system::Pong& pong) { WK_INFO(" -> " << pong.str() << ""); });
-
-    // Register status handler
-    client.on_status([&](const kraken::schema::status::Update& update) { WK_INFO(" -> " << update.str() << ""); });
-
-    // Register regection handler
-    client.on_rejection([&](const kraken::schema::rejection::Notice& notice) {  WK_WARN(" -> " << notice.str() << "");  });
-
-    // Connect to Kraken WebSocket API v2
-    if (!client.connect(params.url)) {
+    if (!client.connect()) {
+        WK_ERROR("[wirekrak-lite] Failed to connect");
         return -1;
     }
 
+    // -------------------------------------------------------------
     // Subscribe to book updates
-    client.subscribe(kraken::schema::book::Subscribe{.symbols = {symbol}, .depth = params.depth, .snapshot = params.snapshot},
-                     [&](const kraken::schema::book::Response& msg) { gateway.on_book(msg.book); }
-    );
+    // -------------------------------------------------------------
+    auto book_handler = [&](const dto::book_level& lvl) {
+        gateway.on_book_level(lvl);
+    };
 
-    // Main polling loop
+    client.subscribe_book({symbol}, book_handler, params.snapshot);
+
+    // -------------------------------------------------------------
+    // Main polling loop (runs until Ctrl+C)
+    // -------------------------------------------------------------
     while (running.load()) {
         client.poll();                // 1) Poll Wirekrak client (required to process incoming messages)
         gateway.drain_trades();       // 2) Drain trades from matching engine
         std::this_thread::sleep_for(std::chrono::milliseconds(10));  // 3) Sleep a bit to avoid busy loop
     }
 
-    // Ctrl+C received
-    client.unsubscribe(kraken::schema::book::Unsubscribe{.symbols = {symbol}, .depth = params.depth});
+    // -------------------------------------------------------------
+    // Unsubscribe from book updates
+    // -------------------------------------------------------------
+    client.unsubscribe_book({symbol});
 
-    // Drain events for 2 seconds approx.
+    // Drain events before exit (approx. 2 seconds)
     for (int i = 0; i < 200; ++i) {
         client.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    WK_WARN("Experiment finished!");
+    WK_WARN("[wirekrak-lite] Experiment finished!");
 
     return 0;
 }

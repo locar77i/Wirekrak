@@ -28,7 +28,8 @@ namespace wirekrak::examples::cli::trade {
                << "  URL       : " << url << "\n"
                << "  Symbols   : ";
             for (const auto& s : symbols) { os << s << " "; }
-            os << "  Snapshot  : " << (snapshot ? "true" : "false") << "\n"
+            os << "\n"
+               << "  Snapshot  : " << (snapshot ? "true" : "false") << "\n"
                << "  Log Level : " << log_level << "\n";
         }
     };

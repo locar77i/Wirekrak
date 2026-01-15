@@ -3,13 +3,11 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
-#include <regex>
 
-#include "wirekrak/client.hpp"
-using namespace wirekrak;
-using namespace wirekrak::protocol::kraken;
+#include "wirekrak/lite.hpp"
+using namespace wirekrak::lite;
 
-#include "common/cli/trade_params.hpp"
+#include "common/cli/book_params.hpp"
 namespace cli = wirekrak::examples::cli;
 
 // -----------------------------------------------------------------------------
@@ -33,58 +31,53 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // CLI parsing
     // -------------------------------------------------------------
-    const auto& params = cli::trade::configure(argc, argv, "WireKrak Core - Kraken Trade Subscription Example\n"
-        "This example let's you subscribe to trade events on a given symbol from Kraken WebSocket API v2.\n"
+    const auto& params = cli::book::configure(argc, argv, "WireKrak Core - Kraken Book Subscription Example\n"
+        "This example let's you subscribe to book events on a given symbol from Kraken WebSocket API v2.\n"
     );
-    params.dump("=== Trade Example Parameters ===", std::cout);
+    params.dump("=== Book Example Parameters ===", std::cout);
 
     // -------------------------------------------------------------
     // Client setup
     // -------------------------------------------------------------
-    WinClient client;
+    Client client{params.url};
 
-    // Register pong handler
-    client.on_pong([&](const schema::system::Pong& pong) {
-        WK_INFO(" -> " << pong << "");
+    client.on_error([](const error& err) {
+        std::cerr << "[wirekrak-lite] error: " << err.message << "\n";
     });
 
-    // Register status handler
-    client.on_status([&](const schema::status::Update& update) {
-        WK_INFO(" -> " << update << "");
-    });
-
-    // Register regection handler
-    client.on_rejection([&](const schema::rejection::Notice& notice) {
-        WK_WARN(" -> " << notice << "");
-    });
-
-    // Connect
-    if (!client.connect(params.url)) {
+    if (!client.connect()) {
+        std::cerr << "[wirekrak-lite] Failed to connect\n";
         return -1;
     }
 
-    // Subscribe to BTC/USD trades
-    client.subscribe(schema::trade::Subscribe{.symbols = params.symbols, .snapshot = params.snapshot},
-                     [](const schema::trade::ResponseView& msg) {
-                        std::cout << " -> " << msg << std::endl;
-                     }
-    );
+    // -------------------------------------------------------------
+    // Subscribe to book updates
+    // -------------------------------------------------------------
+    auto book_handler = [](const dto::book_level& lvl) {
+        std::cout << " -> " << lvl << std::endl;
+    };
 
-    // Main polling loop
+    client.subscribe_book(params.symbols, book_handler, params.snapshot);
+
+    // -------------------------------------------------------------
+    // Main polling loop (runs until Ctrl+C)
+    // -------------------------------------------------------------
     while (running.load()) {
         client.poll();   // REQUIRED to process incoming messages
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // Ctrl+C received
-    client.unsubscribe(schema::trade::Unsubscribe{.symbols = params.symbols});
+    // -------------------------------------------------------------
+    // Unsubscribe from book updates
+    // -------------------------------------------------------------
+    client.unsubscribe_book(params.symbols);
 
-    // Drain events
+    // Drain events before exit (approx. 2 seconds)
     for (int i = 0; i < 200; ++i) {
         client.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    std::cout << "=== Done ===\n";
+    std::cout << "\n[wirekrak-lite] Done.\n";
     return 0;
 }

@@ -19,12 +19,12 @@ wirekrak_add_core_example(wk_core_ping_pong ping_pong.cpp)
 # -------------------------------------------------------------
 # Trade
 # -------------------------------------------------------------
-wirekrak_add_core_example(wk_core_trade_requests_minimal trade_requests_minimal.cpp)
-wirekrak_add_core_example(wk_core_trade_requests trade_requests.cpp CLI11::CLI11)
+wirekrak_add_core_example(wk_core_minimal_trade_subscription minimal_trade_subscription.cpp)
+wirekrak_add_core_example(wk_core_trade_subscription trade_subscription.cpp CLI11::CLI11)
 
 
 # -------------------------------------------------------------
 # Book
 # -------------------------------------------------------------
-wirekrak_add_core_example(wk_core_book_requests_minimal book_requests_minimal.cpp)
-wirekrak_add_core_example(wk_core_book_requests book_requests.cpp CLI11::CLI11)
+wirekrak_add_core_example(wk_core_minimal_book_subscription minimal_book_subscription.cpp)
+wirekrak_add_core_example(wk_core_book_subscription book_subscription.cpp CLI11::CLI11)

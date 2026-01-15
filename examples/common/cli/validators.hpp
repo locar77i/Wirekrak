@@ -3,6 +3,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <regex>
 
 #include <CLI/CLI.hpp>
 

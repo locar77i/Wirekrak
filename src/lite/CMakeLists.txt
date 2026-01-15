@@ -1,7 +1,9 @@
 # src/lite/CMakeLists.txt
 
 add_library(wirekrak-lite STATIC
+    enums.cpp
     dto/trade.cpp
+    dto/book_level.cpp
     kraken/client.cpp
 )
 

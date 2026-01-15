@@ -8,7 +8,7 @@ namespace wirekrak::protocol::kraken::response {
 Response Traits (Core Protocol Extension Point)
 ===============================================================================
 
-response_traits<ResponseT> defines how a protocol-level Response is decomposed
+traits<ResponseT> defines how a protocol-level Response is decomposed
 into symbol-scoped views suitable for deterministic routing and dispatch.
 
 Each specialization describes:
@@ -32,21 +32,21 @@ Usage rules:
   - No memory allocation or ownership is permitted in trait functions
 
 Architectural role:
-  - response_traits is part of Wirekrak Core infrastructure
+  - traits is part of Wirekrak Core infrastructure
   - It is not user-facing and not intended for Lite-level consumption
   - It encodes protocol invariants and projection rules
 
 Adding a new channel:
   - Define the protocol schema (schema::*)
   - Define the corresponding ResponseView
-  - Provide a response_traits specialization for the Response type
+  - Provide a traits specialization for the Response type
 
 ===============================================================================
 */
 
 // Primary template (undefined on purpose)
 template<class ResponseT>
-struct response_traits;
+struct traits;
 
 } // namespace wirekrak::protocol::kraken::response
 
@@ -57,7 +57,7 @@ struct response_traits;
 namespace wirekrak::protocol::kraken::response {
 
 template<>
-struct response_traits<schema::trade::Response> {
+struct traits<schema::trade::Response> {
     using response_type = schema::trade::Response;
     using message_type  = schema::trade::Trade;
     using view_type     = schema::trade::ResponseView;

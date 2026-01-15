@@ -20,11 +20,17 @@ void on_signal(int) {
 int main() {
     std::signal(SIGINT, on_signal);  // Handle Ctrl+C
 
+    // -------------------------------------------------------------------------
+    // Client setup
+    // -------------------------------------------------------------------------
     WinClient client;   // 1) Create client and connect to Kraken WebSocket API v2
     if (!client.connect("wss://ws.kraken.com/v2")) {   
         return -1;
     }
 
+    // -------------------------------------------------------------------------
+    // Subscribe to BTC/EUR book updates
+    // -------------------------------------------------------------------------
     int messages_received = 0;   // 2) Subscribe to BTC/EUR book updates
     client.subscribe(protocol::kraken::schema::book::Subscribe{.symbols = {"BTC/EUR"}},
                      [&](const protocol::kraken::schema::book::Response& msg) {
@@ -33,11 +39,17 @@ int main() {
                      }
     );
 
+    // -------------------------------------------------------------------------
+    // Main polling loop (runs until Ctrl+C)
+    // -------------------------------------------------------------------------
     while (running.load(std::memory_order_relaxed) && messages_received < 60) {
         client.poll();         // REQUIRED to process incoming messages
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
+    // -------------------------------------------------------------------------
+    // Unsubscribe & exit
+    // -------------------------------------------------------------------------
     client.unsubscribe(protocol::kraken::schema::book::Unsubscribe{.symbols = {"BTC/EUR"}});   // 3) Unsubscribe from BTC/EUR book updates
     
     std::cout << "\n[wirekrak] Heartbeats received so far: " << client.heartbeat_total() << std::endl;

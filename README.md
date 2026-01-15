@@ -153,6 +153,22 @@ Core can be used independently for ULL systems, while Lite provides a simpler AP
 
 ---
 
+### 🧩 Wirekrak Lite (Stable API v1) <a name="wirekrak-lite"></a>
+
+Wirekrak Lite is the **stable, user-facing SDK layer** built on top of Wirekrak Core, designed for rapid integration, hackathons, and production trading systems.
+
+**Lite v1 guarantees:**
+- Stable DTOs and callbacks
+- Clear snapshot vs update semantics
+- Zero protocol knowledge required
+- No breaking changes without a v2 release
+
+The Core API remains low-level, free to evolve independently and optimized for ultra-low-latency and infrastructure use cases.
+
+➡️ **[Lite API overview](docs/architecture/lite/README.md)**
+
+---
+
 ### Threading Model <a name="threading-model"></a>
 
 Wirekrak currently uses a deliberate **2-thread architecture** optimized for

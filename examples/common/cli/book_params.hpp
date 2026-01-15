@@ -29,7 +29,8 @@ namespace wirekrak::examples::cli::book {
                << "  URL       : " << url << "\n"
                << "  Symbols   : ";
             for (const auto& s : symbols) { os << s << " "; }
-            os << "  Depth     : " << depth << "\n"
+            os << "\n"
+               << "  Depth     : " << depth << "\n"
                << "  Snapshot  : " << (snapshot ? "true" : "false") << "\n"
                << "  Log Level : " << log_level << "\n";
         }

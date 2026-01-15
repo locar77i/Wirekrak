@@ -4,7 +4,11 @@
 #include "wirekrak/transport/winhttp/websocket.hpp"
 #include "wirekrak/protocol/kraken/client.hpp"
 #include "wirekrak/protocol/kraken/schema/trade/subscribe.hpp"
-#include "wirekrak/protocol/kraken/schema/trade/response.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/response_view.hpp"
+#include "wirekrak/protocol/kraken/schema/trade/unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/book/subscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/book/unsubscribe.hpp"
+#include "wirekrak/protocol/kraken/schema/book/response.hpp"
 
 
 namespace wirekrak::lite {
@@ -110,6 +114,44 @@ void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb
 
 void Client::unsubscribe_trades(std::vector<std::string> symbols) {
   impl_->core.unsubscribe(schema::trade::Unsubscribe{ .symbols = symbols });
+}
+
+
+// -----------------------------
+// Book subscriptions
+// -----------------------------
+
+void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, bool snapshot) {
+    impl_->core.subscribe(schema::book::Subscribe{ .symbols  = std::move(symbols), .snapshot = snapshot },
+        [cb = std::move(cb)](const protocol::kraken::schema::book::Response& resp) {
+            const auto origin = (resp.type == kraken::PayloadType::Snapshot) ? origin::snapshot : origin::update;
+            const std::optional<std::uint64_t> ts_ns =
+                resp.book.timestamp.has() ? std::optional<std::uint64_t>{resp.book.timestamp.value().time_since_epoch().count()} : std::nullopt;
+
+            const auto emit_levels = [&](const auto& levels, side book_side) {
+                for (const auto& lvl : levels) {
+                    cb(dto::book_level{
+                        .symbol       = resp.book.symbol,
+                        .book_side    = book_side,
+                        .price        = lvl.price,
+                        .quantity     = lvl.qty,
+                        .timestamp_ns = ts_ns,
+                        .origin       = origin
+                    });
+                }
+            };
+
+            // Asks → sell
+            emit_levels(resp.book.asks, side::sell);
+
+            // Bids → buy
+            emit_levels(resp.book.bids, side::buy);
+        }
+    );
+}
+
+void Client::unsubscribe_book(std::vector<std::string> symbols) {
+    impl_->core.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols) });
 }
 
 } // namespace wirekrak::lite

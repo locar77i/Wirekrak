@@ -21,6 +21,7 @@ namespace trade {
 
 // ===============================================
 // TRADE EVENT (single element in data[])
+// Represents a single executed trade emitted by the Kraken trade feed.
 // ===============================================
 struct Trade {
     std::uint64_t trade_id;

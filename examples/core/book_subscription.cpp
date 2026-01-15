@@ -66,23 +66,29 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    // Subscribe to BTC/USD book updates
+    // -------------------------------------------------------------
+    // Subscribe to book updates
+    // -------------------------------------------------------------
     client.subscribe(schema::book::Subscribe{.symbols = params.symbols, .depth = params.depth, .snapshot = params.snapshot},
                      [](const schema::book::Response& msg) {
                         std::cout << " -> " << msg << std::endl;
                      }
     );
 
-    // Main polling loop
+    // -------------------------------------------------------------------------
+    // Main polling loop (runs until Ctrl+C)
+    // -------------------------------------------------------------------------
     while (running.load()) {
         client.poll();   // REQUIRED to process incoming messages
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // Ctrl+C received
+    // -------------------------------------------------------------------------
+    // Unsubscribe from book updates
+    // -------------------------------------------------------------------------
     client.unsubscribe(schema::book::Unsubscribe{.symbols = params.symbols, .depth = params.depth});
 
-    // Drain events
+    // Drain events before exit (approx. 2 seconds)
     for (int i = 0; i < 200; ++i) {
         client.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
