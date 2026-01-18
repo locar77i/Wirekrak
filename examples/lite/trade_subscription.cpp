@@ -4,11 +4,11 @@
 #include <iostream>
 #include <thread>
 
-// Lite v1 invariant:
+// SDK v1 invariant:
 // - Each callback corresponds to exactly one trade
-// - origin indicates snapshot vs live update
+// - tag indicates snapshot vs live update
 // - ordering is preserved per symbol
-#include "wirekrak/lite.hpp"
+#include "wirekrak.hpp"
 using namespace wirekrak::lite;
 
 #include "common/cli/trade_params.hpp"
@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     Client client{params.url};
 
-    client.on_error([](const error& err) {
+    client.on_error([](const Error& err) {
         std::cerr << "[wirekrak-lite] error: " << err.message << "\n";
     });
 
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // Trade subscription
     // -------------------------------------------------------------
-    auto trade_handler = [](const dto::trade& t) {
+    auto trade_handler = [](const Trade& t) {
         std::cout << " -> " << t << std::endl;
     };
 

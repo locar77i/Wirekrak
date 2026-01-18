@@ -5,7 +5,7 @@
 #include <atomic>
 #include <iostream>
 
-#include "wirekrak/lite.hpp"
+#include "wirekrak.hpp"
 using namespace wirekrak::lite;
 
 #include "common/cli/book_params.hpp"
@@ -43,7 +43,7 @@ public:
     {
     }
 
-    void on_book_level(const dto::book_level& lvl) {
+    void on_book_level(const BookLevel& lvl) {
         fs::Trades trade_count;
         fs::Price last_price;
         fs::OrderIdx order_idx;
@@ -53,7 +53,7 @@ public:
             return;
         }
 
-        if (lvl.book_side == side::buy) {
+        if (lvl.book_side == wirekrak::lite::Side::buy) {
             process_<fs::Side::BID>(lvl, trade_count, last_price, order_idx);
         } else {
             process_<fs::Side::ASK>(lvl, trade_count, last_price, order_idx);
@@ -82,7 +82,7 @@ private:
 
 private:
     template<fs::Side S>
-    inline void process_(const dto::book_level& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
+    inline void process_(const BookLevel& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
         fme::Order order{};
         generate_order_<S>(order,
             engine_.normalize_price(lvl.price),
@@ -155,7 +155,7 @@ int main(int argc, char** argv)
     WK_DEBUG("[ME] Initializing Client...");
     Client client{params.url};
 
-    client.on_error([](const error& err) {
+    client.on_error([](const Error& err) {
         WK_WARN("[wirekrak-lite] error: " << err.message);
     });
 
@@ -167,7 +167,7 @@ int main(int argc, char** argv)
     // -------------------------------------------------------------
     // Subscribe to book updates
     // -------------------------------------------------------------
-    auto book_handler = [&](const dto::book_level& lvl) {
+    auto book_handler = [&](const BookLevel& lvl) {
         gateway.on_book_level(lvl);
     };
 

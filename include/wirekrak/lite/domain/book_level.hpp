@@ -1,3 +1,6 @@
+// NOTE: This header defines a public domain type.
+// Users should include <wirekrak/lite.hpp> instead of this file directly.
+
 #pragma once
 
 #include <string>
@@ -7,19 +10,18 @@
 #include "wirekrak/lite/enums.hpp"
 
 
-namespace wirekrak::lite::dto {
+namespace wirekrak::lite::domain {
 
 // -----------------------------
 // Book level DTO (API surface)
 // -----------------------------
-struct book_level {
+struct BookLevel {
     std::string symbol;
-    side        book_side;          // bid / ask
+    Side        book_side; // bid / ask
     double      price;
     double      quantity;
     std::optional<std::uint64_t> timestamp_ns; // present only for updates
-    origin      origin;             // snapshot | update
-
+    Tag         tag; // snapshot | update
     [[nodiscard]] bool is_bid() const noexcept;
     [[nodiscard]] bool is_ask() const noexcept;
     [[nodiscard]] bool has_timestamp() const noexcept {
@@ -27,6 +29,6 @@ struct book_level {
     }
 };
 
-std::ostream& operator<<(std::ostream&, const book_level&);
+std::ostream& operator<<(std::ostream&, const BookLevel&);
 
-} // namespace wirekrak::lite::dto
+} // namespace wirekrak::lite::domain

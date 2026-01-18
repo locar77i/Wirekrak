@@ -20,7 +20,7 @@ from protocol and exchange-specific logic.
 
 ```
                     ┌──────────────────────────────┐
-                    │   Exchange Protocol Client   │
+                    │   Exchange Protocol Session  │
                     │   (Kraken, etc.)             │
                     │                              │
                     │  • subscriptions             │
@@ -171,4 +171,4 @@ struct RealApi {
 
 ---
 
-⬅️ [Back to README](../../../../README.md#transport)
+⬅️ [Back to README](../../../ARCHITECTURE.md#transport)

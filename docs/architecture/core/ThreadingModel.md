@@ -163,4 +163,4 @@ Only then will:
 
 ---
 
-⬅️ [Back to README](../../../README.md#threading-model)
+⬅️ [Back to README](../../ARCHITECTURE.md#threading-model)

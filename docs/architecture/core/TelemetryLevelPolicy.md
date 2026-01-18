@@ -180,4 +180,4 @@ Telemetry must observe reality without influencing it, and must always be remova
 
 ---
 
-⬅️ [Back to README](../../../README.md#telemetry)
+⬅️ [Back to README](../../ARCHITECTURE.md#telemetry)

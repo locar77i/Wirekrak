@@ -3,18 +3,18 @@
 
 namespace wirekrak::lite {
 
-std::string_view to_string(side s) noexcept {
+std::string_view to_string(Side s) noexcept {
     switch (s) {
-        case side::buy:  return "buy";
-        case side::sell: return "sell";
+        case Side::Buy:  return "Buy";
+        case Side::Sell: return "Sell";
     }
     return "unknown";
 }
 
-std::string_view to_string(origin o) noexcept {
+std::string_view to_string(Tag o) noexcept {
     switch (o) {
-        case origin::snapshot: return "snapshot";
-        case origin::update:   return "update";
+        case Tag::Snapshot: return "Snapshot";
+        case Tag::Update:   return "Update";
     }
     return "unknown";
 }

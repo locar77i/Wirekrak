@@ -108,4 +108,4 @@ while (running) {
 
 ---
 
-⬅️ [Back to README](../../../../README.md#stream-client)
+⬅️ [Back to README](../../../ARCHITECTURE.md#stream-client)

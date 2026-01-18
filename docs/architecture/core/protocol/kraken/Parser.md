@@ -152,4 +152,4 @@ It is a solid foundation for a lightweight, production-grade Kraken WebSocket SD
 
 ---
 
-⬅️ [Back to README](../../../../../README.md#parser)
+⬅️ [Back to README](../../../../ARCHITECTURE.md#parser)

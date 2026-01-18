@@ -115,4 +115,4 @@ deterministic behavior, and clean separation between infrastructure and business
 
 ---
 
-⬅️ [Back to README](../../../../../README.md#kraken-session)
+⬅️ [Back to README](../../../../ARCHITECTURE.md#kraken-session)

@@ -79,4 +79,4 @@ Happy hacking 🚀
 
 ---
 
-⬅️ [Back to README](README.md#installation)
+⬅️ [Back to README](../README.md#installation)

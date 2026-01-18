@@ -33,25 +33,27 @@ Versioning contract:
 namespace wirekrak::lite {
 
 // -----------------------------
-// Market side
+// Market Side
+// Represents the market intent associated with an event.
 // -----------------------------
-enum class side {
-    buy,
-    sell
+enum class Side {
+    Buy,
+    Sell
 };
 
 
 // -----------------------------
-// Data origin (snapshot vs update)
+// Data Tag (snapshot vs update)
+// Represents the provenance of an event within the Wirekrak pipeline (must not be used as a source of business truth)
 // -----------------------------
-enum class origin {
-    snapshot,
-    update
+enum class Tag {
+    Snapshot,
+    Update
 };
 
 
 // String conversion (defined in .cpp)
-std::string_view to_string(side) noexcept;
-std::string_view to_string(origin) noexcept;
+std::string_view to_string(Side) noexcept;
+std::string_view to_string(Tag) noexcept;
 
 } // namespace wirekrak::lite

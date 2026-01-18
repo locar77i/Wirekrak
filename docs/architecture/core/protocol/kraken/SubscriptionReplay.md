@@ -108,5 +108,5 @@ production-grade subscription recovery system while remaining lightweight.
 
 ---
 
-⬅️ [Back to README](../../../../../README.md#subscription-replay)
+⬅️ [Back to README](../../../../ARCHITECTURE.md#subscription-replay)
 

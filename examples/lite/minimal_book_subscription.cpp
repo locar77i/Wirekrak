@@ -4,11 +4,11 @@
 #include <atomic>
 #include <thread>
 
-// Lite v1 invariant:
+// SDK v1 invariant:
 // - Each callback corresponds to one price level update
 // - snapshot delivers full depth
 // - update delivers incremental changes
-#include "wirekrak/lite.hpp"
+#include "wirekrak.hpp"
 using namespace wirekrak::lite;
 
 // -----------------------------------------------------------------------------
@@ -40,7 +40,7 @@ int main() {
 
     client.subscribe_book(
         {"BTC/EUR"},
-        [&](const dto::book_level& lvl) {
+        [&](const BookLevel& lvl) {
             std::cout << " -> " << lvl << std::endl;
             ++messages_received;
         },

@@ -1,3 +1,6 @@
+// NOTE: This header defines a public domain type.
+// Users should include <wirekrak/lite.hpp> instead of this file directly.
+
 #pragma once
 
 #include <cstdint>
@@ -7,20 +10,20 @@
 #include "wirekrak/lite/enums.hpp"
 
 
-namespace wirekrak::lite::dto {
+namespace wirekrak::lite::domain {
 
 // -----------------------------
 // Trade DTO (API surface)
 // -----------------------------
-struct trade {
+struct Trade {
     std::uint64_t trade_id;
     std::string   symbol;
     double        price;
     double        quantity;
-    side          taker_side;
+    Side          taker_side;
     std::uint64_t timestamp_ns;
     std::optional<std::string> order_type;
-    origin        origin;
+    Tag           tag;
 
     // Minimal, inline helpers are OK
     [[nodiscard]] bool is_buy() const noexcept;
@@ -28,6 +31,6 @@ struct trade {
 };
 
 
-std::ostream& operator<<(std::ostream&, const trade&);
+std::ostream& operator<<(std::ostream&, const Trade&);
 
-} // namespace wirekrak::lite::dto
+} // namespace wirekrak::lite::domain

@@ -164,4 +164,4 @@ hackathon prototype to production-ready infrastructure.
 
 ---
 
-⬅️ [Back to README](../../../../../README.md#distpatcher)
+⬅️ [Back to README](../../../../ARCHITECTURE.md#distpatcher)

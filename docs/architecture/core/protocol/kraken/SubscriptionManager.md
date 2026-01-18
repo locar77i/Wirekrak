@@ -122,4 +122,4 @@ This component is used internally by the Kraken protocol layer to ensure:
 
 ---
 
-⬅️ [Back to README](../../../../../README.md#subscription-manager)
+⬅️ [Back to README](../../../../ARCHITECTURE.md#subscription-manager)

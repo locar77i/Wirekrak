@@ -1,27 +1,27 @@
-#include "wirekrak/lite/dto/book_level.hpp"
+#include "wirekrak/lite/domain/book_level.hpp"
 
 #include <ostream>
 
-namespace wirekrak::lite::dto {
+namespace wirekrak::lite::domain {
 
 // ---------------------------------
 // Inline helpers
 // ---------------------------------
 
-bool book_level::is_bid() const noexcept {
-    return book_side == side::buy;
+bool BookLevel::is_bid() const noexcept {
+    return book_side == Side::Buy;
 }
 
-bool book_level::is_ask() const noexcept {
-    return book_side == side::sell;
+bool BookLevel::is_ask() const noexcept {
+    return book_side == Side::Sell;
 }
 
 // ---------------------------------
 // Debug / logging helper
 // ---------------------------------
 
-std::ostream& operator<<(std::ostream& os, const book_level& lvl) {
-    os << "[book_level] {"
+std::ostream& operator<<(std::ostream& os, const BookLevel& lvl) {
+    os << "[BookLevel] {"
        << "symbol=" << lvl.symbol
        << ", side=" << to_string(lvl.book_side)
        << ", price=" << lvl.price
@@ -31,10 +31,10 @@ std::ostream& operator<<(std::ostream& os, const book_level& lvl) {
         os << ", ts_ns=" << *lvl.timestamp_ns;
     }
 
-    os << ", origin=" << to_string(lvl.origin)
+    os << ", tag=" << to_string(lvl.tag)
        << "}";
 
     return os;
 }
 
-} // namespace wirekrak::lite::dto
+} // namespace wirekrak::lite::domain

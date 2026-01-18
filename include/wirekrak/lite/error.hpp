@@ -41,15 +41,15 @@ never change meaning.
 ===============================================================================
 */
 
-enum class error_code {
-    transport,     // Network / socket / OS failure / connect failures
-    protocol,      // Invalid or unexpected protocol message
-    rejected,      // Server rejected a request
-    disconnected   // Connection closed or lost: stream entered terminal state
+enum class ErrorCode {
+    Transport,     // Network / socket / OS failure / connect failures
+    Protocol,      // Invalid or unexpected protocol message
+    Rejected,      // Server rejected a request
+    Disconnected   // Connection closed or lost: stream entered terminal state
 };
 
-struct error {
-    error_code code;
+struct Error {
+    ErrorCode code;
     std::string message; // Human-readable explanation
 };
 

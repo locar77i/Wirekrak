@@ -161,4 +161,4 @@ This philosophy aligns Wirekrak with long-lived infrastructure systems rather th
 
 ---
 
-⬅️ [Back to README](../../../README.md#extensibility)
+⬅️ [Back to README](../../ARCHITECTURE.md#extensibility)

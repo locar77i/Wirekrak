@@ -4,11 +4,11 @@
 #include <csignal>
 #include <atomic>
 
-// Lite v1 invariant:
+// SDK v1 invariant:
 // - Each callback corresponds to exactly one trade
-// - origin indicates snapshot vs live update
+// - tag indicates snapshot vs live update
 // - ordering is preserved per symbol
-#include "wirekrak/lite.hpp"
+#include "wirekrak.hpp"
 using namespace wirekrak::lite;
 
 
@@ -39,7 +39,7 @@ int main() {
     // -------------------------------------------------------------------------
     int messages_received = 0;   // 2) Subscribe to BTC/EUR trades
     client.subscribe_trades({"BTC/EUR"},
-                     [&](const dto::trade& t) {
+                     [&](const Trade& t) {
                             std::cout << " -> " << t << std::endl;
                             ++messages_received;
                      },

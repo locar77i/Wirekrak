@@ -4,7 +4,11 @@
 #include <iostream>
 #include <thread>
 
-#include "wirekrak/lite.hpp"
+// SDK v1 invariant:
+// - Each callback corresponds to one price level update
+// - snapshot delivers full depth
+// - update delivers incremental changes
+#include "wirekrak.hpp"
 using namespace wirekrak::lite;
 
 #include "common/cli/book_params.hpp"
@@ -41,7 +45,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     Client client{params.url};
 
-    client.on_error([](const error& err) {
+    client.on_error([](const Error& err) {
         std::cerr << "[wirekrak-lite] error: " << err.message << "\n";
     });
 
@@ -53,7 +57,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // Subscribe to book updates
     // -------------------------------------------------------------
-    auto book_handler = [](const dto::book_level& lvl) {
+    auto book_handler = [](const BookLevel& lvl) {
         std::cout << " -> " << lvl << std::endl;
     };
 
