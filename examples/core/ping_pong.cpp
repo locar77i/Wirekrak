@@ -10,7 +10,7 @@ using Level  = lcr::log::Level;
 
 
 /*
-This example shows WireKrak’s control-plane support.
+This example shows Wirekrak’s control-plane support.
 We send a manual ping, receive a pong through a dedicated callback, and measure round-trip latency using both Kraken’s engine
 timestamps and the local clock.
 This functionality is completely independent of channel subscriptions and is designed for heartbeat and operational monitoring.”

@@ -106,13 +106,13 @@ endif()
 
 
 # -------------------------------------------------------------
-# Experimental integrations
+# External integrations
 # -------------------------------------------------------------
-option(WIREKRAK_BUILD_EXPERIMENTAL "Build experimental / external integration examples" OFF)
+option(WIREKRAK_BUILD_INTEGRATIONS "Build external integration examples" OFF)
 
-if (WIREKRAK_BUILD_EXPERIMENTAL)
-    message(STATUS "Building WireKrak experimental integrations")
-    add_subdirectory(experimental)
+if (WIREKRAK_BUILD_INTEGRATIONS)
+    message(STATUS "Building Wirekrak external integrations")
+    add_subdirectory(integrations)
 endif()
 
 
@@ -133,6 +133,6 @@ endif()
 option(WIREKRAK_BUILD_LITE "Build Wirekrak Lite client library" ON)
 
 if (WIREKRAK_BUILD_LITE)
-    message(STATUS "Building WireKrak Lite client library")
+    message(STATUS "Building Wirekrak Lite client library")
     add_subdirectory(src)
 endif()

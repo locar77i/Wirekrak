@@ -51,7 +51,7 @@ namespace wirekrak::examples::cli::book {
         app.footer(
             "This example runs indefinitely until interrupted.\n"
             "Press Ctrl+C to unsubscribe and exit cleanly.\n"
-            "Let's enjoy trading with WireKrak & Flashstrike!"
+            "Let's enjoy trading with Wirekrak & Flashstrike!"
         );
         try {
             app.parse(argc, argv);

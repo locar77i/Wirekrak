@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // CLI parsing
     // -------------------------------------------------------------
-    const auto& params = cli::book::configure(argc, argv, "WireKrak Core - Kraken Book Subscription Example\n"
+    const auto& params = cli::book::configure(argc, argv, "Wirekrak Core - Kraken Book Subscription Example\n"
         "This example let's you subscribe to book events on a given symbol from Kraken WebSocket API v2.\n"
     );
     params.dump("=== Book Example Parameters ===", std::cout);

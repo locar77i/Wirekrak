@@ -17,7 +17,7 @@
         "WIREKRAK_BUILD_LITE": "OFF",
         "WIREKRAK_BUILD_TESTS": "OFF",
         "WIREKRAK_BUILD_EXAMPLES": "OFF",
-        "WIREKRAK_BUILD_EXPERIMENTAL": "OFF",
+        "WIREKRAK_BUILD_INTEGRATIONS": "OFF",
         "WIREKRAK_BUILD_BENCHMARKS": "OFF",
         "WIREKRAK_ENABLE_TELEMETRY_L1": "OFF",
         "WIREKRAK_ENABLE_TELEMETRY_L2": "OFF",
@@ -37,7 +37,7 @@
         "WIREKRAK_BUILD_LITE": "OFF",
         "WIREKRAK_BUILD_TESTS": "ON",
         "WIREKRAK_BUILD_EXAMPLES": "OFF",
-        "WIREKRAK_BUILD_EXPERIMENTAL": "OFF",
+        "WIREKRAK_BUILD_INTEGRATIONS": "OFF",
         "WIREKRAK_BUILD_BENCHMARKS": "OFF",
         "WIREKRAK_ENABLE_TELEMETRY_L1": "OFF",
         "WIREKRAK_ENABLE_TELEMETRY_L2": "OFF",
@@ -57,7 +57,7 @@
         "WIREKRAK_BUILD_LITE": "OFF",
         "WIREKRAK_BUILD_TESTS": "ON",
         "WIREKRAK_BUILD_EXAMPLES": "OFF",
-        "WIREKRAK_BUILD_EXPERIMENTAL": "OFF",
+        "WIREKRAK_BUILD_INTEGRATIONS": "OFF",
         "WIREKRAK_BUILD_BENCHMARKS": "OFF",
         "WIREKRAK_ENABLE_TELEMETRY_L1": "OFF",
         "WIREKRAK_ENABLE_TELEMETRY_L2": "OFF",
@@ -93,10 +93,10 @@
       }
     },
     {
-      "name": "ninja-experimental",
-      "displayName": "Ninja Debug (experimental)",
+      "name": "ninja-integrations",
+      "displayName": "Ninja Debug (integrations)",
       "generator": "Ninja",
-      "binaryDir": "build/experimental",
+      "binaryDir": "build/integrations",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg-2024.11.16/scripts/buildsystems/vcpkg.cmake",
@@ -105,7 +105,7 @@
         "WIREKRAK_BUILD_LITE": "ON",
         "WIREKRAK_BUILD_TESTS": "OFF",
         "WIREKRAK_BUILD_EXAMPLES": "OFF",
-        "WIREKRAK_BUILD_EXPERIMENTAL": "ON",
+        "WIREKRAK_BUILD_INTEGRATIONS": "ON",
         "WIREKRAK_BUILD_BENCHMARKS": "OFF",
         "WIREKRAK_ENABLE_TELEMETRY_L1": "ON",
         "WIREKRAK_ENABLE_TELEMETRY_L2": "OFF",
@@ -174,8 +174,8 @@
       "configurePreset": "ninja-release-examples"
     },
     {
-      "name": "experimental",
-      "configurePreset": "ninja-experimental"
+      "name": "integrations",
+      "configurePreset": "ninja-integrations"
     },
     {
       "name": "debug-bench",

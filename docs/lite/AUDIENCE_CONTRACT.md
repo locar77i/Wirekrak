@@ -146,6 +146,8 @@ This distinction defines Wirekrak.
 
 ## Related Documents
 
+➡️ **[Architecture Overview](./ARCHITECTURE.md)**
+
 ➡️ **[Public API Stability](./PUBLIC_API_STABILITY.md)**
 
 ➡️ **[Quick Usage Guide](./QUICK_USAGE.md)**

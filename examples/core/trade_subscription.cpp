@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // CLI parsing
     // -------------------------------------------------------------
-    const auto& params = cli::trade::configure(argc, argv, "WireKrak Core - Kraken Trade Subscription Example\n"
+    const auto& params = cli::trade::configure(argc, argv, "Wirekrak Core - Kraken Trade Subscription Example\n"
         "This example let's you subscribe to trade events on a given symbol from Kraken WebSocket API v2.\n"
     );
     params.dump("=== Trade Example Parameters ===", std::cout);

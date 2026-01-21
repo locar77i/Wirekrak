@@ -1,14 +1,14 @@
 # Wirekrak ⚡  
 
-## Deterministic Market Data Infrastructure for Kraken
+## Deterministic Protocol Infrastructure for Kraken Market Data
 
 **Wirekrak** treats the Kraken WebSocket API as a **deterministic market data pipeline**,
 not a best-effort message stream.
 
 Instead of exposing raw WebSocket frames or loosely typed callbacks,
-Wirekrak provides **schema-first, strongly typed market events with explicit
-lifecycle and failure semantics**, designed for real-world trading systems
-where correctness matters more than convenience or raw throughput.
+Wirekrak provides **schema-first, strongly typed protocol-level market events
+with explicit lifecycle and failure semantics**, designed for real-world trading
+systems where correctness matters more than convenience or raw throughput.
 
 > If your process crashes, disconnects, or restarts, Wirekrak makes it
 > explicit *what you know, what you don’t, and how to recover safely*.
@@ -75,11 +75,13 @@ transport, protocol, and client policy.
 
 ## 🧱 Architecture Overview <a name="architecture"></a>
 
-Wirekrak is organized as a set of strict, replaceable layers with
-explicit responsibilities and well-defined failure boundaries.
+Wirekrak is organized as a set of **strict, intentionally incomplete layers** with
+explicit responsibilities, clear dependency direction, and well-defined failure
+boundaries.
 
-The architecture prioritizes determinism, correctness, and long-term
-evolvability over ad-hoc flexibility or implicit behavior.
+The architecture prioritizes **determinism, protocol correctness, and semantic
+clarity** over ad-hoc flexibility or implicit behavior. Each layer serves a
+different audience and must not compensate for responsibilities owned by another.
 
 ```
 wirekrak/
@@ -92,6 +94,11 @@ wirekrak/
 ├               ├── channel/            # Channel subscription manager
 ├               ├── replay/             # Deterministic subscription replay engine
 │
+├── market/       (future)              # Semantic market-data layer
+│   ├── streams/                        # Trades, order books, tickers
+│   ├── policy/                         # Correctness & liveness policies
+│   ├── state/                          # state machines (Snapshot–delta)
+│
 ├── lite/                               # User-facing SDK layer
 │   ├── client/                         # High-level client API
 │   ├── domain/                         # Stable, simplified data models
@@ -102,6 +109,16 @@ wirekrak/
 ├── benchmarks/                         # Performance benchmarks
 └── tests/                              # Unit & integration tests
 ```
+
+### Layer relationships
+
+- **Core** is the single source of protocol truth and lifecycle semantics
+- **Market** depends on Core and encodes *semantic correctness*
+- **Lite** depends on Core and provides *conservative, exchange-agnostic access*
+- **Market and Lite are peers** and must not depend on each other
+- **Core must never depend on higher layers**
+
+Using the wrong layer for a given problem is considered a design error.
 
 ➡️ **[Architecture Overview](docs/ARCHITECTURE.md)**
 
@@ -202,7 +219,7 @@ and future multi-exchange support.
 
 Before building Wirekrak, please install the required dependencies using **vcpkg**.
 
-➡️ **[Install dependencies](docs/INSTALL_DEPENDENCIES.md)**
+➡️ **[Install dependencies](docs/build/INSTALL_DEPENDENCIES.md)**
 
 This guide covers:
 - vcpkg setup
@@ -222,6 +239,8 @@ cmake --build build
 ---
 
 ## 📡 Example Usage
+
+If you just want Kraken V2 market data in fewer lines of C++, start here:
 
 ```cpp
 #include "wirekrak.hpp"
@@ -260,19 +279,31 @@ int main() {
 
 ```
 
-```Note:``` Wirekrak Lite provides a stable, user-facing SDK with simple DTOs and callback-based APIs. For ultra-low-latency or protocol-level control, applications may use Wirekrak Core directly, which exposes strongly typed protocol requests constrained by C++20 concepts.
+```Note:``` Lite exposes snapshot and update delivery, but does not validate snapshot–delta
+consistency or provide semantic correctness guarantees.
+
+Wirekrak is designed to support ergonomic application-level consumption through the Lite layer,
+that provides a stable, callback-based API for consuming Kraken market data with explicit
+snapshot and lifecycle handling:
+
+➡️ **[Wirekrak Lite - Quick Usage Guide](docs/lite/QUICK_USAGE.md)**
+
+```Note:``` This guide assumes no prior knowledge of Wirekrak internals and focuses on the most common usage patterns.
+
+For ultra-low-latency or protocol-level control, applications may use Wirekrak Core directly,
+which exposes strongly typed protocol requests constrained by C++20 concepts.
 
 ---
 
-## 🧱 Build Presets <a name="presets"></a>
+## 🧱 Build Presets <a name="cmake-presets"></a>
 
 Wirekrak uses **CMake Presets** to make build intent explicit.
 
 - **`ninja-core-only`** builds *Core only*: header-only, no Lite, no examples, no tests, no telemetry — recommended for **ULL / infrastructure use**.
-- Example and experimental presets explicitly enable **Wirekrak Lite** and higher-level SDK features.
+- Example and integrations presets explicitly enable **Wirekrak Lite** and higher-level SDK features.
 - Benchmark presets are isolated to avoid accidental coupling with SDK or telemetry logic.
 
-➡️ **[Detailed preset guide](docs/build/Presets.md)**
+➡️ **[Detailed preset guide](docs/build/CMAKE_PRESETS.md)**
 
 Use presets to choose what you build, not just how you build.
 
@@ -310,8 +341,8 @@ and ergonomic application-level consumption.
 The Lite layer provides a stable, callback-based API for consuming
 Kraken market data with explicit snapshot and lifecycle handling.
 
-➡️ **[Trade subscription example](./docs/examples/Trades.md)**  
-➡️ **[Order book updates example](./docs/examples/BookUpdates.md)**
+➡️ **[Trade subscription example](./docs/core/examples/TradesSubscription.md)**  
+➡️ **[Book subscription example](./docs/core/examples/BookSubscription.md)**
 
 These examples demonstrate:
 - explicit snapshot vs incremental data handling
@@ -320,19 +351,19 @@ These examples demonstrate:
 
 ---
 
-## 🧠 End-to-End System Integration (Experimental) <a name="experimental-examples"></a>
+## 🧠 End-to-End System Integration (Flashstrike) <a name="integrations"></a>
 
 Wirekrak was designed not only as a WebSocket SDK, but as a reliable
 **market-data ingestion layer** within larger trading systems.
 
-To validate this design, Wirekrak includes an **opt-in experimental
-end-to-end integration** with *Flashstrike* — a high-performance matching
-engine developed independently prior to the hackathon.
+To validate this design, Wirekrak includes an **opt-in end-to-end integration**
+with *Flashstrike* — a high-performance matching engine developed independently
+prior to the hackathon.
 
 This integration is intentionally isolated from the core library and
-serves as a **architectural validation**, not a required dependency.
+serves as **architectural validation**, not a required dependency.
 
-### ⚡ Flashstrike — Exchange-Grade Matching Engine (Experimental)  <a name="flashstrike"></a>
+### ⚡ Flashstrike — Exchange-Grade Matching Engine <a name="flashstrike"></a>
 
 **Flashstrike** is a high-performance matching engine designed for
 ultra-low-latency trading systems. It demonstrates exchange-grade design
@@ -343,7 +374,7 @@ principles including:
 - cache-efficient data structures
 - predictable latency under load
 
-➡️ **[Flashstrike documentation](./docs/flashStrike/README.md)**
+➡️ **[Flashstrike documentation](./docs/integrations/Flashstrike/README.md)**
 
 The Wirekrak ↔ Flashstrike integration demonstrates how real-time Kraken
 market data can be normalized, validated, and injected into a deterministic
@@ -351,7 +382,7 @@ execution engine — mirroring real-world exchange ingestion pipelines.
 
 ### Kraken → Flashstrike Gateway
 
-The experimental gateway layer performs:
+The integration gateway layer performs:
 
 - normalization of Kraken market data
 - translation of book updates into deterministic limit orders
@@ -361,7 +392,7 @@ This mirrors production exchange architectures, where market data ingestion
 and matching engines evolve independently but communicate through well-defined
 interfaces.
 
-➡️ **[flashstrike Gateway Example](./docs/experimental/FlashstrikeMatchingGateway.md)**
+➡️ **[flashstrike Gateway Example](./docs/integrations/KrakenFlashstrikeGateway.md)**
 
 Together, these components demonstrate how Wirekrak fits naturally
 into production-style trading architectures beyond standalone data consumption.
@@ -382,7 +413,7 @@ Benchmarks are organized by subsystem (transport, protocol, stream, end-to-end) 
 each lives in its own directory alongside source code, configuration, and documented
 observations.
 
-➡️ **[Benchmarks Overview](./docs/benchmarks/README.md)**
+➡️ **[Benchmarks Overview](./docs/core/benchmarks/README.md)**
 
 ---
 

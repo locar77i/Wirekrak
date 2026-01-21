@@ -13,7 +13,7 @@ using namespace wirekrak::core;
 WebSocket Transport Unit Tests
 ================================================================================
 
-These tests validate the correctness of WireKrak’s WebSocket transport layer
+These tests validate the correctness of Wirekrak’s WebSocket transport layer
 *without* relying on WinHTTP, the OS, or real network I/O.
 
 Key design goals demonstrated here:

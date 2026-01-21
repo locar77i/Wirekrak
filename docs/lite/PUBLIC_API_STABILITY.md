@@ -1,6 +1,7 @@
-# Public API Stability
+# Wirekrak Lite — Public API Stability
 
-Wirekrak follows a strict API stability policy to ensure that applications built on top of the **Lite SDK** remain reliable as the system evolves.
+Wirekrak follows a strict API stability policy to ensure that applications built
+on top of the **Lite SDK** remain reliable as the system evolves.
 
 ---
 
@@ -9,13 +10,15 @@ Wirekrak follows a strict API stability policy to ensure that applications built
 The following guarantees apply **within the same major version**:
 
 - **Stable public surface**  
-  All symbols explicitly exposed under the `wirekrak::lite` namespace are part of the public API contract.
+  All symbols explicitly exposed under the `wirekrak::lite` namespace are part of the
+  public API contract.
 
 - **Source compatibility**  
   Public Lite headers will not change in incompatible ways within the same major version.
 
 - **Stable domain value types**  
-  Domain value types (such as `lite::Trade`, `lite::BookLevel`) preserve their semantic meaning and field layouts.
+  Domain value types (such as `lite::Trade`, `lite::BookLevel`) preserve their semantic
+  meaning and field layouts.
 
 - **Explicit control flow**  
   The Lite SDK does not introduce hidden background threads or implicit concurrency.  
@@ -37,7 +40,7 @@ The following are **not** part of the public API contract and may change at any 
 - Exchange-specific behavior or defaults  
   (including default endpoints and internal adapters)
 
-- Experimental APIs, examples, and tooling
+- External APIs, examples, and tooling
 
 - Performance characteristics  
   (latency, throughput, memory usage)
@@ -57,7 +60,8 @@ Semantic enums and tags exposed via the Lite SDK (such as `Side` and `Tag`) foll
 - New values **may be added** in future versions
 - Enums and tags are **not guaranteed to be exhaustive**
 
-Consumers **must not assume** that a switch over an enum or tag handles all possible values and should always provide a fallback path.
+Consumers **must not assume** that a switch over an enum or tag handles all possible values
+and should always provide a fallback path.
 
 ---
 
@@ -77,6 +81,8 @@ Internal implementation details may evolve independently as long as the public `
 ---
 
 ## Related Documents
+
+➡️ **[Architecture Overview](./ARCHITECTURE.md)**
 
 ➡️ **[Audience Contract](./AUDIENCE_CONTRACT.md)**
 

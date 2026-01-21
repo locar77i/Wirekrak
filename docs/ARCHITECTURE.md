@@ -1,52 +1,102 @@
 # Wirekrak Architecture
 
-This document describes the architectural design, guiding principles, and internal structure of **Wirekrak**.
+This document defines the **system-level architecture** of **Wirekrak**.
 
-Wirekrak is designed as **infrastructure**, not a convenience wrapper. Its architecture prioritizes determinism, correctness, explicit lifecycle management, and long-term evolvability over ad-hoc flexibility.
+It describes:
+- The major architectural layers
+- Their responsibilities and intended audiences
+- Dependency and evolution rules
+- Correctness and failure boundaries
+
+This document does **not** describe internal implementation details of any single layer.
+Layer-specific architecture is documented separately.
+
+---
+
+## Architectural Intent
+
+Wirekrak is designed as **infrastructure**, not as a convenience SDK.
+
+Its architecture prioritizes:
+
+- **Deterministic behavior under failure**
+- **Explicit lifecycle and recovery semantics**
+- **Schema-first, strongly typed protocols**
+- **Clear separation of responsibility**
+- **Long-term evolvability without semantic drift**
+
+Wirekrak intentionally trades ease of use and implicit behavior for correctness,
+clarity, and long-term architectural discipline.
 
 ---
 
 ## Design Goals
 
-Wirekrak is built around the following core goals:
+Wirekrak is built around the following system-level goals:
 
-- **Deterministic behavior** under failure and reconnection
-- **Explicit lifecycle management** (no hidden threads or runtimes)
-- **Schema-first, strongly typed protocols**
-- **Clear separation of concerns** across layers
-- **Ultra-low-latency compatibility** for infrastructure use cases
-- **Long-term API survivability**
+- Deterministic behavior across reconnects and partial failures
+- Explicit modeling of lifecycle and failure states
+- Separation of protocol truth from market semantics
+- Clear audience targeting for each API layer
+- Independence of evolution between layers
+- Suitability for ultra-low-latency and infrastructure use cases
 
-These goals drive every architectural decision in the system.
+These goals apply to the **system as a whole**, not to any single API.
 
 ---
 
 ## High-Level Layered Architecture
 
-Wirekrak is organized into a strict, one-way layered architecture:
+Wirekrak is organized as a set of **strict, intentionally incomplete layers**
+with explicit dependency direction and well-defined responsibility boundaries.
 
 ```
-  Application Code     ← Examples, SDK users, apps
-        ▲
-   Wirekrak Lite       ← Compiled SDK library (facade)
-        ▲
-   Wirekrak Core       ← Header-only, ULL infrastructure
+                    Application Code
+            (trading systems, analytics, apps)
+                            ▲
+            ┌───────────────┴─────────────────────┐
+        Market API                             Lite API
+  (semantic correctness)                (exchange-agnostic SDK)
+            ▲                                     ▲
+            └───────────────┬─────────────────────┘
+                            │
+                         Core API
+                     (protocol truth)
+                            ▲
+                            │
+                    Core Stream Layer
+                 (Reconnect / liveness)
+                            ▲
+                            │
+                        Transport
+                (WebSocket / IO backends)
 ```
 
-- Dependencies flow strictly **upward**
-- Core never depends on Lite
-- Lite depends on Core
-- Applications should depend on Lite unless ultra-low-latency constraints require Core directly
+### Dependency Rules
 
-```Important``` Core is a header-only infrastructure engine. Lite is the supported SDK surface. Applications should depend on Lite unless ultra-low-latency constraints require otherwise.
+- **Core** is the single source of protocol truth
+- **Lite** depends on Core
+- **Market** depends on Core
+- **Lite and Market are peers** and must not depend on each other
+- **Core must never depend on higher layers**
+- Dependency direction must never be reversed
+
+Violating these rules is considered an architectural error.
+
+```Important
+Core is a header-only infrastructure engine and the single source of protocol truth.
+Lite and Market are peer APIs built on Core for different audiences.
+Applications should depend on Lite or Market based on correctness requirements,
+and use Core directly only when full protocol control or ultra-low-latency behavior is required.
+```
 
 ---
 
-## Core vs Lite
+## Layer Responsibilities
 
-### Wirekrak Core <a name="wirekrak-core"></a>
+### Wirekrak Core
 
-Wirekrak Core is the foundational infrastructure layer.
+**Role:** Protocol truth and foundational infrastructure layer
 
 **Properties:**
 - Header-only
@@ -55,21 +105,25 @@ Wirekrak Core is the foundational infrastructure layer.
 - Poll-driven execution
 - Designed for ultra-low-latency (ULL) systems
 
-Core provides:
-- WebSocket stream lifecycle management
-- Liveness detection primitives
-- Protocol-agnostic transport contracts
-- Deterministic state machines
+Core is responsible for:
+- Exchange protocol semantics
+- Lifecycle state machines
+- Transport abstraction
+- Deterministic reconnection behavior
+- Protocol correctness and validation
+
+Core does **not** encode market semantics or correctness guarantees beyond
+what is explicitly present in the exchange protocol.
 
 Core is free to evolve aggressively as long as its invariants are preserved.
 
-➡️ **[Core API overview](architecture/core/README.md)**
+➡️ **[Core API Overview](core/README.md)**  
 
 ---
 
-### Wirekrak Lite <a name="wirekrak-lite"></a>
+### Wirekrak Lite
 
-Wirekrak Lite is the **stable, user-facing SDK facade** built on top of Wirekrak Core, designed for rapid integration, hackathons, and production trading systems.
+**Role:** Conservative, exchange-agnostic SDK facade built directly on top of Wirekrak Core.
 
 **Properties:**
 - Compiled library
@@ -78,285 +132,131 @@ Wirekrak Lite is the **stable, user-facing SDK facade** built on top of Wirekrak
 - Higher-level abstractions
 - Zero protocol knowledge required
 
-Lite provides:
-- Simplified client APIs
-- Stable DTOs
-- Clear error reporting
-- SDK-level semantics
+Lite is responsible for:
+- Simplified, stable client APIs
+- Exchange-neutral domain DTOs
+- Reduced cognitive load for application developers
+- Explicit but limited guarantees
 
-Lite is the supported integration surface for applications.
+Lite does **not**:
+- Own protocol lifecycle
+- Provide replay or recovery semantics
+- Enforce market correctness
 
-➡️ **[Lite API overview](./lite/README.md)**
-
----
-
-### Threading Model <a name="threading-model"></a>
-
-Wirekrak Core currently uses a deliberate **2-thread architecture** optimized for
-low latency and correctness. A 3-thread model (dedicated parser thread) is
-planned but intentionally postponed until full benchmarking is completed.
-
-➡️ **[Read the full threading model rationale](architecture/core/ThreadingModel.md)**
+➡️ **[Lite API Overview](lite/README.md)**  
 
 ---
 
-## Transport Layer <a name="transport"></a>
+### Wirekrak Market
 
-The transport layer abstracts WebSocket connectivity independently of any protocol.
+**Role:** Semantic market correctness layer built directly on top of Wirekrak Core.
 
-**Key characteristics:**
-- Modeled using C++20 concepts
-- Protocol-agnostic interfaces
-- Explicit error signaling
-- Fully mockable for testing
+**Properties:**
+- Compiled library
+- Stable semantic stream interfaces
+- Stateful market abstractions
+- Explicit correctness and liveness policies
+- Exchange-specific semantics
 
-The current implementation uses Windows WinHTTP WebSocket APIs, but the architecture allows alternative transports (Boost.Asio, libwebsockets, etc.) to be added without impacting protocol logic.
+Market is responsible for:
+- Stateful market abstractions (trades, books, etc.)
+- Snapshot–delta coordination and validation
+- Replay and resynchronization semantics
+- Explicit correctness and liveness policies
+- Observability into semantic correctness
 
-➡️ **[Transport Overview](architecture/core/transport/Overview.md)**
+Market is the **sole authority** for market semantics.
+It intentionally trades convenience and portability for explicit guarantees.
 
----
+Market does **not** replace Core or Lite, and does not depend on Lite.
 
-## Stream Client <a name="stream-client"></a>
-
-The Stream Client manages WebSocket lifecycle independently from any exchange protocol.
-
-Responsibilities include:
-- Connection establishment and teardown
-- Dual-signal liveness detection (heartbeats + message flow)
-- Deterministic reconnection logic
-- Explicit state transitions
-
-The Stream Client is **poll-driven** and does not spawn background threads.
-On reconnect, transports are fully destroyed and recreated to avoid undefined internal state.
-
-This layer is reusable across exchanges and protocols.
-
-➡️ **[Stream Client Overview](architecture/core/stream/Client.md)**
+➡️ **[Market API Overview](market/README.md)**  
 
 ---
 
-## Kraken Protocol Layer  <a name="kraken-session"></a>
+## Correctness & Failure Boundaries
 
-The Kraken protocol layer adapts the generic stream client to the Kraken WebSocket v2 API. It exposes a protocol-oriented,
-type-safe API for subscribing to Kraken channels while fully abstracting transport, liveness, and reconnection concerns.
-It uses an ACK-based subscription model with automatic replay on reconnect, explicit polling,
-and strongly typed message dispatch. This design enables deterministic behavior and clean integration
-with trading engines, analytics pipelines, and real-time systems.
+Each layer enforces correctness within a **clearly scoped boundary**:
 
-Responsibilities include:
-- Typed subscription requests
-- ACK-based subscription lifecycle tracking
-- Message routing by channel and symbol
-- Protocol correctness validation
+| Layer  | Correctness Scope |
+|------|------------------|
+| Core | Protocol correctness and lifecycle validity |
+| Lite | Safe, conservative domain observation |
+| Market | Semantic market state correctness |
 
-Protocol handling is **exchange-specific** and intentionally isolated from transport and stream logic.
-
-➡️ **[Kraken Client Overview](architecture/core/protocol/kraken/Session.md)**
+No layer compensates for correctness violations in another.
+Completeness is achieved by **choosing the correct layer**, not by layering convenience.
 
 ---
 
-## Schema-First Message Design
+## Audience Separation
 
-All Kraken messages are modeled using a schema-first approach.
+Wirekrak intentionally serves **different users with different APIs**:
 
-**Benefits:**
-- Strongly typed request, response, and event models
-- Compile-time validation of message shapes
-- No string-based JSON access in application code
-- Clear separation between schema and transport
+| Audience | Recommended Layer |
+|--------|-------------------|
+| Infrastructure / ULL engineers | Core |
+| Application developers | Lite |
+| Trading & analytics systems | Market |
 
-Schemas define *what* a message is, not *how* it is transported.
-
----
-
-## Parser Architecture  <a name="parser"></a>
-
-Wirekrak includes a production-grade parser designed for real-time market data. It uses schema-strict validation, constexpr-based enum decoding, and zero-allocation parsing on top of `simdjson`.
-
-The architecture cleanly separates routing, parsing, and domain adaptation, enforcing real exchange semantics (e.g. snapshot vs update invariants) and rejecting malformed messages deterministically.
-
-```
-Router → Parsers → Adapters → Helpers
-```
-
-- **Router**: Routes messages by channel/method
-- **Parsers**: Handle control flow and protocol semantics
-- **Adapters**: Convert primitives to domain types (enums, symbols, timestamps)
-- **Helpers**: Validate JSON structure and extract primitives
-
-### Parser Router
-
-Incoming WebSocket messages are first routed by method/channel to the appropriate message parser, ensuring each payload is handled by the correct protocol-specific logic with minimal branching.
-
-### Layered Parsers (Helpers → Adapters → Parsers)
-
-Low-level helpers validate JSON structure and extract primitives, adapters perform domain-aware conversions (enums, symbols, timestamps), and message parsers handle control flow and logging. This separation keeps parsing fast, safe, and maintainable.
-
-### Error Semantics
-
-Parsing distinguishes between:
-- Invalid schema
-- Invalid values
-
-This allows robust handling of real-world API inconsistencies while remaining allocation-free and exception-free.
-
-```note``` Every parser is fully unit-tested against invalid, edge, and protocol-violating inputs, making refactors safe and correctness provable.
-
-➡️ **[Parser Overview](architecture/core/protocol/kraken/Parser.md)**
+Using a layer outside its intended audience is considered a design mistake.
 
 ---
 
-## Dispatcher <a name="distpatcher"></a> 
+## Evolution Model
 
-The Dispatcher delivers decoded protocol events to consumers.
+Wirekrak layers evolve **independently**:
 
-**Characteristics:**
-- Compile-time channel traits
-- Symbol interning
-- Zero runtime channel branching
-- Multiple listeners per symbol
+- Core may evolve aggressively to match protocol reality
+- Lite evolves conservatively with stable APIs
+- Market evolves deliberately as semantics are refined
 
-The dispatch path is designed to be extremely fast and deterministic.
+Higher layers must never constrain the evolution of lower layers.
 
-➡️ **[Dispatcher Overview](architecture/core/protocol/kraken/Dispatcher.md)**
+Architectural clarity takes precedence over backward compatibility.
 
 ---
 
-## Subscription Manager <a name="subscription-manager"></a>
+## Extensibility Philosophy
 
-The Subscription Manager tracks the full lifecycle of Kraken subscriptions.
+Wirekrak is extensible by **composition**, not by runtime customization.
 
-Responsibilities:
-- Track pending subscriptions
-- Track active subscriptions
-- Track pending unsubscriptions
-- Transition states only after explicit ACKs
-
-Kraken’s multi-symbol subscription model is handled safely and deterministically, including partial acknowledgements.
-
-➡️ **[Subscription Manager Overview](architecture/core/protocol/kraken/SubscriptionManager.md)**
-
----
-
-## Subscription Replay <a name="subscription-replay"></a>
-
-The Replay module records confirmed subscriptions and replays them automatically after reconnects.
-
-This ensures:
-- Continuity after transient network failures
-- No duplicate or invalid subscriptions
-- Deterministic recovery behavior
-
-Replay is protocol-aware but transport-agnostic.
-
-➡️ **[Subscription Replay Overview](architecture/core/protocol/kraken/SubscriptionReplay.md)**
-
----
-
-## Telemetry <a name="telemetry"></a>
-
-Wirekrak provides **compile-time, zero-overhead telemetry** designed for low-latency and infrastructure-grade systems.
-
-Telemetry is:
-- observational only (never affects behavior)
-- fully removable at compile time
-- safe for latency-critical paths
-
-### Telemetry Levels
-
-| Level | Description | Default |
-|------|------------|---------|
-| **L1** | Mechanical metrics (bytes, messages, errors, message shape) | **ON** |
-| **L2** | Diagnostic metrics (deeper timing and pressure insight) | OFF |
-| **L3** | Analytical metrics (profiling, tracing, experimentation) | OFF |
-
-Higher levels automatically enable lower ones.
-
-### Enabling Telemetry
-
-```bash
--DWIREKRAK_ENABLE_TELEMETRY_L1=ON
--DWIREKRAK_ENABLE_TELEMETRY_L2=OFF
--DWIREKRAK_ENABLE_TELEMETRY_L3=OFF
-```
-When disabled, telemetry is completely compiled out.
-
-➡️ **[Telemetry Level Policy](architecture/core/TelemetryLevelPolicy.md)**
-
----
-
-### Low-latency Common Resources (`lcr`)
-
-Wirekrak includes a small internal utility layer named **LCR** (Low-latency Common Resources).
-
-`lcr` contains reusable, header-only building blocks designed for
-low-latency systems and used across ULL systems, including:
-
-- lock-free data structures
-- lightweight `optional` and helpers
-- bit-packing utilities
-- logging abstractions
-
-These utilities are **domain-agnostic** (not Kraken-specific) and are intentionally kept separate
-from the Wirekrak protocol code to allow reuse across other ULL (Ultra-Low Latency) projects.
-
-Wirekrak itself depends on `lcr`, but `lcr` does not depend on Wirekrak.
-
----
-
-## Extensibility Philosophy  <a name="extensibility"></a>
-
-Wirekrak is extensible by **composition**, not by ad-hoc customization.
-
-Extension is achieved by:
-- Replacing transport implementations
-- Replacing protocol layers
-- Extending schema definitions
-- Adding new exchanges
+Extension occurs by:
+- Adding new transports
+- Adding new protocol layers
+- Adding new semantic market abstractions
 
 Wirekrak deliberately avoids:
-- Plugin APIs
-- Runtime hooks
-- Implicit extension points
+- Plugin systems
+- Implicit hooks
+- Runtime mutation of behavior
 
 This preserves determinism, testability, and correctness.
 
-➡️ **[Extension Philosophy](architecture/core/ExtensionPhilosophy.md)**
-
 ---
 
-## What Wirekrak Is Not
+## What This Document Is Not
 
-Wirekrak is explicitly **not**:
+This document does **not** describe:
+- Threading models
+- Parser internals
+- Dispatcher mechanics
+- Replay algorithms
+- Telemetry implementation details
 
-- A generic async framework
-- A plugin-based system
-- A JSON-stream wrapper
-- A callback-driven runtime
-- A UI-oriented SDK
-
-It is infrastructure designed for serious real-time systems.
-
----
-
-## Future Directions
-
-Planned and possible future work includes:
-
-- Additional transport backends
-- Multi-exchange protocol support
-- Deterministic write-ahead logging
-- Offline replay and simulation pipelines
-- Further latency benchmarking and tuning
-
-These evolutions are designed to occur **behind stable API boundaries**.
+Those topics belong to **layer-specific architecture documents**.
 
 ---
 
 ## Summary
 
-Wirekrak’s architecture is intentionally conservative, explicit, and layered.
-It trades convenience for correctness and long-term survivability, making it suitable as a foundation for production-grade real-time trading and market-data systems.
+Wirekrak’s architecture is intentionally layered, explicit, and conservative.
+
+Each layer is incomplete by design.
+Correctness is achieved by **selecting the appropriate layer**, not by hiding complexity.
+
+This structure allows Wirekrak to evolve as serious infrastructure while remaining
+understandable, testable, and correct.
 
 ---
 

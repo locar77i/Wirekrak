@@ -24,7 +24,7 @@
 WebSocket Transport (WinHTTP minimal implementation)
 ================================================================================
 
-This header implements the WireKrak WebSocket transport using WinHTTP, following
+This header implements the Wirekrak WebSocket transport using WinHTTP, following
 a strict separation between *transport mechanics* and *connection policy*.
 
 Design highlights:

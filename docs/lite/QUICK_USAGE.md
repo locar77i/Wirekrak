@@ -1,7 +1,8 @@
 # Wirekrak Lite — Quick Usage Guide
 
 This document provides a **fast, practical overview** of the Wirekrak Lite API.
-It is intended for users who want to **consume market data quickly** without understanding protocol internals or infrastructure concepts.
+It is intended for users who want to **consume market data quickly** without
+understanding protocol internals or infrastructure concepts.
 
 For design goals and guarantees, see the **Lite Audience Contract**.
 
@@ -14,7 +15,8 @@ Use Wirekrak Lite if you:
 - Prefer minimal setup and safe defaults
 - Do not need protocol-level control, recovery, or replay
 
-If you need lifecycle orchestration, recovery semantics, or protocol-level access, use **Wirekrak Core** instead.
+If you need lifecycle orchestration, recovery semantics, or protocol-level access,
+use **Wirekrak Core** instead.
 
 ---
 
@@ -181,6 +183,8 @@ then Lite is the correct API.
 ---
 
 ## Related Documents
+
+➡️ **[Architecture Overview](./ARCHITECTURE.md)**
 
 ➡️ **[Audience Contract](./AUDIENCE_CONTRACT.md)**
 
