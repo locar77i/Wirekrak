@@ -95,9 +95,7 @@ public:
     }
 
     [[nodiscard]]
-    inline bool connect(const std::string& host,
-                 const std::string& port,
-                 const std::string& path) noexcept {
+    inline bool connect(const std::string& host, const std::string& port, const std::string& path) noexcept {
         hSession_ = WinHttpOpen(
             L"Wirekrak/1.0",
             WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,

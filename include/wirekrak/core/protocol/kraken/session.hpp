@@ -10,7 +10,7 @@
 #include <utility>
 
 #include "wirekrak/core/config/ring_sizes.hpp"
-#include "wirekrak/core/stream/client.hpp"
+#include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/request/concepts.hpp"
@@ -48,7 +48,7 @@ Design principles:
 
 Architecture:
   - transport::*        → WebSocket transport (WinHTTP, mockable)
-  - stream::Client      → Generic streaming client
+  - transport::Connection      → Generic streaming client
                            • connection lifecycle
                            • reconnection
                            • heartbeat & liveness
@@ -60,10 +60,10 @@ Architecture:
                            • domain models
 
 The Kraken session:
-  - Owns a stream::Client instance via composition
+  - Owns a transport::Connection instance via composition
   - Registers internal handlers to translate raw messages into typed events
   - Exposes a *protocol-oriented API* (subscribe, unsubscribe, ping, etc.)
-  - Intentionally does NOT expose low-level stream hooks directly
+  - Intentionally does NOT expose low-level transport hooks directly
 
 Rationale:
   - End users interact with Kraken concepts, not transport mechanics
@@ -87,30 +87,30 @@ class Session {
 
 public:
     Session()
-        : ctx_{stream_.heartbeat_total(), stream_.last_heartbeat_ts()}
+        : ctx_{connection_.heartbeat_total(), connection_.last_heartbeat_ts()}
         , ctx_view_{ctx_}
         , parser_(ctx_view_)
     {
-        stream_.on_connect([this]() {
+        connection_.on_connect([this]() {
             handle_connect_();
         });
 
-        stream_.on_disconnect([this]() {
+        connection_.on_disconnect([this]() {
             handle_disconnect_();
         });
 
-        stream_.on_message([this](std::string_view msg) {
+        connection_.on_message([this](std::string_view msg) {
             handle_message_(msg);
         });
 
-        stream_.on_liveness_timeout([this]() {
+        connection_.on_liveness_timeout([this]() {
             handle_liveness_timeout_();
         });
     }
 
     [[nodiscard]]
     inline bool connect(const std::string& url) {
-        return stream_.connect(url);
+        return connection_.open(url);
     }
 
     // Register pong callback
@@ -178,7 +178,7 @@ public:
     // TODO: Refactor poll method for incoming messages and events
     inline void poll() {
         // === Heartbeat liveness & reconnection logic ===
-        stream_.poll();
+        connection_.poll();
         // ===============================================================================
         // PROCESS PONG MESSAGES
         // ===============================================================================
@@ -269,7 +269,7 @@ public:
     // Accessor to the heartbeat counter
     [[nodiscard]]
     inline uint64_t heartbeat_total() const noexcept {
-        return stream_.heartbeat_total().load(std::memory_order_relaxed);
+        return connection_.heartbeat_total().load(std::memory_order_relaxed);
     }
 
     // Accessor to the trade subscription manager
@@ -290,7 +290,7 @@ private:
     lcr::sequence req_id_seq_{};
 
     // Underlying streaming client (composition)
-    wirekrak::core::stream::Client<WS> stream_;
+    transport::Connection<WS> connection_;
 
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
@@ -407,7 +407,7 @@ private:
             req.req_id = req_id_seq_.next();
         }
         std::string json = req.to_json();
-        if (!stream_.send(json)) {
+        if (!connection_.send(json)) {
             WK_ERROR("Failed to send raw message: " << json);
         }
     }
@@ -422,12 +422,12 @@ private:
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
-        WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << wirekrak::core::to_string(req.symbols) << " with req_id=" << lcr::to_string(req.req_id));
+        WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols) << " with req_id=" << lcr::to_string(req.req_id));
         // 2) Store callback safely once and register in replay DB
         StoredCallback cb_copy = std::forward<Callback>(cb);
         replay_db_.add(req, cb_copy);
         // 3) Send JSON BEFORE moving req.symbols
-        if (!stream_.send(req.to_json())) {
+        if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
             return;
         }
@@ -446,11 +446,11 @@ private:
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
-        WK_INFO("Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << wirekrak::core::to_string(req.symbols) << " with req_id=" << lcr::to_string(req.req_id));
+        WK_INFO("Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols) << " with req_id=" << lcr::to_string(req.req_id));
         // 2) Register in replay DB (no callback needed for unsubscription)
         replay_db_.remove(req);
         // 3) Send JSON BEFORE moving req.symbols
-        if (!stream_.send(req.to_json())) {
+        if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
             return;
         }

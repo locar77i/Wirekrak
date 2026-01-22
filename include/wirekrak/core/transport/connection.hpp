@@ -9,20 +9,23 @@
 
 #include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
-#include "wirekrak/core/stream/state.hpp"
+#include "wirekrak/core/transport/state.hpp"
 #include "lcr/log/logger.hpp"
 
 
 namespace wirekrak::core {
-namespace stream {
+namespace transport {
 
 /*
 ===============================================================================
- wirekrak::core::stream::Client
+ wirekrak::core::transport::Connection
 ===============================================================================
 
-Generic streaming client template, parameterized by WebSocket transport
-implementation conforming to transport::WebSocketConcept.
+Generic transport-level connection abstraction, parameterized by a WebSocket
+transport implementation conforming to transport::WebSocketConcept.
+
+A Connection represents a *logical* connection whose identity remains stable
+across transient transport failures and automatic reconnections.
 
 This component encapsulates all *connection-level* concerns and is designed
 to be reused across protocols (Kraken, future exchanges, custom feeds).
@@ -32,7 +35,7 @@ It is intentionally decoupled from any exchange schema or message format.
 -------------------------------------------------------------------------------
  Responsibilities
 -------------------------------------------------------------------------------
-- Establish and manage a WebSocket connection
+- Establish and manage a logical connection over a WebSocket transport
 - Dispatch raw text frames to higher-level protocol clients
 - Detect connection liveness using heartbeat and message activity
 - Automatically reconnect with exponential backoff on failures
@@ -57,15 +60,15 @@ It is intentionally decoupled from any exchange schema or message format.
 - A reconnect is triggered only if BOTH signals are stale
 - Transport is force-closed to reuse the same reconnection state machine
 - Reconnection uses bounded exponential backoff
-- Subscriptions are replayed by higher-level protocol clients
+- Subscriptions are replayed by higher-level protocol sessions
 
 -------------------------------------------------------------------------------
  Usage Model
 -------------------------------------------------------------------------------
-- Call connect(url) once
+- Call open(url) once to activate the connection
 - Register callbacks (on_message, on_disconnect, on_liveness_timeout)
 - Drive progress by calling poll() regularly
-- Compose this client inside protocol-specific clients (e.g. Kraken)
+- Compose this Connection inside protocol-specific sessions (e.g. Kraken)
 
 -------------------------------------------------------------------------------
  Notes
@@ -79,7 +82,7 @@ It is intentionally decoupled from any exchange schema or message format.
 
 
 template <transport::WebSocketConcept WS>
-class Client {
+class Connection {
     static constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15);
     static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15);
 
@@ -90,21 +93,23 @@ public:
     using liveness_handler_t   = std::function<void()>;
 
 public:
-    Client(std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT, std::chrono::seconds message_timeout = MESSAGE_TIMEOUT)
+    Connection(std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT, std::chrono::seconds message_timeout = MESSAGE_TIMEOUT)
         : heartbeat_timeout_(heartbeat_timeout)
         ,  message_timeout_(message_timeout)
     {
     }
 
-    ~Client() {
+    // Ensure transport is closed on destruction.
+    // Reconnection is not attempted after object lifetime ends.
+    ~Connection() {
         close();
     }
 
     // Connection lifecycle
     [[nodiscard]]
-    inline bool connect(const std::string& url) noexcept {
+    inline bool open(const std::string& url) noexcept {
         if (get_state_() != State::Disconnected && get_state_() != State::WaitingReconnect) {
-            WK_WARN("[STREAM] connect() called while not disconnected  (state: " << to_string(get_state_()) << "). Ignoring.");
+            WK_WARN("[CONN] open() called while not disconnected  (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
         last_url_ = url;
@@ -115,16 +120,16 @@ public:
         // 2) Create a fresh transport instance
         create_transport_();
         // 3) Attempt reconnection
-        WK_INFO("[STREAM] Connecting to: " << url);
+        WK_INFO("[CONN] Connecting to: " << url);
         if (!parse_and_connect_(url)) {
             set_state_(State::Disconnected);
-            WK_ERROR("[STREAM] Connection failed.");
+            WK_ERROR("[CONN] Connection failed.");
             return false;
         }
         // 4) Update state
         set_state_(State::Connected);
         retry_attempts_ = 0;
-        WK_INFO("[STREAM] Connected successfully.");
+        WK_INFO("[CONN] Connected successfully.");
         if (hooks_.on_connect_cb_) {
             hooks_.on_connect_cb_();
         }
@@ -141,7 +146,7 @@ public:
     [[nodiscard]]
     inline bool send(std::string_view text) noexcept {
         if (get_state_() != State::Connected) {
-            WK_WARN("[STREAM] send() called while not connected (state: " << to_string(get_state_()) << "). Ignoring.");
+            WK_WARN("[CONN] send() called while not connected (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
         if (ws_->send(std::string(text))) {
@@ -156,7 +161,7 @@ public:
         // === Heartbeat liveness check ===
         if (get_state_() == State::Connected) {
             if (is_liveness_stale_()) {
-                WK_TRACE("[STREAM] Liveness timeout exceeded. Forcing reconnect.");
+                WK_TRACE("[CONN] Liveness timeout exceeded. Forcing reconnect.");
                 set_state_(State::ForcedDisconnection);
                 if (hooks_.on_liveness_timeout_cb_) {
                     hooks_.on_liveness_timeout_cb_();
@@ -175,9 +180,9 @@ public:
                 // convert to seconds for logging
                 auto seconds = std::chrono::duration_cast<std::chrono::seconds>(ms);
                 if (seconds.count() == 1) {
-                    WK_INFO("[STREAM] Next reconnection attempt in 1 second.");
+                    WK_INFO("[CONN] Next reconnection attempt in 1 second.");
                 } else if (seconds.count() > 1) {
-                    WK_INFO("[STREAM] Next reconnection attempt in " << seconds.count() << " seconds.");
+                    WK_INFO("[CONN] Next reconnection attempt in " << seconds.count() << " seconds.");
                 }
             }
         }
@@ -251,7 +256,7 @@ private:
     transport::telemetry::WebSocket telemetry_;
     std::unique_ptr<WS> ws_;
 
-    // The kraken heartbeats count is used as deterministic liveness signal that drives reconnection.
+    // Heartbeat messages are used as a deterministic liveness signal that drives reconnection.
     // If no heartbeat is received for N seconds:
     // - Assume the connection is unhealthy (even if TCP is still “up”)
     // - Force-close the WebSocket
@@ -294,7 +299,7 @@ private:
 
     // State mutator with logging
     inline void set_state_(State new_state) noexcept {
-        WK_TRACE("[STREAM] State:  " << to_string(state_) << " -> " << to_string(new_state));
+        WK_TRACE("[CONN] State:  " << to_string(state_) << " -> " << to_string(new_state));
         state_ = new_state;
     }
 
@@ -333,7 +338,7 @@ private:
 
     // Placeholder for user-defined behavior on transport closure
     inline void on_transport_closed_() {
-        WK_DEBUG("[STREAM] WebSocket closed.");
+        WK_DEBUG("[CONN] WebSocket closed.");
         if (hooks_.on_disconnect_cb_) {
             hooks_.on_disconnect_cb_();
         }
@@ -400,10 +405,10 @@ private:
     [[nodiscard]]
     inline bool reconnect_() {
         if (get_state_() != State::WaitingReconnect) {
-            WK_WARN("[STREAM] reconnect() called while not waiting to reconnect (state: " << to_string(get_state_()) << "). Ignoring.");
+            WK_WARN("[CONN] reconnect() called while not waiting to reconnect (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
-        WK_INFO("[STREAM] Attempting reconnection... (attempt " << (retry_attempts_) << ")");
+        WK_INFO("[CONN] Attempting reconnection... (attempt " << (retry_attempts_) << ")");
         // 1) Clear runtime state
         set_state_(State::Connecting);
         last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
@@ -412,10 +417,10 @@ private:
         ws_.reset();          // DESTROY old WinHTTP stack
         create_transport_();  // fresh transport
         // 3) Attempt reconnection
-        WK_INFO("[STREAM] Reconnecting to: " << last_url_);
+        WK_INFO("[CONN] Reconnecting to: " << last_url_);
         if (!parse_and_connect_(last_url_)) {
             set_state_(State::WaitingReconnect);
-            WK_ERROR("[STREAM] Reconnection failed.");
+            WK_ERROR("[CONN] Reconnection failed.");
             return false;
         }
         // 4) Set new state
@@ -424,7 +429,7 @@ private:
         auto now =  std::chrono::steady_clock::now();
         last_message_ts_.store(now, std::memory_order_relaxed);
         last_heartbeat_ts_.store(now, std::memory_order_relaxed);
-        WK_INFO("[STREAM] Connection re-established with server '" << last_url_ << "'.");
+        WK_INFO("[CONN] Connection re-established with server '" << last_url_ << "'.");
         // 4) Invoke connect callback
         if (hooks_.on_connect_cb_) {
             hooks_.on_connect_cb_();
@@ -443,5 +448,5 @@ private:
     }
 };
 
-} // namespace stream
+} // namespace transport
 } // namespace wirekrak::core

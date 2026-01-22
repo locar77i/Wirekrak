@@ -6,7 +6,7 @@
 #include "lcr/bit/pack.hpp"
 
 
-namespace wirekrak::core::stream {
+namespace wirekrak::core::transport {
 
 // ===============================================================
 // CONNECTION STATE ENUM
@@ -36,4 +36,4 @@ enum class State : uint8_t {
     }
 }
 
-} // namespace wirekrak::core::stream
+} // namespace wirekrak::core::transport

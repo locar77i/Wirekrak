@@ -74,9 +74,9 @@ protocol logic.
 
 ---
 
-## Stream Client <a name="stream-client"></a>
+## Transport Connection <a name="transport-connection"></a>
 
-The Stream Client manages WebSocket lifecycle independently from any exchange protocol.
+The Transport Connection manages WebSocket lifecycle independently from any exchange protocol.
 
 Responsibilities include:
 - Connection establishment and teardown
@@ -84,12 +84,12 @@ Responsibilities include:
 - Deterministic reconnection logic
 - Explicit state transitions
 
-The Stream Client is **poll-driven** and does not spawn background threads.
+The Transport Connection is **poll-driven** and does not spawn background threads.
 On reconnect, transports are fully destroyed and recreated to avoid undefined state.
 
 This subsystem is reusable across exchanges and protocols.
 
-➡️ **[Stream Client Overview](./architecture/stream/Client.md)**
+➡️ **[Stream Client Overview](./architecture/transport/Connection.md)**
 
 ---
 

@@ -10,9 +10,12 @@ from protocol and exchange-specific logic.
 
 - Zero dynamic polymorphism (no virtual functions)
 - Compile-time validation via C++20 concepts
-- Transport-agnostic streaming client
+- Transport-agnostic connection abstraction
 - Easy mocking for unit tests
 - Windows-native TLS via WinHTTP (SChannel)
+
+```Note:``` WinHTTP is the first production transport implementation, chosen for
+its tight integration with Windows networking and native SChannel TLS support.
 
 ---
 
@@ -31,12 +34,12 @@ from protocol and exchange-specific logic.
                                    │ decoded messages
                                    │
                     ┌──────────────┴───────────────┐
-                    │   stream::Client             │
+                    │   transport::Connection      │
                     │                              │
                     │  • liveness detection        │
                     │  • automatic reconnect       │
                     │  • heartbeat handling        │
-                    │  • backpressure isolation    │
+                    │  • transport-level isolation │
                     └──────────────▲───────────────┘
                                    │
                                    │ raw text frames
@@ -53,12 +56,10 @@ from protocol and exchange-specific logic.
                                    │ platform calls
                                    │
                     ┌──────────────┴───────────────┐
-                    │ transport::winhttp           │
+                    │ transport::<implementation>  │
                     │                              │
-                    │  • WinHTTP WebSocket         │
-                    │  • Windows SChannel TLS      │
-                    │                              │
-                    │ winhttp::RealApi             │
+                    │  • OS / library WebSocket    │
+                    │  • TLS integration           │
                     └──────────────────────────────┘
 ```
 
@@ -68,15 +69,19 @@ from protocol and exchange-specific logic.
 
 ```Key Idea:``` Concepts, Not Base Classes
 
-Wirekrak avoids inheritance and instead uses **C++20 concepts**.
+WWirekrak avoids inheritance and instead uses **C++20 concepts** to define
+compile-time contracts between layers.
+
+---
 
 ### `transport::WebSocketConcept`
 
-WebSocketConcept defines the generic **WebSocket transport contract** required by streaming clients,
-independent of the underlying platform or implementation:
+`WebSocketConcept` defines the generic **WebSocket transport contract**
+required by the transport connection layer, independent of any platform
+or library.
 
 - connect / send / close
-- callbacks for message / close / error
+- callbacks for message and close events
 
 ```cpp
 template<class WS>
@@ -94,71 +99,44 @@ concept WebSocketConcept =
     };
 ```
 
-This allows:
-- Real implementations (WinHTTP)
-- Mock transports (unit tests)
-- Future transports (Boost.Beast, ASIO, etc.)
+This enables:
+- real platform implementations
+- fully mocked transports for testing
+- future backends (Boost.Beast, ASIO, etc.)
 
 ---
 
-### `transport::winhttp::ApiConcept`
+## Reference Implementation <a name="winhttp"></a>
 
-The Windows API itself is also abstracted using a concept.
+The first reference transport implementation is based on **WinHTTP**.
 
-ApiConcept defines the minimal WinHTTP WebSocket API surface required by the transport layer.
-This enables dependency injection, testing, and zero-overhead abstraction via C++20 concepts.
+- `transport::winhttp::WebSocket` implements `WebSocketConcept`
+- Uses Windows-native WebSocket support
+- TLS is provided by Windows SChannel
+- No OpenSSL or third-party networking stack required
 
-```cpp
-template<class Api>
-concept ApiConcept =
-    requires(Api api, HINTERNET ws, void* buf, DWORD size) {
-        { api.websocket_send(ws, WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE, buf, size) }
-            -> std::same_as<DWORD>;
-    };
-```
+Implementation-specific API abstraction details are documented separately:
 
-
-Benefits:
-- No direct WinHTTP calls inside core logic
-- Testable with fake APIs
-- Header-only, zero overhead
-
----
-
-## Real Implementation
-
-This keeps **platform-specific code isolated**.
-- `winhttp::RealWinApi` implements `ApiConcept`
-- `winhttp::WebSocket` implements `WebSocketConcept`
-- Uses Windows SChannel (no OpenSSL)
-
-```cpp
-struct RealApi {
-    DWORD websocket_send(HINTERNET ws, WINHTTP_WEB_SOCKET_BUFFER_TYPE type,
-                         void* buffer, DWORD size) noexcept {
-        return WinHttpWebSocketSend(ws, type, buffer, size);
-    }
-};
-```
+➡️ [WinHTTP Transport Implementation](./winhttp/Transport.md)
 
 ---
 
 ## Why This Design?
 
-- **Ultra-low latency**: no vtables, no heap allocation
+- **Ultra-low latency**: no vtables, no hidden allocations
 - **Concepts over base classes**
 - **Zero-cost abstractions**
 - **Safety**: compile-time errors instead of runtime failures
-- **Testability**: mock WebSocket + mock API
+- **Testability**: mock WebSocket transports
 - **Extensibility**: new transports without touching protocol code
 
 ---
 
 ## Testing
 
-- WebSocketConcept enables full transport mocking
+- `WebSocketConcept` enables full transport mocking
 - Liveness, reconnection, and error paths are unit-tested
-- No network access required for tests
+- No network access required for transport tests
 
 ---
 
@@ -166,8 +144,9 @@ struct RealApi {
 
 - Wirekrak uses **modern C++20 concepts** instead of inheritance
 - Transport layer is **fully decoupled** from exchange logic
-- Design is **zero-cost**, **header-only**, and **test-friendly**
-- Built for **high-frequency streaming workloads**
+- Architecture is **implementation-agnostic**
+- Platform-specific transports are isolated and replaceable
+- Designed for **high-frequency streaming workloads**
 
 ---
 

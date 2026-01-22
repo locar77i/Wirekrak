@@ -3,7 +3,7 @@
 #include <thread>
 #include <iostream>
 
-#include "wirekrak/core/stream/client.hpp"
+#include "wirekrak/core/transport/connection.hpp"
 #include "common/mock_websocket.hpp"
 
 using namespace wirekrak::core;
@@ -22,10 +22,10 @@ using namespace std::chrono_literals;
 // Test helpers
 // -----------------------------------------------------------------------------
 
-template <typename Client>
-void advance_time_and_poll(Client& client, std::chrono::milliseconds delay) {
+template <typename Connection>
+void advance_time_and_poll(Connection& connection, std::chrono::milliseconds delay) {
     std::this_thread::sleep_for(delay);
-    client.poll();
+    connection.poll();
 }
 
 // -----------------------------------------------------------------------------
@@ -33,102 +33,102 @@ void advance_time_and_poll(Client& client, std::chrono::milliseconds delay) {
 // -----------------------------------------------------------------------------
 
 void test_liveness_message_resets_timer() {
-    std::cout << "[TEST] stream::Client liveness reset on message\n";
+    std::cout << "[TEST] transport::Connection liveness reset on message\n";
     transport::MockWebSocket::reset();
 
-    stream::Client<transport::MockWebSocket> client;
-    client.set_liveness_timeout(50ms);
+    transport::Connection<transport::MockWebSocket> connection;
+    connection.set_liveness_timeout(50ms);
 
-    TEST_CHECK(client.connect("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws"));
 
     // Initial message
-    client.ws().emit_message("hello");
-    client.poll();
+    connection.ws().emit_message("hello");
+    connection.poll();
 
     // Wait less than timeout
-    advance_time_and_poll(client, 30ms);
-    TEST_CHECK(client.ws().is_connected());
+    advance_time_and_poll(connection, 30ms);
+    TEST_CHECK(connection.ws().is_connected());
 
     // Another message resets timer
-    client.ws().emit_message("heartbeat");
-    client.poll();
+    connection.ws().emit_message("heartbeat");
+    connection.poll();
 
-    advance_time_and_poll(client, 30ms);
-    TEST_CHECK(client.ws().is_connected());
+    advance_time_and_poll(connection, 30ms);
+    TEST_CHECK(connection.ws().is_connected());
 
     std::cout << "[TEST] OK\n";
 }
 
 void test_liveness_timeout_triggers_close() {
-    std::cout << "[TEST] stream::Client liveness timeout closes connection\n";
+    std::cout << "[TEST] transport::Connection liveness timeout closes connection\n";
     transport::MockWebSocket::reset();
 
-    stream::Client<transport::MockWebSocket> client;
-    client.set_liveness_timeout(30ms);
+    transport::Connection<transport::MockWebSocket> connection;
+    connection.set_liveness_timeout(30ms);
 
-    TEST_CHECK(client.connect("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws"));
 
     // No messages
-    advance_time_and_poll(client, 40ms);
+    advance_time_and_poll(connection, 40ms);
 
-    TEST_CHECK(client.ws().is_connected()); // It must be connected due to reconnection logic
-    TEST_CHECK(client.ws().close_count() == 1);
+    TEST_CHECK(connection.ws().is_connected()); // It must be connected due to reconnection logic
+    TEST_CHECK(connection.ws().close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }
 
 void test_no_false_timeout_before_deadline() {
-    std::cout << "[TEST] stream::Client no premature liveness timeout\n";
+    std::cout << "[TEST] transport::Connection no premature liveness timeout\n";
     transport::MockWebSocket::reset();
 
-    stream::Client<transport::MockWebSocket> client;
-    client.set_liveness_timeout(100ms);
+    transport::Connection<transport::MockWebSocket> connection;
+    connection.set_liveness_timeout(100ms);
 
-    TEST_CHECK(client.connect("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws"));
 
-    advance_time_and_poll(client, 50ms);
-    TEST_CHECK(client.ws().is_connected());
-    TEST_CHECK(client.ws().close_count() == 0);
+    advance_time_and_poll(connection, 50ms);
+    TEST_CHECK(connection.ws().is_connected());
+    TEST_CHECK(connection.ws().close_count() == 0);
 
     std::cout << "[TEST] OK\n";
 }
 
 void test_error_does_not_reset_liveness() {
-    std::cout << "[TEST] stream::Client error does not reset liveness\n";
+    std::cout << "[TEST] transport::Connection error does not reset liveness\n";
     transport::MockWebSocket::reset();
 
-    stream::Client<transport::MockWebSocket> client;
-    client.set_liveness_timeout(40ms);
+    transport::Connection<transport::MockWebSocket> connection;
+    connection.set_liveness_timeout(40ms);
 
-    TEST_CHECK(client.connect("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws"));
 
 
     // Emit error only
-    client.ws().emit_error();
-    client.poll();
+    connection.ws().emit_error();
+    connection.poll();
 
-    advance_time_and_poll(client, 50ms);
+    advance_time_and_poll(connection, 50ms);
 
-    TEST_CHECK(client.ws().is_connected()); // It must be connected due to reconnection logic
-    TEST_CHECK(client.ws().close_count() == 1);
+    TEST_CHECK(connection.ws().is_connected()); // It must be connected due to reconnection logic
+    TEST_CHECK(connection.ws().close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }
 
 void test_heartbeat_keeps_connection_alive() {
-    std::cout << "[TEST] stream::Client heartbeat-only traffic\n";
+    std::cout << "[TEST] transport::Connection heartbeat-only traffic\n";
     transport::MockWebSocket::reset();
 
-    stream::Client<transport::MockWebSocket> client;
-    client.set_liveness_timeout(40ms);
+    transport::Connection<transport::MockWebSocket> connection;
+    connection.set_liveness_timeout(40ms);
 
-    TEST_CHECK(client.connect("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws"));
 
     for (int i = 0; i < 5; ++i) {
-        advance_time_and_poll(client, 20ms);
-        client.ws().emit_message("heartbeat");
-        client.poll();
-        TEST_CHECK(client.ws().is_connected());
+        advance_time_and_poll(connection, 20ms);
+        connection.ws().emit_message("heartbeat");
+        connection.poll();
+        TEST_CHECK(connection.ws().is_connected());
     }
 
     std::cout << "[TEST] OK\n";
@@ -155,6 +155,6 @@ int main() {
     test_error_does_not_reset_liveness();
     test_heartbeat_keeps_connection_alive();
 
-    std::cout << "[TEST] stream::Client liveness tests PASSED\n";
+    std::cout << "[TEST] transport::Connection liveness tests PASSED\n";
     return 0;
 }
