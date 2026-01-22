@@ -19,7 +19,7 @@ The WinHTTP transport is a concrete implementation of the following transport-la
 It is responsible **only** for:
 - establishing and maintaining a WebSocket at the OS level
 - sending and receiving raw WebSocket frames
-- surfacing events via callbacks
+- surfacing messages, closure events, and semantic transport errors via callbacks
 
 All higher-level concerns such as:
 - connection lifecycle
@@ -64,7 +64,7 @@ on Windows.
 
 It implements `transport::WebSocketConcept` and provides:
 
-- `connect(host, port, path)`
+- `connect(host, port, path) -> transport::Error`
 - `send(message)`
 - `close()`
 - callback registration for:
@@ -102,9 +102,16 @@ with no runtime overhead.
 
 ## Error Handling Model
 
-- WinHTTP errors surface as transport-level failures
+- WinHTTP and OS-level failures are translated into
+  semantic `transport::Error` values
+- No platform-specific error codes are exposed outside
+  the transport layer
+- Errors are surfaced via callbacks exactly once
 - Recovery and retries are handled exclusively by
   `core::transport::Connection`
+
+The transport layer performs classification only; it does not make
+recovery or reconnection decisions.
 
 ---
 

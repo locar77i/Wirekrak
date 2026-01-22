@@ -9,6 +9,7 @@
 #include <cassert>
 
 #include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/telemetry.hpp"
@@ -78,7 +79,7 @@ class WebSocketImpl {
 public:
     using MessageCallback = std::function<void(std::string_view)>;
     using CloseCallback   = std::function<void()>;
-    using ErrorCallback   = std::function<void(DWORD)>;
+    using ErrorCallback   = std::function<void(Error)>;
 
 public:
     explicit WebSocketImpl(telemetry::WebSocket& telemetry) noexcept
@@ -95,7 +96,7 @@ public:
     }
 
     [[nodiscard]]
-    inline bool connect(const std::string& host, const std::string& port, const std::string& path) noexcept {
+    inline Error connect(const std::string& host, const std::string& port, const std::string& path) noexcept {
         hSession_ = WinHttpOpen(
             L"Wirekrak/1.0",
             WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
@@ -105,18 +106,13 @@ public:
         );
         if (!hSession_) {
             WK_ERROR("[WS] WinHttpOpen failed");
-            return false;
+            return Error::TransportFailure;
         }
 
-        hConnect_ = WinHttpConnect(
-            hSession_,
-            to_wide(host).c_str(),
-            std::stoi(port),
-            0
-        );
+        hConnect_ = WinHttpConnect(hSession_, to_wide(host).c_str(), std::stoi(port), 0);
         if (!hConnect_) {
             WK_ERROR("[WS] WinHttpConnect failed");
-            return false;
+            return Error::ConnectionFailed;
         }
 
         hRequest_ = WinHttpOpenRequest(
@@ -130,35 +126,38 @@ public:
         );
         if (!hRequest_) {
             WK_ERROR("[WS] WinHttpOpenRequest failed");
-            return false;
+            return Error::TransportFailure;;
         }
 
         if (!WinHttpSetOption(hRequest_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) {
             WK_ERROR("[WS] WinHttpSetOption failed");
-            return false;
+            return Error::ProtocolError;
         }
 
         if (!WinHttpSendRequest(hRequest_, nullptr, 0, nullptr, 0, 0, 0)) {
             WK_ERROR("[WS] WinHttpSendRequest failed");
-            return false;
+            return Error::ConnectionFailed;
         }
 
         if (!WinHttpReceiveResponse(hRequest_, nullptr)) {
             WK_ERROR("[WS] WinHttpReceiveResponse failed");
-            return false;
+            return Error::Timeout;
         }
 
         hWebSocket_ = WinHttpWebSocketCompleteUpgrade(hRequest_, 0);
         if (!hWebSocket_) {
             WK_ERROR("[WS] WinHttpWebSocketCompleteUpgrade failed");
-            return false;
+            return Error::ProtocolError;
         }
 
         running_.store(true, std::memory_order_relaxed);
         recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
-        return true;
+        return Error::None;
     }
 
+    // Send a text message. Returns true on success.
+    // A boolean “accepted / not accepted” is the honest signal.
+    // Errors are reported asynchronously via the error callback.
     [[nodiscard]]
     inline bool send(const std::string& msg) noexcept {
         if (!hWebSocket_) {
@@ -172,6 +171,12 @@ public:
                    (void*)msg.data(),
                    (DWORD)msg.size()) == ERROR_SUCCESS;
         WK_TL1( if (ok) [[likely]] { telemetry_.on_send(msg.size()); } );
+        if (!ok) [[unlikely]] {
+            WK_ERROR("[WS] websocket_send() failed");
+             if (on_error_) {
+                on_error_(transport::Error::TransportFailure);
+            }
+        }
         return ok;
     }
 
@@ -196,9 +201,20 @@ public:
         WK_TRACE("[WS] WebSocket closed.");
     }
 
-    inline void set_message_callback(MessageCallback cb) noexcept     { on_message_ = std::move(cb); }
-    inline void set_close_callback(CloseCallback cb) noexcept         { on_close_   = std::move(cb); }
-    inline void set_error_callback(ErrorCallback cb) noexcept         { on_error_   = std::move(cb); }
+    // Message callback is invoked on each complete message received.
+    inline void set_message_callback(MessageCallback cb) noexcept {
+        on_message_ = std::move(cb); 
+    }
+
+    // Close is always signaled exactly once.
+    inline void set_close_callback(CloseCallback cb) noexcept {
+        on_close_ = std::move(cb); 
+    }
+
+    // Error callbacks are delivered before close callbacks.
+    inline void set_error_callback(ErrorCallback cb) noexcept {
+        on_error_ = std::move(cb); 
+    }
 
 private:
     inline void receive_loop_() noexcept {
@@ -228,9 +244,9 @@ private:
             // Handle errors
             if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
             WK_TL1( telemetry_.on_receive_failure() );
-                handle_receive_error_(result);
+                auto error = handle_receive_error_(result);
                 if (on_error_) {
-                    on_error_(result);
+                    on_error_(error);
                 }
                 running_.store(false, std::memory_order_release);
                 signal_close_();
@@ -278,38 +294,32 @@ private:
         }
     }
 
-    inline void handle_receive_error_(DWORD error) noexcept {
-        // WinHTTP uses WinINet-style numeric error codes
-        constexpr DWORD ERR_OPERATION_CANCELLED  = 12017; // local close
-        constexpr DWORD ERR_CONNECTION_ABORTED   = 12030; // peer closed
-        constexpr DWORD ERR_CANNOT_CONNECT       = 12029; // connect failed
-        constexpr DWORD ERR_TIMEOUT              = 12002; // timeout
-
+    inline Error handle_receive_error_(DWORD error) noexcept {
         switch (error) {
-        case ERR_OPERATION_CANCELLED:
+        case ERROR_WINHTTP_OPERATION_CANCELLED: // ERR_OPERATION_CANCELLED 12017 (local close)
             // Local shutdown, expected during close()
             WK_TRACE("[WS] Receive cancelled (local shutdown)");
-            break;
+            return Error::LocalShutdown;
 
-        case ERR_CONNECTION_ABORTED:
+        case ERROR_WINHTTP_CONNECTION_ERROR: // ERR_CONNECTION_ABORTED 12030 (peer closed)
             // Remote closed connection (no CLOSE frame)
             WK_INFO("[WS] Connection closed by peer");
-            break;
+            return Error::RemoteClosed;
 
-        case ERR_TIMEOUT:
+        case ERROR_WINHTTP_TIMEOUT: // ERR_TIMED_OUT 12002 (timeout)
             // Network stalled or idle timeout
             WK_WARN("[WS] Receive timeout");
-            break;
+            return Error::Timeout;
 
-        case ERR_CANNOT_CONNECT:
+        case ERROR_WINHTTP_CANNOT_CONNECT: // ERR_CONNECTION_FAILED 12029 (connect failed)
             // Usually handshake or DNS issues
             WK_ERROR("[WS] Cannot connect to remote host");
-            break;
+            return Error::ConnectionFailed;
 
         default:
             // Anything else is unexpected
             WK_ERROR("[WS] Receive failed with error code " << error);
-            break;
+            return Error::TransportFailure;
         }
     }
 
@@ -380,9 +390,9 @@ private:
 #endif // WK_UNIT_TEST
 
 };
-// Defensive check that WebSocket conforms to the transport::WebSocketConcept concept
+// Defensive check that WebSocket conforms to the WebSocketConcept concept
 using WebSocket = WebSocketImpl<RealApi>;
-static_assert(wirekrak::core::transport::WebSocketConcept<WebSocket>);
+static_assert(WebSocketConcept<WebSocket>);
 
 } // namespace winhttp
 } // namespace transport

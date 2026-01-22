@@ -399,7 +399,7 @@ private:
         path = (slash == std::string::npos) ? "/" : url.substr(slash);
         // ---------------------------------------------------
         // 5) try connect
-        return ws_->connect(host, port, path);
+        return ws_->connect(host, port, path) == Error::None;
     }
 
     [[nodiscard]]

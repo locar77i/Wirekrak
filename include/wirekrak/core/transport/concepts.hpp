@@ -5,6 +5,9 @@
 #include <functional>
 #include <concepts>
 
+#include "wirekrak/core/transport/error.hpp"
+
+
 namespace wirekrak::core {
 namespace transport {
 
@@ -24,11 +27,11 @@ concept WebSocketConcept =
         const std::string& msg,
         std::function<void(std::string_view msg)> on_message,
         std::function<void()> on_close,
-        std::function<void(unsigned long)> on_error
+        std::function<void(Error)> on_error
     )
 {
     // Connection lifecycle
-    { ws.connect(host, port, path) } -> std::same_as<bool>;
+    { ws.connect(host, port, path) } -> std::same_as<Error>;
     { ws.close() } -> std::same_as<void>;
 
     // Sending

@@ -134,12 +134,13 @@ void test_error_triggers_close() {
 
     std::atomic<int> close_count{0};
     std::atomic<int> error_count{0};
+    std::atomic<transport::Error> last_error{transport::Error::None};
 
     ws.set_close_callback([&] { close_count++; });
-    ws.set_error_callback([&](DWORD) { error_count++; });
+    ws.set_error_callback([&](transport::Error err) { error_count++; last_error.store(err, std::memory_order_release); });
 
     // Simulate error
-    ws.test_api().results.push(ERROR_CONNECTION_ABORTED);
+    ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
 
     //if (!ws.connect("x", "443", "/"))
@@ -163,6 +164,10 @@ void test_error_triggers_close() {
     if (error_count.load() == 1) {
         assert(ws.test_api().receive_count >= 1);
     }
+
+    // Validate semantic error classification
+    auto err = last_error.load(std::memory_order_acquire);
+    assert(err == transport::Error::RemoteClosed || err == transport::Error::TransportFailure);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -234,7 +239,7 @@ void test_send_failure() {
     transport::telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
-    ws.test_api().send_result = ERROR_CONNECTION_ABORTED;
+    ws.test_api().send_result = ERROR_WINHTTP_CONNECTION_ERROR;
 
     // Establish fake connection (sets hWebSocket_)
     ws.test_start_receive_loop();
@@ -249,18 +254,19 @@ void test_send_failure() {
     std::cout << "[TEST] Done." << std::endl;
 }
 
-void test_error_then_close_order() {
+void test_error_then_close_ordering() {
     std::cout << "[TEST] Running error -> close ordering test..." << std::endl;
 
     transport::telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
     std::vector<std::string> events;
+    std::atomic<transport::Error> last_error{transport::Error::None};
 
-    ws.set_error_callback([&](DWORD) { events.push_back("error"); });
+    ws.set_error_callback([&](transport::Error err) { events.push_back("error"); last_error.store(err, std::memory_order_release); });
     ws.set_close_callback([&] { events.push_back("close"); });
 
-    ws.test_api().results.push(ERROR_CONNECTION_ABORTED);
+    ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
 
     //if (!ws.connect("x", "443", "/"))
@@ -275,6 +281,10 @@ void test_error_then_close_order() {
     assert(events.size() == 2);
     assert(events[0] == "error");
     assert(events[1] == "close");
+
+    // Validate semantic error classification
+    auto err = last_error.load(std::memory_order_acquire);
+    assert(err == transport::Error::RemoteClosed);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -331,7 +341,7 @@ int main() {
     test_message_callback();
     test_send_success();
     test_send_failure();
-    test_error_then_close_order();
+    test_error_then_close_ordering();
     test_multiple_messages();
 
     std::cout << "[TEST] ALL TRANSPORT TESTS PASSED!" << std::endl;

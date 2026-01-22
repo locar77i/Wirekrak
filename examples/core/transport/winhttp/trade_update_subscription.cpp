@@ -32,7 +32,7 @@ int main() {
         std::cout << "[WS] Connection closed\n";
     });
 
-    if (!ws.connect("ws.kraken.com", "443", "/v2")) {
+    if (ws.connect("ws.kraken.com", "443", "/v2") != transport::Error::None) {
         std::cerr << "Connect failed\n";
         return 1;
     }
