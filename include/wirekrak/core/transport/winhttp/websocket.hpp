@@ -136,18 +136,18 @@ public:
 
         if (!WinHttpSendRequest(hRequest_, nullptr, 0, nullptr, 0, 0, 0)) {
             WK_ERROR("[WS] WinHttpSendRequest failed");
-            return Error::ConnectionFailed;
+            return Error::HandshakeFailed;
         }
 
         if (!WinHttpReceiveResponse(hRequest_, nullptr)) {
             WK_ERROR("[WS] WinHttpReceiveResponse failed");
-            return Error::Timeout;
+            return Error::HandshakeFailed;
         }
 
         hWebSocket_ = WinHttpWebSocketCompleteUpgrade(hRequest_, 0);
         if (!hWebSocket_) {
             WK_ERROR("[WS] WinHttpWebSocketCompleteUpgrade failed");
-            return Error::ProtocolError;
+            return Error::HandshakeFailed;
         }
 
         running_.store(true, std::memory_order_relaxed);
@@ -325,6 +325,7 @@ private:
 
     inline void signal_close_() noexcept {
         message_buffer_.clear();
+        // Ensure close callback is invoked exactly once
         if (closed_.exchange(true)) {
             return;
         }

@@ -7,7 +7,7 @@
 #include "wirekrak/core/transport/winhttp/concepts.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 
-using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
 /*
 ================================================================================
 WebSocket Transport Unit Tests
@@ -83,7 +83,7 @@ static_assert(ApiConcept<FakeApi>, "FakeApi must model ApiConcept");
 } // namespace wirekrak::core
 
 // Convenience alias for the templated WebSocket
-using TestWebSocket = transport::winhttp::WebSocketImpl<transport::winhttp::FakeApi>;
+using TestWebSocket = winhttp::WebSocketImpl<winhttp::FakeApi>;
 
 // -----------------------------------------------------------------------------
 // Tests
@@ -91,7 +91,7 @@ using TestWebSocket = transport::winhttp::WebSocketImpl<transport::winhttp::Fake
 
 void test_close_called_once() {
     std::cout << "[TEST] Running close() called once test..." << std::endl;
-    transport::telemetry::WebSocket telemetry;
+    telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
     // Flag to detect when receive loop has started
@@ -126,7 +126,7 @@ void test_close_called_once() {
 void test_error_triggers_close() {
     std::cout << "[TEST] Running error triggers close test..." << std::endl;
 
-    transport::telemetry::WebSocket telemetry;
+    telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
     std::atomic<bool> receive_started{false};
@@ -134,10 +134,10 @@ void test_error_triggers_close() {
 
     std::atomic<int> close_count{0};
     std::atomic<int> error_count{0};
-    std::atomic<transport::Error> last_error{transport::Error::None};
+    std::atomic<Error> last_error{Error::None};
 
     ws.set_close_callback([&] { close_count++; });
-    ws.set_error_callback([&](transport::Error err) { error_count++; last_error.store(err, std::memory_order_release); });
+    ws.set_error_callback([&](Error err) { error_count++; last_error.store(err, std::memory_order_release); });
 
     // Simulate error
     ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
@@ -167,7 +167,7 @@ void test_error_triggers_close() {
 
     // Validate semantic error classification
     auto err = last_error.load(std::memory_order_acquire);
-    assert(err == transport::Error::RemoteClosed || err == transport::Error::TransportFailure);
+    assert(err == Error::RemoteClosed || err == Error::TransportFailure);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -176,7 +176,7 @@ void test_error_triggers_close() {
 void test_message_callback() {
     std::cout << "[TEST] Running message callback test..." << std::endl;
 
-    transport::telemetry::WebSocket telemetry;
+    telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
     std::atomic<bool> receive_started{false};
@@ -217,7 +217,7 @@ void test_message_callback() {
 void test_send_success() {
     std::cout << "[TEST] Running send success test..." << std::endl;
 
-    transport::telemetry::WebSocket telemetry;
+    telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
     // Establish fake connection (sets hWebSocket_)
@@ -236,7 +236,7 @@ void test_send_success() {
 void test_send_failure() {
     std::cout << "[TEST] Running send failure test..." << std::endl;
 
-    transport::telemetry::WebSocket telemetry;
+    telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
     ws.test_api().send_result = ERROR_WINHTTP_CONNECTION_ERROR;
@@ -257,13 +257,13 @@ void test_send_failure() {
 void test_error_then_close_ordering() {
     std::cout << "[TEST] Running error -> close ordering test..." << std::endl;
 
-    transport::telemetry::WebSocket telemetry;
+    telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
     std::vector<std::string> events;
-    std::atomic<transport::Error> last_error{transport::Error::None};
+    std::atomic<Error> last_error{Error::None};
 
-    ws.set_error_callback([&](transport::Error err) { events.push_back("error"); last_error.store(err, std::memory_order_release); });
+    ws.set_error_callback([&](Error err) { events.push_back("error"); last_error.store(err, std::memory_order_release); });
     ws.set_close_callback([&] { events.push_back("close"); });
 
     ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
@@ -284,7 +284,7 @@ void test_error_then_close_ordering() {
 
     // Validate semantic error classification
     auto err = last_error.load(std::memory_order_acquire);
-    assert(err == transport::Error::RemoteClosed);
+    assert(err == Error::RemoteClosed);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -292,7 +292,7 @@ void test_error_then_close_ordering() {
 void test_multiple_messages() {
     std::cout << "[TEST] Running multiple message test..." << std::endl;
 
-    transport::telemetry::WebSocket telemetry;
+    telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
     std::atomic<int> msg_count{0};

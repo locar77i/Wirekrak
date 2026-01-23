@@ -6,7 +6,8 @@
 #include "wirekrak/core/transport/connection.hpp"
 #include "common/mock_websocket.hpp"
 
-using namespace wirekrak::core;
+
+using namespace wirekrak::core::transport;
 using namespace std::chrono_literals;
 
 #define TEST_CHECK(expr)                                                     \
@@ -34,12 +35,12 @@ void advance_time_and_poll(Connection& connection, std::chrono::milliseconds del
 
 void test_liveness_message_resets_timer() {
     std::cout << "[TEST] transport::Connection liveness reset on message\n";
-    transport::MockWebSocket::reset();
+    MockWebSocket::reset();
 
-    transport::Connection<transport::MockWebSocket> connection;
+    Connection<MockWebSocket> connection;
     connection.set_liveness_timeout(50ms);
 
-    TEST_CHECK(connection.open("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
     // Initial message
     connection.ws().emit_message("hello");
@@ -61,12 +62,12 @@ void test_liveness_message_resets_timer() {
 
 void test_liveness_timeout_triggers_close() {
     std::cout << "[TEST] transport::Connection liveness timeout closes connection\n";
-    transport::MockWebSocket::reset();
+    MockWebSocket::reset();
 
-    transport::Connection<transport::MockWebSocket> connection;
+    Connection<MockWebSocket> connection;
     connection.set_liveness_timeout(30ms);
 
-    TEST_CHECK(connection.open("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
     // No messages
     advance_time_and_poll(connection, 40ms);
@@ -79,12 +80,12 @@ void test_liveness_timeout_triggers_close() {
 
 void test_no_false_timeout_before_deadline() {
     std::cout << "[TEST] transport::Connection no premature liveness timeout\n";
-    transport::MockWebSocket::reset();
+    MockWebSocket::reset();
 
-    transport::Connection<transport::MockWebSocket> connection;
+    Connection<MockWebSocket> connection;
     connection.set_liveness_timeout(100ms);
 
-    TEST_CHECK(connection.open("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
     advance_time_and_poll(connection, 50ms);
     TEST_CHECK(connection.ws().is_connected());
@@ -95,12 +96,12 @@ void test_no_false_timeout_before_deadline() {
 
 void test_error_does_not_reset_liveness() {
     std::cout << "[TEST] transport::Connection error does not reset liveness\n";
-    transport::MockWebSocket::reset();
+    MockWebSocket::reset();
 
-    transport::Connection<transport::MockWebSocket> connection;
+    Connection<MockWebSocket> connection;
     connection.set_liveness_timeout(40ms);
 
-    TEST_CHECK(connection.open("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
 
     // Emit error only
@@ -117,12 +118,12 @@ void test_error_does_not_reset_liveness() {
 
 void test_heartbeat_keeps_connection_alive() {
     std::cout << "[TEST] transport::Connection heartbeat-only traffic\n";
-    transport::MockWebSocket::reset();
+    MockWebSocket::reset();
 
-    transport::Connection<transport::MockWebSocket> connection;
+    Connection<MockWebSocket> connection;
     connection.set_liveness_timeout(40ms);
 
-    TEST_CHECK(connection.open("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
     for (int i = 0; i < 5; ++i) {
         advance_time_and_poll(connection, 20ms);
@@ -148,7 +149,11 @@ void test_heartbeat_keeps_connection_alive() {
 //   - timeout enforcement
 // -----------------------------------------------------------------------------
 
+#include "lcr/log/logger.hpp"
+
 int main() {
+    lcr::log::Logger::instance().set_level(lcr::log::Level::Trace);
+
     test_liveness_message_resets_timer();
     test_liveness_timeout_triggers_close();
     test_no_false_timeout_before_deadline();

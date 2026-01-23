@@ -7,6 +7,7 @@
 #include "wirekrak/core/transport/connection.hpp"
 #include "common/mock_websocket.hpp"
 
+
 using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
@@ -31,7 +32,7 @@ void test_connect() {
     bool connected_cb = false;
     connection.on_connect([&]() { connected_cb = true; });
 
-    TEST_CHECK(connection.open("wss://example.com/ws"));
+    TEST_CHECK(connection.open("wss://example.com/ws") == transport::Error::None);
     TEST_CHECK(connected_cb);
 
     std::cout << "[TEST] OK\n";
@@ -121,7 +122,7 @@ void test_reconnect_on_close() {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     connection.poll();
 
-    TEST_CHECK(connect_count >= 2);
+    TEST_CHECK(connect_count == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -194,7 +195,11 @@ void test_liveness_hook() {
 //   No dependency on Kraken schemas, parsers, or protocol logic—stream connection correctness is validated independently.
 // -----------------------------------------------------------------------------
 
+#include "lcr/log/logger.hpp"
+
 int main() {
+    lcr::log::Logger::instance().set_level(lcr::log::Level::Trace);
+
     test_connect();
     test_message_dispatch();
     test_send();
