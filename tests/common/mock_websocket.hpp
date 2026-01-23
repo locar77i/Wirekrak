@@ -11,9 +11,13 @@
 #include "lcr/log/logger.hpp"
 
 
-namespace wirekrak::core {
-namespace transport {
+namespace wirekrak::core::transport::test {
 
+// NOTE:
+// MockWebSocket uses process-global static state by design.
+// This is intentional: transport::Connection owns a single-shot
+// WebSocket instance internally and tests are strictly single-threaded.
+// Each test MUST call MockWebSocket::reset() before constructing Connection.
 class MockWebSocket {
     using MessageCallback = std::function<void(const std::string&)>;
     using CloseCallback   = std::function<void()>;
@@ -31,6 +35,7 @@ public:
 
     ~MockWebSocket() {
         WK_DEBUG("[MockWebSocket] destructed");
+        
     }
 
     // ---------------------------------------------------------------------
@@ -39,8 +44,8 @@ public:
 
     inline Error connect(const std::string&, const std::string&, const std::string&) noexcept {
         WK_DEBUG("[MockWebSocket] connect() called");
-        connected_ = true;
-        return Error::None;
+        connected_ = (next_connect_result_ == Error::None);
+        return next_connect_result_;
     }
 
     inline bool send(const std::string&) noexcept {
@@ -88,36 +93,37 @@ public:
     }
 
     // Accessors
-    inline bool is_connected() const noexcept {
+    static inline bool is_connected() noexcept {
         return connected_;
     }
-    inline int close_count() const noexcept {
+    static inline int close_count() noexcept {
         return close_count_;
     }
-    inline int error_count() const noexcept {
+    static inline int error_count() noexcept {
         return error_count_;
     }
 
     // mutators
+    static inline void set_next_connect_result(Error err) noexcept {
+        next_connect_result_ = err;
+    }
+
     static inline void reset() noexcept {
         connected_   = false;
         close_count_ = 0;
         error_count_ = 0;
+        next_connect_result_ = Error::None;
     }
 
 private:
-    static bool connected_;
-    static int  close_count_;
-    static int  error_count_;
-
+    // NOTE: Static state is intentional (single-shot WebSocket semantics)
+    static inline bool connected_{false};
+    static inline int close_count_{0};
+    static inline int error_count_{0};
+    static inline Error next_connect_result_{Error::None};
 };
 // Assert that MockWebSocket conforms to transport::WebSocketConcept concept
 static_assert(WebSocketConcept<MockWebSocket>);
 
 // ininitialize static members
-bool MockWebSocket::connected_   = false;
-int  MockWebSocket::close_count_ = 0;
-int  MockWebSocket::error_count_ = 0;
-
-} // namespace transport
-} // namespace wirekrak::core
+} // namespace wirekrak::core::transport::test

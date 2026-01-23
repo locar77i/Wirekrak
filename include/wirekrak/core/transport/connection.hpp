@@ -294,6 +294,14 @@ public:
         last_heartbeat_ts_.store(ts, std::memory_order_relaxed);
     }
 
+    inline const std::atomic<std::chrono::steady_clock::time_point>& get_last_message_ts() const noexcept {
+        return last_message_ts_;
+    }
+
+    inline const std::atomic<std::chrono::steady_clock::time_point>& get_last_heartbeat_ts() const noexcept {
+        return last_heartbeat_ts_;
+    }
+
     WS& ws() {
         return *ws_;
     }
