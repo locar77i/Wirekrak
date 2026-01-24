@@ -55,7 +55,8 @@ void test_liveness_both_stale() {
 
     using clock = std::chrono::steady_clock;
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     bool liveness_called = false;
     connection.on_liveness_timeout([&]() {
@@ -91,7 +92,8 @@ void test_liveness_only_heartbeat_stale() {
 
     using clock = std::chrono::steady_clock;
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     bool liveness_called = false;
     connection.on_liveness_timeout([&]() {
@@ -127,7 +129,8 @@ void test_liveness_only_message_stale() {
 
     using clock = std::chrono::steady_clock;
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     bool liveness_called = false;
     connection.on_liveness_timeout([&]() {

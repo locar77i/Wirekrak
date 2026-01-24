@@ -52,7 +52,8 @@ void test_immediate_retry_on_retriable_error() {
         .close()
         .connect_ok(); // reconnect succeeds
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int connect_calls = 0;
     connection.on_connect([&]() {
@@ -93,7 +94,8 @@ void test_failed_reconnect_schedules_backoff() {
         .close()
         .connect_fail(Error::ConnectionFailed); // first reconnect FAILS
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int retry_calls = 0;
     RetryContext last_retry{};
@@ -139,7 +141,8 @@ void test_successful_reconnect_resets_retry_state() {
         .close()
         .connect_ok(); // first reconnect SUCCEEDS
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int connect_calls = 0;
     int retry_calls = 0;

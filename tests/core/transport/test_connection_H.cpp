@@ -62,7 +62,8 @@ void test_retriable_errors_trigger_retry() {
             .close()
             .connect_ok(); // reconnect succeeds
 
-        Connection<test::MockWebSocket> connection;
+        telemetry::Connection telemetry;
+        Connection<test::MockWebSocket> connection{telemetry};
 
         int connect_calls = 0;
         connection.on_connect([&]() { ++connect_calls; });
@@ -110,7 +111,8 @@ void test_non_retriable_errors_never_retry() {
             .error(error)
             .close();
 
-        Connection<test::MockWebSocket> connection;
+        telemetry::Connection telemetry;
+        Connection<test::MockWebSocket> connection{telemetry};
 
         int connect_calls = 0;
         connection.on_connect([&]() { ++connect_calls; });

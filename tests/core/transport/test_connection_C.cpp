@@ -44,7 +44,8 @@ void test_send_when_connected() {
     std::cout << "[TEST] Group C1: send() succeeds when connected\n";
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     // Establish connection
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
@@ -63,7 +64,8 @@ void test_send_when_disconnected() {
     std::cout << "[TEST] Group C2a: send() fails when Disconnected\n";
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     TEST_CHECK(connection.send("ping") == false);
 
@@ -80,7 +82,8 @@ void test_send_when_waiting_reconnect() {
     // Force retriable failure
     test::MockWebSocket::set_next_connect_result(Error::ConnectionFailed);
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::ConnectionFailed);
 

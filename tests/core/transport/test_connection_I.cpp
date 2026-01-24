@@ -54,7 +54,8 @@ void test_on_disconnect_before_reconnect() {
         .close()
         .connect_ok(); // reconnect succeeds
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     std::vector<std::string> events;
 
@@ -97,7 +98,8 @@ void test_on_connect_not_duplicated() {
     test::MockWebSocketScript script;
     script.connect_ok();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int connect_calls = 0;
 
@@ -133,7 +135,8 @@ void test_on_retry_before_scheduled_retry() {
         .error(Error::RemoteClosed)
         .close();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int retry_calls = 0;
     int observed_attempt = -1;

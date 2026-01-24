@@ -7,9 +7,7 @@
 #include "lcr/metrics/atomic/stats/sampler.hpp"
 #include "lcr/format.hpp"
 
-namespace wirekrak::core {
-namespace transport {
-namespace telemetry {
+namespace wirekrak::core::transport::telemetry {
 
 // ============================================================================
 // WebSocket Telemetry (v1 - frozen)
@@ -172,6 +170,4 @@ static_assert(std::is_trivially_destructible_v<WebSocket>, "telemetry::WebSocket
 static_assert(!std::is_polymorphic_v<WebSocket>, "telemetry::WebSocket must not be polymorphic");
 static_assert(alignof(WebSocket) == 64, "telemetry::WebSocket must be cache-line aligned");
 
-} // namespace telemetry
-} // namespace transport
-} // namespace wirekrak::core
+} // namespace wirekrak::core::transport::telemetry

@@ -110,7 +110,7 @@ public:
 
     [[nodiscard]]
     inline bool connect(const std::string& url) {
-        return connection_.open(url);
+        return connection_.open(url) == transport::Error::None;
     }
 
     // Register pong callback
@@ -289,8 +289,9 @@ private:
     // Sequence generator for request IDs
     lcr::sequence req_id_seq_{};
 
-    // Underlying streaming client (composition)
-    transport::Connection<WS> connection_;
+    // Underlying streaming client (and telemetry)
+    transport::telemetry::Connection telemetry_;
+    transport::Connection<WS> connection_{telemetry_};
 
     // Hooks structure to store all user-defined callbacks
     struct Hooks {

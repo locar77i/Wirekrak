@@ -8,8 +8,9 @@
 #include <memory>
 
 #include "wirekrak/core/transport/concepts.hpp"
-#include "wirekrak/core/transport/telemetry/websocket.hpp"
+#include "wirekrak/core/transport/telemetry/connection.hpp"
 #include "wirekrak/core/transport/state.hpp"
+#include "wirekrak/core/telemetry.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -103,8 +104,9 @@ public:
     using retry_handler_t      = std::function<void(const RetryContext&)>;
 
 public:
-    Connection(std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT, std::chrono::seconds message_timeout = MESSAGE_TIMEOUT)
-        : heartbeat_timeout_(heartbeat_timeout)
+    Connection(telemetry::Connection& telemetry, std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT, std::chrono::seconds message_timeout = MESSAGE_TIMEOUT)
+        : telemetry_(telemetry)
+        , heartbeat_timeout_(heartbeat_timeout)
         ,  message_timeout_(message_timeout)
     {
     }
@@ -118,6 +120,7 @@ public:
     // Connection lifecycle
     [[nodiscard]]
     inline Error open(const std::string& url) noexcept {
+        WK_TL1( telemetry_.open_calls_total.inc() ); // This represents explicit caller intent
         if (get_state_() != State::Disconnected && get_state_() != State::WaitingReconnect) {
             WK_WARN("[CONN] open() called while not disconnected  (state: " << to_string(get_state_()) << "). Ignoring.");
             return Error::InvalidState;
@@ -134,7 +137,9 @@ public:
         auto error = parse_and_connect_(url);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {
+            WK_TL1( telemetry_.connect_failure_total.inc() );
             if (should_retry_(error)) {
+                WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
                 set_state_(State::WaitingReconnect);
                 retry_attempts_ = 1;
                 // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
@@ -146,6 +151,7 @@ public:
             return error;
         }
         // 4) Update state
+        WK_TL1( telemetry_.connect_success_total.inc() ); // This reflects a state-machine fact, not a transport fact.
         set_state_(State::Connected);
         retry_attempts_ = 0;
         WK_INFO("[CONN] Connected successfully.");
@@ -158,6 +164,7 @@ public:
     // Manual disconnec - tclose() performs an unconditional shutdown and
     // cancels any pending reconnection attempts.
     inline void close() noexcept {
+        WK_TL1( telemetry_.close_calls_total.inc() ); // This represents explicit user intent
         set_state_(State::Disconnecting);
         if (ws_) {
             // close() does not cancel pending retry state explicitly;
@@ -172,8 +179,10 @@ public:
     // Sending
     [[nodiscard]]
     inline bool send(std::string_view text) noexcept {
+        WK_TL1( telemetry_.send_calls_total.inc() ); // This represents explicit user intent
         if (get_state_() != State::Connected) {
             WK_WARN("[CONN] send() called while not connected (state: " << to_string(get_state_()) << "). Ignoring.");
+            WK_TL1( telemetry_.send_rejected_total.inc() ); // Reflects connection-level gating
             return false;
         }
         if (ws_->send(std::string(text))) {
@@ -188,6 +197,7 @@ public:
         // === Heartbeat liveness check ===
         if (get_state_() == State::Connected) {
             if (is_liveness_stale_()) {
+                WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
                 last_error_.store(Error::Timeout, std::memory_order_relaxed);
                 WK_TRACE("[CONN] Liveness timeout exceeded. Forcing reconnect.");
                 set_state_(State::ForcedDisconnection);
@@ -309,7 +319,7 @@ public:
 
 private:
     std::string last_url_;
-    transport::telemetry::WebSocket telemetry_;
+    transport::telemetry::Connection& telemetry_;
     std::unique_ptr<WS> ws_;
 
     // Heartbeat messages are used as a deterministic liveness signal that drives reconnection.
@@ -383,7 +393,7 @@ private:
             ws_.reset();
         }
         // Initialize transport
-        ws_ = std::make_unique<WS>(telemetry_);
+        ws_ = std::make_unique<WS>(telemetry_.websocket);
         // Set callbacks
         ws_->set_message_callback([this](std::string_view msg) {
             on_message_received_(msg);
@@ -400,6 +410,7 @@ private:
     inline void on_message_received_(std::string_view msg) {
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         if (hooks_.on_message_cb_) {
+            WK_TL1( telemetry_.messages_forwarded_total.inc() ); // This marks handoff, not consumption
             hooks_.on_message_cb_(msg);
         }
     }
@@ -414,6 +425,7 @@ private:
 
     // Placeholder for user-defined behavior on transport closure
     inline void on_transport_closed_() {
+        WK_TL1( telemetry_.disconnect_events_total.inc() ); // transport closure as observed by Connection
         WK_DEBUG("[CONN] WebSocket closed.");
         if (hooks_.on_disconnect_cb_) {
             hooks_.on_disconnect_cb_();
@@ -422,6 +434,7 @@ private:
         const auto error = last_error_.load(std::memory_order_relaxed);
         if ((get_state_() == State::Connected || get_state_() == State::ForcedDisconnection)
             && should_retry_(error)) {
+            WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
             set_state_(State::WaitingReconnect);
             retry_attempts_ = 1;
             // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
@@ -513,6 +526,7 @@ private:
 
     [[nodiscard]]
     inline bool reconnect_() {
+        WK_TL1( telemetry_.retry_attempts_total.inc() ); // One attempt = one call
         if (get_state_() != State::WaitingReconnect) {
             WK_WARN("[CONN] reconnect() called while not waiting to reconnect (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
@@ -529,11 +543,13 @@ private:
         auto error = parse_and_connect_(last_url_);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {
+            WK_TL1( telemetry_.retry_failure_total.inc() ); // Failure = attempt did not connect
             set_state_(State::WaitingReconnect);
             WK_ERROR("[CONN] Reconnection failed.");
             return false;
         }
         // 4) Set new state
+        WK_TL1( telemetry_.retry_success_total.inc() ); // State-based success, not transport-based
         set_state_(State::Connected);
         retry_attempts_ = 0;
         auto now =  std::chrono::steady_clock::now();

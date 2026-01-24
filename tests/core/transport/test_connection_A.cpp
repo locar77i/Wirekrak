@@ -61,7 +61,8 @@ void test_default_construction() {
     std::cout << "[TEST] Group A1: default construction\n";
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     // Cannot send while disconnected
     TEST_CHECK(connection.send("ping") == false);
@@ -84,7 +85,8 @@ void test_destructor_closes_transport() {
     test::MockWebSocket::reset();
 
     {
-        Connection<test::MockWebSocket> connection;
+        telemetry::Connection telemetry;
+        Connection<test::MockWebSocket> connection{telemetry};
 
         // Open connection successfully
         TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);

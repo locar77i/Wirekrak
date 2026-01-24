@@ -37,7 +37,8 @@ void test_close_graceful_shutdown() {
 
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int disconnect_calls = 0;
 
@@ -67,7 +68,8 @@ void test_destructor_closes_transport() {
     int close_calls = 0;
 
     {
-        Connection<test::MockWebSocket> connection;
+        telemetry::Connection telemetry;
+        Connection<test::MockWebSocket> connection{telemetry};
 
         TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
@@ -89,7 +91,8 @@ void test_close_idempotent() {
 
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int disconnect_calls = 0;
 
@@ -122,7 +125,8 @@ void test_destructor_no_reconnect() {
     int connect_calls = 0;
 
     {
-        Connection<test::MockWebSocket> connection;
+        telemetry::Connection telemetry;
+        Connection<test::MockWebSocket> connection{telemetry};
 
         connection.on_retry([&](const RetryContext&) {
             ++retry_calls;

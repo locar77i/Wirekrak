@@ -56,7 +56,8 @@ void test_transport_close_retriable() {
         .close()
         .connect_ok();              // reconnect succeeds
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int disconnect_calls = 0;
     int connect_calls = 0;
@@ -113,7 +114,8 @@ void test_transport_close_non_retriable() {
         .error(Error::LocalShutdown)
         .close();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int disconnect_calls = 0;
     int retry_calls = 0;
@@ -161,7 +163,8 @@ void test_transport_close_while_disconnecting() {
         .connect_ok()
         .close();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int disconnect_calls = 0;
     int retry_calls = 0;

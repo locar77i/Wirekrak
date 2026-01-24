@@ -56,7 +56,8 @@ void test_message_dispatch_updates_liveness() {
         .connect_ok()
         .message("hello-world");
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     std::string received;
     connection.on_message([&](std::string_view msg) {
@@ -101,7 +102,8 @@ void test_message_dispatch_without_handler() {
         .connect_ok()
         .message("no-listener");
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     // No on_message handler registered
 

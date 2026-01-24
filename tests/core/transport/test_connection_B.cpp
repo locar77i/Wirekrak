@@ -69,7 +69,8 @@ void test_open_success() {
     std::cout << "[TEST] Group B1: open() succeeds from Disconnected\n";
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int connect_calls = 0;
     connection.on_connect([&]() {
@@ -95,7 +96,8 @@ void test_open_retriable_failure() {
     std::cout << "[TEST] Group B2: open() fails with retriable error\n";
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     // Force next connect attempt to fail with a retriable error
     test::MockWebSocket::set_next_connect_result(Error::ConnectionFailed);
@@ -129,7 +131,8 @@ void test_open_non_retriable_failure() {
     std::cout << "[TEST] Group B3: open() fails with non-retriable error\n";
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     bool connected_called = false;
     connection.on_connect([&]() {
@@ -158,7 +161,8 @@ void test_open_while_connected() {
     std::cout << "[TEST] Group B4: open() while already connected\n";
     test::MockWebSocket::reset();
 
-    Connection<test::MockWebSocket> connection;
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> connection{telemetry};
 
     int connect_calls = 0;
     connection.on_connect([&]() {

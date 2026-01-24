@@ -79,7 +79,8 @@ All state transitions are logged and observable, making behavior predictable and
 ## Usage Pattern
 
 ```cpp
-wirekrak::core::transport::Connection<WS> conn;
+wirekrak::core::transport::telemetry::Connection telemetry;
+wirekrak::core::transport::Connection<WS> conn(telemetry);
 
 conn.on_message([](std::string_view msg) {
     // forward raw frames to the protocol layer
