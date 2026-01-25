@@ -58,10 +58,10 @@ struct alignas(64) WebSocket final {
     lcr::metrics::atomic::stats::sampler32 fragments_per_message;
 
     // ---------------------------------------------------------------------
-    // Advanced metrics (L3 telemetry)
+    // Received fragments
     // ---------------------------------------------------------------------
-    lcr::metrics::atomic::counter64 rx_assembly_time_ns;
-    lcr::metrics::atomic::counter64 rx_messages_assembled_total;
+    // Total number of WebSocket fragment frames observed on the wire
+    lcr::metrics::atomic::counter64 rx_fragments_total;
 
     // ---------------------------------------------------------------------
     // Snapshot support
@@ -80,42 +80,9 @@ struct alignas(64) WebSocket final {
 
         fragments_per_message.copy_to(other.fragments_per_message);
 
-        rx_assembly_time_ns.copy_to(other.rx_assembly_time_ns);
-        rx_messages_assembled_total.copy_to(other.rx_messages_assembled_total);
+        rx_fragments_total.copy_to(other.rx_fragments_total);
     }
 
-    // helper mutators for event signaling (called by transport implementations)
-    inline void on_send(std::size_t bytes) noexcept {
-        bytes_tx_total.inc(bytes);
-        messages_tx_total.inc();
-    }
-
-    inline void on_receive(std::size_t bytes) noexcept {
-       bytes_rx_total.inc(bytes);
-    }
-
-    inline void on_receive_failure() noexcept {
-        receive_errors_total.inc();
-    }
-
-    inline void on_receive_message(std::size_t msg_size, uint32_t fragments) noexcept {
-        rx_message_bytes.set(msg_size);
-        messages_rx_total.inc();
-        fragments_per_message.record(fragments);
-    }
-
-    inline void on_message_assembly(std::size_t msg_size) noexcept {
-        rx_message_bytes.set(msg_size);
-    }
-
-    inline void on_message_assembly_copy(uint64_t duration_ns) noexcept {
-        rx_assembly_time_ns.inc(duration_ns);
-        rx_messages_assembled_total.inc();
-    }
-
-    inline void on_close_event() noexcept {
-        close_events_total.inc();
-    }
 
     inline void debug_dump(std::ostream& os) const noexcept {
         os << "\n=== WebSocket Telemetry ===\n";
@@ -145,20 +112,10 @@ struct alignas(64) WebSocket final {
         os << "  Fragments/msg   : " << fragments_per_message.str() << '\n';
 
         // ---------------------------------------------------------------------
-        // Transport diagnostics (L3)
+        // Received fragments
         // ---------------------------------------------------------------------
-#ifdef WIREKRAK_ENABLE_TELEMETRY_L3
-        const uint64_t assembled = rx_messages_assembled_total.load();
-        const uint64_t fast_path = (rx_msgs >= assembled) ? (rx_msgs - assembled) : 0;
-        const double fast_path_pct = (rx_msgs != 0) ? (100.0 * static_cast<double>(fast_path) / static_cast<double>(rx_msgs)) : 0.0;
-        const uint64_t assembling_avg_cost = (assembled != 0) ? (rx_assembly_time_ns.load() / assembled) : 0;
-
-        os << "\nTransport diagnostics (L3)\n";
-        os << "  RX assembly time      :   " << lcr::format_duration(rx_assembly_time_ns.load()) << '\n';
-        os << "  RX messages assembled :   " << lcr::format_number_exact(assembled) << '\n';
-        os << "  Assembling avg cost   :   " << lcr::format_duration(assembling_avg_cost) << '\n';
-        os << "  Fast-path messages    :   " << lcr::format_number_exact(fast_path) << " (" << std::fixed << std::setprecision(2) << fast_path_pct << "%)\n";
-#endif // WIREKRAK_ENABLE_TELEMETRY_L3
+        os << "\nFragments total\n";
+        os << "  RX fragments :   " << lcr::format_number_exact(rx_fragments_total.load()) << '\n';
     }
 };
 

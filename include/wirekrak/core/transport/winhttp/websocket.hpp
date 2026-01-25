@@ -13,7 +13,6 @@
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/telemetry.hpp"
-#include "lcr/system/monotonic_clock.hpp"
 #include "lcr/log/logger.hpp"
 
 #include <windows.h>
@@ -170,12 +169,15 @@ public:
                    WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE,
                    (void*)msg.data(),
                    (DWORD)msg.size()) == ERROR_SUCCESS;
-        WK_TL1( if (ok) [[likely]] { telemetry_.on_send(msg.size()); } );
         if (!ok) [[unlikely]] {
             WK_ERROR("[WS] websocket_send() failed");
              if (on_error_) {
                 on_error_(transport::Error::TransportFailure);
             }
+        }
+        else {
+            WK_TL1( telemetry_.bytes_tx_total.inc(msg.size()) );
+            WK_TL1( telemetry_.messages_tx_total.inc() );
         }
         return ok;
     }
@@ -243,7 +245,7 @@ private:
             );
             // Handle errors
             if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
-            WK_TL1( telemetry_.on_receive_failure() );
+            WK_TL1( telemetry_.receive_errors_total.inc() );
                 auto error = handle_receive_error_(result);
                 if (on_error_) {
                     on_error_(error);
@@ -253,7 +255,9 @@ private:
                 break;
             }
             else { // successful receive
-                WK_TL1( telemetry_.on_receive(bytes) );
+                // bytes_rx_total counts raw bytes received from the WebSocket API,
+                // including fragments and control frames.
+                WK_TL1( telemetry_.bytes_rx_total.inc(bytes) );
             }
             // Handle close frame
             if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) { // normal termination
@@ -268,16 +272,20 @@ private:
                     if (on_message_) {
                         on_message_(std::string_view(buffer.data(), bytes));
                     }
-                    WK_TL1( telemetry_.on_receive_message(bytes, 1) );
+                    WK_TL1( telemetry_.rx_message_bytes.set(bytes) );
+                    WK_TL1( telemetry_.messages_rx_total.inc() );
+                    WK_TL1( telemetry_.fragments_per_message.record(1) );
                 }
                 else { // completing fragmented message
-                    WK_TL3( const auto t0 = lcr::system::monotonic_clock::instance().now_ns() );
                     message_buffer_.append(buffer.data(), bytes);
-                    WK_TL3( telemetry_.on_message_assembly_copy(lcr::system::monotonic_clock::instance().now_ns() - t0) );
-                    WK_TL1( telemetry_.on_receive_message(message_buffer_.size(), fragments + 1); fragments = 0 );
+                    WK_TL1( telemetry_.rx_fragments_total.inc() );
                     if (on_message_) {
                         on_message_(std::string_view(message_buffer_.data(), message_buffer_.size()));
                     }
+                    WK_TL1( telemetry_.rx_message_bytes.set(message_buffer_.size()) );
+                    WK_TL1( telemetry_.messages_rx_total.inc() );
+                    WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
+                    WK_TL1( fragments = 0 );
                     message_buffer_.clear();
                 }
                 
@@ -285,11 +293,11 @@ private:
             else // Handle message fragments
             if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
                 WK_DEBUG("[WS] Received message fragment (size " << bytes << ")");
-                WK_TL3( const auto t0 = lcr::system::monotonic_clock::instance().now_ns() );
                 message_buffer_.append(buffer.data(), bytes);
-                WK_TL3( telemetry_.on_message_assembly_copy(lcr::system::monotonic_clock::instance().now_ns() - t0) );
+                WK_TL1( telemetry_.rx_fragments_total.inc() );
                 // Track fragments for telemetry
-                WK_TL1( telemetry_.on_message_assembly(message_buffer_.size()); ++fragments );
+                WK_TL1( telemetry_.rx_message_bytes.set(message_buffer_.size()) );
+                WK_TL1( ++fragments );
             }
         }
     }
@@ -329,7 +337,7 @@ private:
         if (closed_.exchange(true)) {
             return;
         }
-        WK_TL1( telemetry_.on_close_event() );
+        WK_TL1( telemetry_.close_events_total.inc() );
         if (on_close_) {
             on_close_();
         }

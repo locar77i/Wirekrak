@@ -250,7 +250,15 @@ int main() {
 
     telemetry_mgr.take_snapshot();
     auto snapshot = telemetry_mgr.snapshot();
-    snapshot.data->debug_dump(std::cout);
+    const auto& metrics = *snapshot.data;
+    metrics.debug_dump(std::cout);
+    // Compute derived metrics
+    const uint64_t rx_msgs = metrics.messages_rx_total.load();
+    const uint64_t fragments = metrics.rx_fragments_total.load();
+    const uint64_t fast_path = (rx_msgs >= fragments) ? (rx_msgs - fragments) : 0;
+    const double fast_path_pct = (rx_msgs != 0) ? (100.0 * static_cast<double>(fast_path) / static_cast<double>(rx_msgs)) : 0.0;
+    std::cout << "\nDerived metrics\n";
+    std::cout << "  Fast-path messages  :   " << lcr::format_number_exact(fast_path) << " (" << std::fixed << std::setprecision(2) << fast_path_pct << "%)\n";
 
     ws.close();
 
