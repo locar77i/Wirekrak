@@ -235,7 +235,7 @@ private:
         while (running_.load(std::memory_order_acquire)) {
             DWORD bytes = 0;
             WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
-            WK_TRACE("[WS:API] Receiving message ...");
+            WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
             DWORD result = api_.websocket_receive(
                 hWebSocket_,
                 buffer.data(),

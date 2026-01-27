@@ -89,7 +89,7 @@ On reconnect, transports are fully destroyed and recreated to avoid undefined st
 
 This subsystem is reusable across exchanges and protocols.
 
-➡️ **[Stream Client Overview](./architecture/transport/Connection.md)**
+➡️ **[Stream Client Overview](./architecture/transport/connection/Overview.md)**
 
 ---
 

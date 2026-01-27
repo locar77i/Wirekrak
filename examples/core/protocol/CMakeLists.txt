@@ -1,8 +1,7 @@
-# examples/core/CMakeLists.txt
+# examples/core/protocol/CMakeLists.txt
 
 
 # -------------------------------------------------------------
 # Add examples sub-dirs
 # -------------------------------------------------------------
-add_subdirectory(transport)
-add_subdirectory(protocol)
+add_subdirectory(kraken)

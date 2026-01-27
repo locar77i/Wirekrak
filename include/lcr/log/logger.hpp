@@ -62,7 +62,7 @@ public:
 private:
     Logger()
         : out_(&std::cout),
-          level_(Level::Info),
+          level_(Level::Trace),
           color_enabled_(true) // you can default false if preferred
     {}
 

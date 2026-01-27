@@ -9,6 +9,7 @@
 
 #include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/telemetry/connection.hpp"
+#include "wirekrak/core/transport/parse_url.hpp"
 #include "wirekrak/core/transport/state.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/log/logger.hpp"
@@ -130,19 +131,27 @@ public:
         set_state_(State::Connecting);
         last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        // 2) Create a fresh transport instance
+        // 2) Parse and validate URL
+        ParsedUrl parsed_url;
+        auto error = parse_url(url, parsed_url);
+        if (error != Error::None) {
+            WK_ERROR("[CONN] URL parsing failed");
+            last_error_.store(error, std::memory_order_relaxed);
+            set_state_(State::Disconnected);
+            return error;
+        }
+        // 3) Create a fresh transport instance
         create_transport_();
-        // 3) Attempt reconnection
+        // 4) Attempt reconnection
         WK_INFO("[CONN] Connecting to: " << url);
-        auto error = parse_and_connect_(url);
+        error = ws_->connect(parsed_url.host, parsed_url.port, parsed_url.path);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {
             WK_TL1( telemetry_.connect_failure_total.inc() );
             if (should_retry_(error)) {
                 WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
                 set_state_(State::WaitingReconnect);
-                retry_attempts_ = 1;
-                // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
+                schedule_next_retry_(error);
             }
             else {
                 set_state_(State::Disconnected);
@@ -150,7 +159,7 @@ public:
             WK_ERROR("[CONN] Connection failed (" << to_string(error) << ")");
             return error;
         }
-        // 4) Update state
+        // 5) Update state
         WK_TL1( telemetry_.connect_success_total.inc() ); // This reflects a state-machine fact, not a transport fact.
         set_state_(State::Connected);
         retry_attempts_ = 0;
@@ -165,6 +174,15 @@ public:
     // cancels any pending reconnection attempts.
     inline void close() noexcept {
         WK_TL1( telemetry_.close_calls_total.inc() ); // This represents explicit user intent
+        // Guard close() by state
+        const auto state = get_state_();
+        if (state == State::Disconnected) {
+            return; // idempotent
+        }
+        if (state == State::Disconnecting) {
+            return; // already closing
+        }
+        // Proceed to close
         set_state_(State::Disconnecting);
         if (ws_) {
             // close() does not cancel pending retry state explicitly;
@@ -199,7 +217,7 @@ public:
             if (is_liveness_stale_()) {
                 WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
                 last_error_.store(Error::Timeout, std::memory_order_relaxed);
-                WK_TRACE("[CONN] Liveness timeout exceeded. Forcing reconnect.");
+                WK_TRACE("[CONN] No protocol traffic observed within liveness window - Forcing reconnect.");
                 set_state_(State::ForcedDisconnection);
                 if (hooks_.on_liveness_timeout_cb_) {
                     hooks_.on_liveness_timeout_cb_();
@@ -211,33 +229,9 @@ public:
         // === Reconnection logic ===
         auto now = std::chrono::steady_clock::now();
         if (get_state_() == State::WaitingReconnect && now >= next_retry_) {
-            const auto error = last_error_.load(std::memory_order_relaxed);
-            if (!should_retry_(error)) {
-                WK_ERROR("[CONN] Non-retriable error: " << to_string(error));
-                set_state_(State::Disconnected);
-                return;
-            }
             if (!reconnect_()) {
                 // Schedule next retry with backoff
-                retry_attempts_++;
-                auto delay = backoff_(last_error_.load(std::memory_order_relaxed), retry_attempts_);
-                next_retry_ = now + delay;
-                // Invoke retry callback (if any)
-                if (hooks_.on_retry_cb_) {
-                    hooks_.on_retry_cb_(RetryContext{
-                        .url         = last_url_,
-                        .error       = error,
-                        .attempt     = retry_attempts_,
-                        .next_delay  = delay
-                    });
-                }
-                // convert to seconds for logging
-                auto seconds = std::chrono::duration_cast<std::chrono::seconds>(delay);
-                if (seconds.count() == 1) {
-                    WK_INFO("[CONN] Next reconnection attempt in 1 second.");
-                } else if (seconds.count() > 1) {
-                    WK_INFO("[CONN] Next reconnection attempt in " << seconds.count() << " seconds.");
-                }
+                schedule_next_retry_(last_error_.load(std::memory_order_relaxed));
             }
         }
     }
@@ -261,16 +255,6 @@ public:
 
     void on_retry(retry_handler_t cb) noexcept {
         hooks_.on_retry_cb_ = std::move(cb);
-    }
-
-    inline void set_liveness_timeout(std::chrono::milliseconds timeout) noexcept {
-        heartbeat_timeout_ = timeout;
-        message_timeout_ = timeout;
-    }
-
-    inline void set_liveness_timeout(std::chrono::milliseconds heartbeat_timeout, std::chrono::milliseconds message_timeout) noexcept {
-        heartbeat_timeout_ = heartbeat_timeout;
-        message_timeout_ = message_timeout;
     }
 
     // Accessors
@@ -358,8 +342,7 @@ private:
     // State machine 
     State state_{State::Disconnected};
     std::chrono::steady_clock::time_point next_retry_{};
-    // retry_attempts_ is 1-based and represents the ordinal number of the next retry attempt (not completed attempts).
-    int retry_attempts_{0};
+    int retry_attempts_{0}; // It is 1-based and represents the ordinal number of the next retry attempt (not completed attempts).
 
 private:
     // State accessor
@@ -417,6 +400,10 @@ private:
 
     // Placeholder for user-defined behavior on transport errors
     inline void on_transport_error_(Error error) {
+        // Do NOT overwrite last error after a forced decision
+        if (get_state_() == State::ForcedDisconnection) {
+            return;
+        }
         WK_WARN("[CONN] Transport error: " << to_string(error));
         last_error_.store(error, std::memory_order_relaxed);
         // Errors are handled by the receive loop and lead to closure
@@ -425,6 +412,15 @@ private:
 
     // Placeholder for user-defined behavior on transport closure
     inline void on_transport_closed_() {
+        // Guard against multiple invocations
+        if (get_state_() == State::Disconnected) {
+            return; // already resolved
+        }
+        // Guard against connect() never completing
+        if (get_state_() == State::Connecting) { // connect never completed — this is not a disconnect event
+            set_state_(State::Disconnected);
+            return;
+        }
         WK_TL1( telemetry_.disconnect_events_total.inc() ); // transport closure as observed by Connection
         WK_DEBUG("[CONN] WebSocket closed.");
         if (hooks_.on_disconnect_cb_) {
@@ -436,62 +432,11 @@ private:
             && should_retry_(error)) {
             WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
             set_state_(State::WaitingReconnect);
-            retry_attempts_ = 1;
-            // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
+            schedule_next_retry_(error);
         }
         else {
             set_state_(State::Disconnected);
         }
-    }
-
-    // ---------------------------------------------------------------------
-    // NOTE: Minimal URL parser supporting ws:// and wss://
-    // Intentionally avoids allocations and regex.
-    // Supports ws:// and wss:// only.
-    //
-    // Example inputs:
-    //   wss://ws.kraken.com/v2
-    //   ws://example.com:8080/stream
-    // ---------------------------------------------------------------------
-    [[nodiscard]]
-    inline Error parse_and_connect_(const std::string& url) noexcept {
-        // Parse URL into components -------------------------
-        std::string scheme;
-        std::string host;
-        std::string port;
-        std::string path;
-        // 1) Extract scheme
-        const std::string ws  = "ws://";
-        const std::string wss = "wss://";
-        size_t pos = 0;
-        if (url.rfind(ws, 0) == 0) {
-            scheme = "ws";
-            pos = ws.size();
-        }
-        else if (url.rfind(wss, 0) == 0) {
-            scheme = "wss";
-            pos = wss.size();
-        }
-        else {
-            return Error::InvalidUrl;
-        }
-        // 2) Extract host[:port]
-        size_t slash = url.find('/', pos);
-        std::string hostport = (slash == std::string::npos) ? url.substr(pos) : url.substr(pos, slash - pos);
-        // 3) Split host and port
-        size_t colon = hostport.find(':');
-        if (colon != std::string::npos) {
-            host = hostport.substr(0, colon);
-            port = hostport.substr(colon + 1);
-        } else {
-            host = hostport;
-            port = (scheme == "wss") ? "443" : "80";
-        }
-        // 4) Path
-        path = (slash == std::string::npos) ? "/" : url.substr(slash);
-        // ---------------------------------------------------
-        // 5) try connect
-        return ws_->connect(host, port, path);
     }
 
     // Determines whether a transport error represents a transient, external
@@ -507,7 +452,7 @@ private:
             case Error::RemoteClosed:
             // “unknown but bad” failure -> retry (conservative default)
             case Error::TransportFailure:
-                WK_TRACE("[CONN] should_retry_(" << to_string(error) << ") = true");
+                WK_TRACE("[CONN] should retry after '" << to_string(error) << "'? -> YES");
                 return true;
 
             // caller or logic errors -> no retry
@@ -519,7 +464,7 @@ private:
             // Explicit shutdown intent -> no retry
             case Error::LocalShutdown:
             default:
-                WK_TRACE("[CONN] should_retry_(" << to_string(error) << ") = false");
+                WK_TRACE("[CONN] should retry after '" << to_string(error) << "'? -> NO");
                 return false;
         }
     }
@@ -536,11 +481,20 @@ private:
         set_state_(State::Connecting);
         last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        // 2) Recreate transport
-        create_transport_();  // fresh transport
-        // 3) Attempt reconnection
+        // 2) Parse and validate URL
+        ParsedUrl parsed_url;
+        auto error = parse_url(last_url_, parsed_url);
+        if (error != Error::None) {
+            WK_ERROR("[CONN] URL parsing failed");
+            last_error_.store(error, std::memory_order_relaxed);
+            set_state_(State::Disconnected);
+            return false;
+        }
+        // 3) Create a fresh transport instance
+        create_transport_();
+        // 4) Attempt reconnection
         WK_INFO("[CONN] Reconnecting to: " << last_url_);
-        auto error = parse_and_connect_(last_url_);
+        error = ws_->connect(parsed_url.host, parsed_url.port, parsed_url.path);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {
             WK_TL1( telemetry_.retry_failure_total.inc() ); // Failure = attempt did not connect
@@ -561,6 +515,30 @@ private:
             hooks_.on_connect_cb_();
         }
         return true;
+    }
+
+    void schedule_next_retry_(Error error) noexcept {
+        // Schedule next retry with backoff
+        auto now = std::chrono::steady_clock::now();
+        retry_attempts_++;
+        auto delay = backoff_(last_error_.load(std::memory_order_relaxed), retry_attempts_);
+        next_retry_ = now + delay;
+        // Invoke retry callback (if any)
+        if (hooks_.on_retry_cb_) {
+            hooks_.on_retry_cb_(RetryContext{
+                .url         = last_url_,
+                .error       = error,
+                .attempt     = retry_attempts_,
+                .next_delay  = delay
+            });
+        }
+        // convert to seconds for logging
+        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(delay);
+        if (seconds.count() == 1) {
+            WK_INFO("[CONN] Next reconnection attempt in 1 second.");
+        } else if (seconds.count() > 1) {
+            WK_INFO("[CONN] Next reconnection attempt in " << seconds.count() << " seconds.");
+        }
     }
 
     [[nodiscard]]

@@ -111,8 +111,7 @@ struct alignas(64) Connection final {
     }
 
     inline void debug_dump(std::ostream& os) const noexcept {
-        os << "\n=== Connection Telemetry ===\n";
-
+        
         // ---------------------------------------------------------------------
         // Lifecycle & state transitions
         // ---------------------------------------------------------------------
