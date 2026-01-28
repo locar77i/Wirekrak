@@ -94,22 +94,29 @@ struct RetryContext {
 
 template <transport::WebSocketConcept WS>
 class Connection {
-    static constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15);
-    static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15);
+    static constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15); // default heartbeat timeout
+    static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15); // default message timeout
+    static constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of liveness window is elapsed
 
 public:
-    using message_handler_t    = std::function<void(std::string_view)>;
-    using connect_handler_t    = std::function<void()>;
-    using disconnect_handler_t = std::function<void()>;
-    using liveness_handler_t   = std::function<void()>;
-    using retry_handler_t      = std::function<void(const RetryContext&)>;
+    using message_handler_t          = std::function<void(std::string_view)>;
+    using connect_handler_t          = std::function<void()>;
+    using disconnect_handler_t       = std::function<void()>;
+    using liveness_handler_t         = std::function<void()>;
+    using liveness_warning_handler_t = std::function<void(std::chrono::milliseconds remaining)>;
+    using retry_handler_t            = std::function<void(const RetryContext&)>;
 
 public:
-    Connection(telemetry::Connection& telemetry, std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT, std::chrono::seconds message_timeout = MESSAGE_TIMEOUT)
+    Connection(telemetry::Connection& telemetry,
+               std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT,
+               std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
+               double liveness_warning_ratio = LIVENESS_WARNING_RATIO) noexcept
         : telemetry_(telemetry)
         , heartbeat_timeout_(heartbeat_timeout)
-        ,  message_timeout_(message_timeout)
+        , message_timeout_(message_timeout)
+        , liveness_warning_ratio_(liveness_warning_ratio)
     {
+        recompute_liveness_windows_();
     }
 
     // Ensure transport is closed on destruction.
@@ -161,9 +168,13 @@ public:
         }
         // 5) Update state
         WK_TL1( telemetry_.connect_success_total.inc() ); // This reflects a state-machine fact, not a transport fact.
+        WK_INFO("[CONN] Connected successfully.");
         set_state_(State::Connected);
         retry_attempts_ = 0;
-        WK_INFO("[CONN] Connected successfully.");
+        liveness_warning_fired_ = false;
+        auto now =  std::chrono::steady_clock::now();
+        last_heartbeat_ts_.store(now, std::memory_order_relaxed);
+        last_message_ts_.store(now, std::memory_order_relaxed);
         if (hooks_.on_connect_cb_) {
             hooks_.on_connect_cb_();
         }
@@ -212,12 +223,22 @@ public:
 
     // // Event loop
     inline void poll() noexcept {
-        // === Heartbeat liveness check ===
         if (get_state_() == State::Connected) {
+            // === Liveness warning check ===
+            if (!liveness_warning_fired_ && hooks_.on_liveness_warning_cb_) {
+                auto remaining = liveness_remaining_();
+                // Check if we are within the liveness danger window
+                if (remaining <= liveness_danger_window_ && remaining.count() > 0) {
+                    WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
+                    liveness_warning_fired_ = true;
+                    hooks_.on_liveness_warning_cb_(remaining);
+                }
+            }
+            // === Liveness timeout check ===
             if (is_liveness_stale_()) {
                 WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
                 last_error_.store(Error::Timeout, std::memory_order_relaxed);
-                WK_TRACE("[CONN] No protocol traffic observed within liveness window - Forcing reconnect.");
+                WK_TRACE("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
                 set_state_(State::ForcedDisconnection);
                 if (hooks_.on_liveness_timeout_cb_) {
                     hooks_.on_liveness_timeout_cb_();
@@ -249,6 +270,10 @@ public:
         hooks_.on_disconnect_cb_ = std::move(cb);
     }
 
+    void on_liveness_warning(liveness_warning_handler_t cb) noexcept {
+        hooks_.on_liveness_warning_cb_ = std::move(cb);
+    }
+    
     void on_liveness_timeout(liveness_handler_t cb) noexcept {
         hooks_.on_liveness_timeout_cb_ = std::move(cb);
     }
@@ -276,6 +301,13 @@ public:
     [[nodiscard]]
     inline const std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts() const noexcept {
         return last_heartbeat_ts_;
+    }
+
+    // Mutators
+    inline void set_liveness_timeout(std::chrono::milliseconds heartbeat, std::chrono::milliseconds message) noexcept {
+        heartbeat_timeout_ = heartbeat;
+        message_timeout_   = message;
+        recompute_liveness_windows_();
     }
 
 #ifdef WK_UNIT_TEST
@@ -324,12 +356,15 @@ private:
 
     std::chrono::milliseconds heartbeat_timeout_{10000};
     std::chrono::milliseconds message_timeout_{15000};
+    double liveness_warning_ratio_;
+    std::chrono::milliseconds liveness_danger_window_;
 
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
         message_handler_t    on_message_cb_{};
         connect_handler_t    on_connect_cb_{};
         disconnect_handler_t on_disconnect_cb_{};
+        liveness_warning_handler_t on_liveness_warning_cb_{};
         liveness_handler_t   on_liveness_timeout_cb_{};
         retry_handler_t      on_retry_cb_{};
     };
@@ -338,6 +373,8 @@ private:
     Hooks hooks_;
 
     std::atomic<Error> last_error_{Error::None};
+
+    bool liveness_warning_fired_{false};
 
     // State machine 
     State state_{State::Disconnected};
@@ -354,6 +391,24 @@ private:
     inline void set_state_(State new_state) noexcept {
         WK_TRACE("[CONN] State:  " << to_string(state_) << " -> " << to_string(new_state));
         state_ = new_state;
+    }
+
+    inline void recompute_liveness_windows_() noexcept {
+        auto total = std::max(message_timeout_, heartbeat_timeout_);
+        liveness_danger_window_ = total - std::chrono::milliseconds(static_cast<int>(total.count() * liveness_warning_ratio_));
+    }
+
+    [[nodiscard]]
+    inline std::chrono::milliseconds liveness_remaining_() const noexcept {
+        auto now = std::chrono::steady_clock::now();
+        // last message liveness remaining
+        auto last_msg = last_message_ts_.load(std::memory_order_relaxed);
+        auto msg_left = message_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_msg);
+        // last heartbeat liveness remaining
+        auto last_hb = last_heartbeat_ts_.load(std::memory_order_relaxed);
+        auto hb_left = heartbeat_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_hb);
+        // return the maximum remaining time of both signals
+        return std::max(msg_left, hb_left);
     }
 
     [[nodiscard]]
@@ -391,7 +446,10 @@ private:
                     
     // Placeholder for user-defined behavior on message receipt
     inline void on_message_received_(std::string_view msg) {
+        // Set last message timestamp
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+        // Reset liveness warning state
+        liveness_warning_fired_ = false;
         if (hooks_.on_message_cb_) {
             WK_TL1( telemetry_.messages_forwarded_total.inc() ); // This marks handoff, not consumption
             hooks_.on_message_cb_(msg);
@@ -504,12 +562,13 @@ private:
         }
         // 4) Set new state
         WK_TL1( telemetry_.retry_success_total.inc() ); // State-based success, not transport-based
+        WK_INFO("[CONN] Connection re-established with server '" << last_url_ << "'.");
         set_state_(State::Connected);
         retry_attempts_ = 0;
+        liveness_warning_fired_ = false;
         auto now =  std::chrono::steady_clock::now();
-        last_message_ts_.store(now, std::memory_order_relaxed);
         last_heartbeat_ts_.store(now, std::memory_order_relaxed);
-        WK_INFO("[CONN] Connection re-established with server '" << last_url_ << "'.");
+        last_message_ts_.store(now, std::memory_order_relaxed);
         // 4) Invoke connect callback
         if (hooks_.on_connect_cb_) {
             hooks_.on_connect_cb_();

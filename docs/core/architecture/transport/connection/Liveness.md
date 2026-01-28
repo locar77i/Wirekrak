@@ -73,6 +73,32 @@ But it never allows *silence*.
 
 ---
 
+## Liveness warning (pre-timeout signal)
+
+Before liveness enforcement occurs, the Connection can optionally emit a
+**liveness warning**.
+
+This warning indicates:
+
+> *The connection is approaching a liveness timeout.*
+
+Characteristics of the liveness warning:
+
+- It is emitted **once per liveness window**
+- It occurs **before** a forced disconnection
+- It does **not** change connection state
+- It is purely **informational**
+
+The warning provides protocols with a **last opportunity** to emit traffic
+(e.g. send a ping) before enforcement occurs.
+
+Importantly:
+
+> The Connection never sends traffic itself.  
+> It only signals **imminent enforcement**.
+
+---
+
 ## What triggers a liveness timeout?
 
 A timeout occurs when:
@@ -92,6 +118,10 @@ When this happens:
 
 This is **not an error**.  
 It is a **health enforcement action**.
+
+If a liveness warning was emitted earlier, it means:
+
+> The protocol chose not to (or could not) satisfy liveness in time.
 
 ---
 
@@ -123,6 +153,7 @@ The Connection layer:
 
 - Enforces liveness invariants
 - Detects silence deterministically
+- Emits **liveness warnings** before enforcement
 - Forces reconnects when required
 - Provides retry, backoff, and telemetry
 - Never sends protocol messages on its own
@@ -141,6 +172,7 @@ The Protocol layer:
 
 - Knows whether silence is acceptable
 - Knows how to keep a connection alive
+- Decides whether to act on a liveness warning
 - Emits protocol-specific heartbeats or pings
 - Decides when traffic should exist
 
@@ -165,6 +197,7 @@ Observed behaviors include:
 Wirekrak treats *all of these equally*.
 
 If traffic stops:
+- A liveness warning may be emitted
 - Liveness expires
 - The connection is recycled
 
@@ -176,6 +209,7 @@ This is correct.
 
 Wirekrak guarantees:
 
+- Liveness warnings are observable
 - Liveness timeouts are counted explicitly
 - Forced reconnects are observable
 - Retry attempts are measured
@@ -209,6 +243,7 @@ If something disconnects, you can always answer:
 
 - Liveness is enforced, not inferred
 - Silence is unhealthy
+- Warnings precede enforcement
 - Forced reconnects are intentional
 - Protocols must emit traffic
 - The Connection remains protocol-agnostic

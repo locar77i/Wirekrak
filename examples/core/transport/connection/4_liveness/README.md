@@ -4,6 +4,9 @@ This example demonstrates Wirekrak’s **liveness model** and the strict
 separation of responsibilities between the **Connection layer** and
 **protocol logic**.
 
+It also demonstrates **cooperative liveness**, where the Connection
+*signals* impending failure and the Protocol decides how to react.
+
 > **Core truth:**  
 > Wirekrak enforces liveness.  
 > Protocols must *earn* it.
@@ -16,7 +19,8 @@ separation of responsibilities between the **Connection layer** and
   *observable protocol traffic* is present.
 - Passive connections may be closed **intentionally and deterministically**.
 - Reconnects are **not errors** — they are enforcement.
-- Protocol-level pings restore stability.
+- Protocols may satisfy liveness **reactively**, not just periodically.
+- Early liveness warnings enable *just-in-time* protocol intervention.
 
 ---
 
@@ -59,32 +63,36 @@ Observation alone does **not** imply health.
 
 ---
 
-### Phase C — Explicit protocol keepalive
+### Phase C — Protocol-managed liveness (reactive)
 
-- After a configurable number of reconnects,
-  the protocol starts sending periodic **ping messages**.
-- Each ping elicits a server response.
+- A **liveness warning hook** is installed.
+- When the Connection detects that liveness is *about to expire*:
+  - It emits a warning with the remaining time budget.
+- The protocol reacts by sending a **ping** only when warned.
+- The server responds.
 - Observable traffic resumes.
-- Liveness stabilizes.
-- Reconnects stop.
+- Forced reconnects are avoided.
 
-The protocol is now satisfying the liveness contract.
+The protocol now satisfies the liveness contract **just-in-time**.
 
 ---
 
 ## What to watch for in the logs
 
+- `Liveness warning`  
+  → Connection signaling impending enforcement
+
+- `Sending protocol ping`  
+  → Protocol reacting to the warning
+
 - `Forcing reconnect`  
-  → Missing liveness signals (expected)
+  → Missing or ignored liveness signals (expected)
 
 - `Retry context`  
   → Deterministic recovery, not failure
 
-- `Sending protocol ping`  
-  → Protocol asserting responsibility
-
-- Stable connection after pings  
-  → Correct behavior achieved
+- Stable connection after warnings  
+  → Correct cooperative behavior achieved
 
 ---
 
@@ -93,27 +101,32 @@ The protocol is now satisfying the liveness contract.
 | Observation | Meaning |
 |------------|--------|
 | Repeated reconnects | Protocol emits no keepalive |
-| Reconnects stop after pings | Liveness satisfied |
-| No reconnects at all | Exchange emits implicit heartbeats |
-| Reconnects despite pings | Ping interval or format is wrong |
+| Warnings followed by pings | Protocol reacting correctly |
+| Reconnects stop after warnings | Liveness satisfied |
+| No warnings or reconnects | Exchange emits implicit heartbeats |
+| Reconnects despite warnings | Ping format or timing is incorrect |
 
 ---
 
 ## Design contract demonstrated
 
 - Connection enforces health invariants
-- Transport reports facts, not interpretations
-- Protocols must emit traffic to stay alive
-- Wirekrak will not invent keepalives for you
+- Connection *signals*, but never acts on behalf of the protocol
+- Protocols decide **if**, **when**, and **how** to emit traffic
+- Forced reconnects are intentional, observable, and recoverable
+- Wirekrak never invents keepalive behavior
 
-This behavior is **intentional and non-negotiable**.
+This contract is **intentional and non-negotiable**.
 
 ---
 
 ## TL;DR
 
-If your protocol does not speak,  
+If your protocol stays silent,  
 **Wirekrak will disconnect — by design.**
+
+If your protocol listens and reacts,  
+**Wirekrak will stay out of the way.**
 
 Wirekrak enforces correctness.  
 It does not hide responsibility.

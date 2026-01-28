@@ -1,15 +1,15 @@
 #include "run_example.hpp"
 
 int main() {
-    // Run the Kraken ticker subscription example
+    // Run the Kraken trades subscription example
     return run_example(
         "Kraken",
         "wss://ws.kraken.com/v2",
-        "Public BTC/USD ticker feed (Kraken WebSocket v2)",
+        "Public BTC/USD trades feed (Kraken WebSocket v2)",
         R"({
             "method": "subscribe",
             "params": {
-                "channel": "ticker",
+                "channel": "trade",
                 "symbol": ["BTC/USD"]
             }
         })"

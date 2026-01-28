@@ -8,16 +8,27 @@ Example 4 - Heartbeat-driven Liveness (Protocol-managed)
 This example demonstrates Wirekrak’s liveness model and the strict separation
 of responsibilities between the Connection layer and protocol logic.
 
+It also introduces **liveness warnings** as a cooperative mechanism between
+the Connection and the Protocol.
+
+-------------------------------------------------------------------------------
+Responsibilities
+-------------------------------------------------------------------------------
+
 The Connection enforces liveness:
   - It requires observable application-level traffic to consider a connection
     healthy.
   - In the absence of such traffic, it deterministically forces a reconnect.
+  - It emits an early warning when liveness is about to expire.
 
 The Protocol satisfies liveness:
-  - By emitting periodic messages (e.g. protocol pings),
-    it provides the signals required to keep the connection alive.
+  - By reacting to liveness warnings and emitting protocol-specific messages
+    (e.g. pings), it provides the signals required to keep the connection alive.
+  - The protocol decides *if* and *when* to act — never the Connection.
 
-The example runs in three phases:
+-------------------------------------------------------------------------------
+Execution phases
+-------------------------------------------------------------------------------
 
 Phase A - Passive observation
   - A WebSocket connection is opened without subscriptions or pings.
@@ -28,27 +39,32 @@ Phase A - Passive observation
 Phase B - Message observation without protocol support
   - A message callback is registered to observe incoming messages.
   - Initial system messages are now forwarded and visible to the application.
-  - Despite observation, the absence of ongoing traffic still triggers
-    a forced reconnect once the liveness window expires.
+  - Despite observability, the absence of ongoing traffic still triggers
+    forced reconnects when liveness expires.
 
-Phase C - Protocol-managed heartbeat
-  - After a configurable number of reconnects, the protocol begins sending
-    periodic ping messages.
-  - Each ping elicits a server response.
-  - Observable traffic resumes and the connection stabilizes.
+Phase C - Protocol-managed liveness (reactive)
+  - A liveness warning hook is installed.
+  - When the Connection signals that liveness is nearing expiration,
+    the protocol reacts by sending a ping.
+  - The server responds, observable traffic resumes,
+    and forced reconnects are avoided.
 
-Key lessons:
+-------------------------------------------------------------------------------
+Key lessons
+-------------------------------------------------------------------------------
+
   - Liveness is not automatic and is never inferred.
   - Passive WebSocket connections are not guaranteed to remain healthy.
   - Observability alone does not imply liveness.
   - The Connection enforces health invariants.
   - Protocols are responsible for producing liveness signals.
+  - Early warning enables reactive, just-in-time protocol behavior.
   - Forced reconnects are intentional, observable, and recoverable.
 
 This example intentionally makes no assumptions about exchange behavior.
 It reports exactly what happens on the wire.
 
-Wirekrak enforces correctness - it does not hide responsibility.
+Wirekrak enforces correctness — it does not hide responsibility.
 ===============================================================================
 */
 
@@ -104,19 +120,22 @@ inline int run_example(
     std::atomic<bool> ping_enabled{false};
     std::atomic<bool> connected{false};
 
+    // Install the connect hook
     connection.on_connect([&] {
         connected.store(true, std::memory_order_relaxed);
         std::cout << "[example] Connected to " << name << " WebSocket\n";
     });
 
+    // Install the disconnect hook
     connection.on_disconnect([&] {
         connected.store(false, std::memory_order_relaxed);
         std::cout << "[example] Disconnected\n";
     });
 
+    // Install the retry hook
     connection.on_retry([&](const wirekrak::core::transport::RetryContext& rc) {
         std::cout << "[example] Retry context -> url '" << rc.url << "'"
-                  << ", attempt " << rc.attempt << ", delay " << rc.next_delay << " ms, error '" << wirekrak::core::transport::to_string(rc.error) << "'\n";
+                  << ", attempt " << rc.attempt << ", delay " << rc.next_delay.count() << " ms, error '" << wirekrak::core::transport::to_string(rc.error) << "'\n";
         const int r = ++reconnects;
         if (ping_payload && enable_ping_after_reconnects > 0 &&
             r >= enable_ping_after_reconnects) {
@@ -155,7 +174,7 @@ inline int run_example(
     });
 
     start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start < observe_for && running.load(std::memory_order_relaxed)) {
+    while (!ping_enabled.load(std::memory_order_relaxed) && running.load(std::memory_order_relaxed)) {
         connection.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -165,20 +184,17 @@ inline int run_example(
     // -------------------------------------------------------------------------
     std::cout << "\n[example] Phase C - protocol-managed heartbeat\n";
 
-    auto last_ping = std::chrono::steady_clock::now();
+    // Install the liveness warning hook
+    connection.on_liveness_warning([&](std::chrono::milliseconds remaining) {
+        if (!ping_enabled.load(std::memory_order_relaxed)) return;
+        if (!connected.load(std::memory_order_relaxed)) return;
+        if (!ping_payload) return;
+        std::cout << "[example] Liveness warning (" << remaining.count() << " ms remaining) -> sending protocol ping\n";
+        (void)connection.send(ping_payload);
+    });
 
     while (running.load(std::memory_order_relaxed)) {
         connection.poll();
-
-        if (ping_enabled.load() && ping_payload) {
-            auto now = std::chrono::steady_clock::now();
-            if (now - last_ping > std::chrono::seconds(10) && connected.load(std::memory_order_relaxed)) {
-                std::cout << "[example] Sending protocol ping\n";
-                (void)connection.send(ping_payload);
-                last_ping = now;
-            }
-        }
-
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

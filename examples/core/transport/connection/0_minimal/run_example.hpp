@@ -2,30 +2,58 @@
 
 /*
 ===============================================================================
-Example 2 - Connection vs Transport Semantics
+Example 0 - Minimal Connection Lifecycle
 ===============================================================================
 
-This runner demonstrates the semantic boundary between:
+This is the **onboarding example** for Wirekrak.
 
-  • WebSocket transport (what arrives on the wire)
-  • Connection layer (what is forwarded to user code)
+It demonstrates the *absolute minimum* required to use a
+wirekrak::core::transport::Connection correctly.
 
-It shows that receiving messages does NOT imply delivery to the application.
+No protocol logic.
+No subscriptions.
+No assumptions about server behavior.
 
-The example runs in two phases:
+Just:
+  - Open
+  - Poll
+  - Observe lifecycle
+  - Close
+  - Inspect telemetry
 
-  Phase A:
-    - No message callback installed
-    - Transport receives messages
-    - Connection forwards nothing
+-------------------------------------------------------------------------------
+What this example teaches
+-------------------------------------------------------------------------------
 
-  Phase B:
-    - Message callback installed
-    - Connection begins forwarding messages
+- How to construct a Connection
+- How to open a WebSocket URL
+- Why poll() is mandatory
+- How lifecycle callbacks behave
+- How to shut down cleanly
+- Where telemetry comes from
 
-This proves:
-  messages_forwarded_total != messages_rx_total is correct behavior.
+-------------------------------------------------------------------------------
+What this example is NOT
+-------------------------------------------------------------------------------
 
+- ❌ No subscriptions
+- ❌ No message parsing
+- ❌ No protocol semantics
+- ❌ No liveness tricks
+- ❌ No retries demonstrated explicitly
+
+Those come later.
+
+-------------------------------------------------------------------------------
+Key takeaway
+-------------------------------------------------------------------------------
+
+If you understand this example, you understand:
+  • how Wirekrak runs
+  • how control flows
+  • where responsibility lives
+
+Everything else builds on this.
 ===============================================================================
 */
 
@@ -55,29 +83,37 @@ inline void on_signal(int) {
 // Runner
 // -----------------------------------------------------------------------------
 
-inline int run_example(const char* name, const char* url, const char* description, const char* subscribe_payload) {
-
+inline int run_example(const char* name, const char* url, const char* description,
+                       std::chrono::seconds runtime = std::chrono::seconds(10)) {
     std::signal(SIGINT, on_signal);
 
-    std::cout
-        << "=== Wirekrak Connection - Transport vs Delivery (" << name << ") ===\n\n"
+    std::cout << "=== Wirekrak Connection - Minimal Lifecycle (" << name << ") ===\n\n"
         << description << "\n\n";
 
     // -------------------------------------------------------------------------
     // Connection setup
     // -------------------------------------------------------------------------
+    // Telemetry is mandatory - it is not optional in Wirekrak.
     wirekrak::core::transport::telemetry::Connection telemetry;
+
+    // Connection owns the logical lifecycle, retries, and liveness.
     wirekrak::core::transport::Connection<WS> connection(telemetry);
 
-    std::atomic<uint64_t> forwarded{0};
+    // -------------------------------------------------------------------------
+    // Lifecycle callbacks
+    // -------------------------------------------------------------------------
 
     connection.on_connect([&] {
-        std::cout << "[example] Connected to " << name << " WebSocket\n";
+        std::cout << "[example] Connected\n";
     });
 
     connection.on_disconnect([&] {
         std::cout << "[example] Disconnected\n";
     });
+
+    // Note:
+    // No message callback is installed on purpose.
+    // This example is about lifecycle, not data.
 
     // -------------------------------------------------------------------------
     // Open connection
@@ -89,34 +125,14 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     }
 
     // -------------------------------------------------------------------------
-    // Subscribe immediately
+    // Observation window
     // -------------------------------------------------------------------------
-    std::cout << "[example] Sending subscription\n";
-    (void)connection.send(subscribe_payload);
+    // Wirekrak is poll-driven.
+    // If you do not call poll(), nothing progresses.
+    auto start = std::chrono::steady_clock::now();
 
-    // -------------------------------------------------------------------------
-    // Phase A - no message hook
-    // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase A - transport receives, connection does NOT forward\n";
-
-    auto phase_a_start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - phase_a_start < std::chrono::seconds(10)
-           && running.load(std::memory_order_relaxed)) {
-        connection.poll();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
-    // -------------------------------------------------------------------------
-    // Phase B - install message hook
-    // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase B - installing message callback\n";
-
-    connection.on_message([&](std::string_view msg) {
-        ++forwarded;
-        std::cout << "[example] Forwarded message (" << msg.size() << " bytes)\n";
-    });
-
-    while (running.load(std::memory_order_relaxed)) {
+    while (running.load(std::memory_order_relaxed) &&
+           std::chrono::steady_clock::now() - start < runtime) {
         connection.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -124,6 +140,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     // Close connection
     // -------------------------------------------------------------------------
+    std::cout << "[example] Closing connection\n";
     connection.close();
 
     // Drain remaining events (~200 ms)
@@ -142,13 +159,14 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     telemetry.websocket.debug_dump(std::cout);
 
     // -------------------------------------------------------------------------
-    // How to read this
+    // Interpretation guide
     // -------------------------------------------------------------------------
-    std::cout << "\n=== key insights ===\n"
-        << "[RX messages]---------  observed arriving messages on the wire, regardless of application interest.\n"
-        << "[Messages forwarded]--  messages intentionally delivered to user code. Only counted after a message callback exists.\n"
-        << "It is expected and correct that:  [Messages forwarded] <= [RX messages]\n\n"
-        << "Wirekrak separates observation (transport) from policy and delivery (connection).\n";
+    std::cout << "\n=== How to read this ===\n"
+        << "- Connect success should be exactly 1\n"
+        << "- Disconnect events should be exactly 1\n"
+        << "- No messages forwarded (by design)\n"
+        << "- Telemetry reflects facts, not guesses\n\n"
+        << "This is the smallest correct Connection program.\n";
 
     return 0;
 }

@@ -5,11 +5,6 @@ int main() {
     return run_example(
         "Bitfinex",
         "wss://api-pub.bitfinex.com/ws/2",
-        "Public BTCUSD ticker feed (Bitfinex WebSocket v2)",
-        R"({
-            "event": "subscribe",
-            "channel": "ticker",
-            "symbol": "tBTCUSD"
-        })"
+        "Minimal connection lifecycle probe (Bitfinex WebSocket v2)"
     );
 }

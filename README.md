@@ -331,23 +331,38 @@ ctest --preset test-debug
 - Test execution is fully deterministic and reproducible
 ---
 
-## ⚙️ Usage Patterns <a name="examples"></a>
+## ⚙️ Usage Patterns
 
-Wirekrak is designed to support both infrastructure-level integration
-and ergonomic application-level consumption.
+Wirekrak supports **two distinct usage paths**, depending on what you want
+to build and how deep you want to go.
 
-### Lite SDK: Market Data Consumption
+### Core SDK — Full Infrastructure Control <a name="core-examples"></a>
 
-The Lite layer provides a stable, callback-based API for consuming
-Kraken market data with explicit snapshot and lifecycle handling.
+The Core SDK exposes Wirekrak’s **transport, connection, and protocol
+foundations**.
 
-➡️ **[Trade subscription example](./docs/core/examples/TradesSubscription.md)**  
-➡️ **[Book subscription example](./docs/core/examples/BookSubscription.md)**
+If you are:
+- integrating Wirekrak into infrastructure
+- building your own protocols
+- debugging lifecycle or liveness issues
+- learning Wirekrak’s design philosophy
 
-These examples demonstrate:
-- explicit snapshot vs incremental data handling
-- clean subscription and shutdown behavior
-- safe consumption patterns for real-time data
+**Start here:**
+➡️ [Wirekrak Core Examples](./docs/core/examples/README.md)
+
+### Lite SDK — Fast & Safe Application-level Consumption <a name="lite-examples"></a>
+
+The Lite SDK provides a **high-level, callback-based API** focused on
+consuming market data with minimal setup.
+
+If you are:
+- consuming Kraken market data
+- building trading or analytics applications
+- uninterested in transport internals
+- prioritizing speed and ergonomics
+
+**Start here:**
+➡️ [Wirekrak Lite Examples](./docs/lite/examples/README.md)  
 
 ---
 
