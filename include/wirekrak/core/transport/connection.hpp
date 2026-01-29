@@ -134,10 +134,8 @@ public:
             return Error::InvalidState;
         }
         last_url_ = url;
-        // 1) Clear runtime state
+        // 1) Enter connecting state
         set_state_(State::Connecting);
-        last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         // 2) Parse and validate URL
         ParsedUrl parsed_url;
         auto error = parse_url(url, parsed_url);
@@ -158,7 +156,8 @@ public:
             if (should_retry_(error)) {
                 WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
                 set_state_(State::WaitingReconnect);
-                schedule_next_retry_(error);
+                // Retry immediately
+                arm_immediate_reconnect_(error);
             }
             else {
                 set_state_(State::Disconnected);
@@ -166,18 +165,10 @@ public:
             WK_ERROR("[CONN] Connection failed (" << to_string(error) << ")");
             return error;
         }
-        // 5) Update state
+        // 5) Enter connected state
         WK_TL1( telemetry_.connect_success_total.inc() ); // This reflects a state-machine fact, not a transport fact.
         WK_INFO("[CONN] Connected successfully.");
-        set_state_(State::Connected);
-        retry_attempts_ = 0;
-        liveness_warning_fired_ = false;
-        auto now =  std::chrono::steady_clock::now();
-        last_heartbeat_ts_.store(now, std::memory_order_relaxed);
-        last_message_ts_.store(now, std::memory_order_relaxed);
-        if (hooks_.on_connect_cb_) {
-            hooks_.on_connect_cb_();
-        }
+        enter_connected_state_();
         return Error::None;
     }
 
@@ -251,8 +242,13 @@ public:
         auto now = std::chrono::steady_clock::now();
         if (get_state_() == State::WaitingReconnect && now >= next_retry_) {
             if (!reconnect_()) {
-                // Schedule next retry with backoff
-                schedule_next_retry_(last_error_.load(std::memory_order_relaxed));
+                const auto error = last_error_.load(std::memory_order_relaxed);
+                if (should_retry_(error)) {
+                    // Schedule next retry with backoff
+                    schedule_next_retry_();
+                } else {
+                    set_state_(State::Disconnected);
+                }
             }
         }
     }
@@ -283,6 +279,11 @@ public:
     }
 
     // Accessors
+    [[nodiscard]]
+    inline State get_state() const noexcept {
+        return state_;
+    }
+
     [[nodiscard]]
     inline std::atomic<uint64_t>& heartbeat_total() noexcept {
         return heartbeat_total_;
@@ -373,6 +374,7 @@ private:
     Hooks hooks_;
 
     std::atomic<Error> last_error_{Error::None};
+    std::atomic<Error> retry_root_error_{Error::None};
 
     bool liveness_warning_fired_{false};
 
@@ -391,6 +393,23 @@ private:
     inline void set_state_(State new_state) noexcept {
         WK_TRACE("[CONN] State:  " << to_string(state_) << " -> " << to_string(new_state));
         state_ = new_state;
+    }
+
+    inline void enter_connected_state_() noexcept {
+        // Update state
+        set_state_(State::Connected);
+        // Reset retry state
+        retry_attempts_ = 0;
+        retry_root_error_.store(Error::None, std::memory_order_relaxed);
+        // Reset liveness tracking
+        liveness_warning_fired_ = false;
+        auto now = std::chrono::steady_clock::now();
+        last_heartbeat_ts_.store(now, std::memory_order_relaxed);
+        last_message_ts_.store(now, std::memory_order_relaxed);
+        // Invoke connect callback (if any)
+        if (hooks_.on_connect_cb_) {
+            hooks_.on_connect_cb_();
+        }
     }
 
     inline void recompute_liveness_windows_() noexcept {
@@ -490,7 +509,8 @@ private:
             && should_retry_(error)) {
             WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
             set_state_(State::WaitingReconnect);
-            schedule_next_retry_(error);
+            // Retry immediately
+            arm_immediate_reconnect_(error);
         }
         else {
             set_state_(State::Disconnected);
@@ -535,10 +555,8 @@ private:
             return false;
         }
         WK_INFO("[CONN] Attempting reconnection... (attempt " << (retry_attempts_) << ")");
-        // 1) Clear runtime state
+        // 1) Enter connecting state
         set_state_(State::Connecting);
-        last_heartbeat_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         // 2) Parse and validate URL
         ParsedUrl parsed_url;
         auto error = parse_url(last_url_, parsed_url);
@@ -560,33 +578,31 @@ private:
             WK_ERROR("[CONN] Reconnection failed.");
             return false;
         }
-        // 4) Set new state
+        // 5) Enter connected state
         WK_TL1( telemetry_.retry_success_total.inc() ); // State-based success, not transport-based
         WK_INFO("[CONN] Connection re-established with server '" << last_url_ << "'.");
-        set_state_(State::Connected);
-        retry_attempts_ = 0;
-        liveness_warning_fired_ = false;
-        auto now =  std::chrono::steady_clock::now();
-        last_heartbeat_ts_.store(now, std::memory_order_relaxed);
-        last_message_ts_.store(now, std::memory_order_relaxed);
-        // 4) Invoke connect callback
-        if (hooks_.on_connect_cb_) {
-            hooks_.on_connect_cb_();
-        }
+        enter_connected_state_();
         return true;
     }
 
-    void schedule_next_retry_(Error error) noexcept {
-        // Schedule next retry with backoff
-        auto now = std::chrono::steady_clock::now();
+    // Schedule immediate retry (no backoff)
+    void arm_immediate_reconnect_(Error error) noexcept {
+        retry_root_error_.store(error, std::memory_order_relaxed);
+        retry_attempts_ = 1;
+        // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
+    }
+
+    // Schedule next retry with backoff
+    void schedule_next_retry_() noexcept {
         retry_attempts_++;
-        auto delay = backoff_(last_error_.load(std::memory_order_relaxed), retry_attempts_);
+        auto now = std::chrono::steady_clock::now();
+        auto delay = backoff_(retry_root_error_.load(std::memory_order_relaxed), retry_attempts_);
         next_retry_ = now + delay;
         // Invoke retry callback (if any)
         if (hooks_.on_retry_cb_) {
             hooks_.on_retry_cb_(RetryContext{
                 .url         = last_url_,
-                .error       = error,
+                .error       = retry_root_error_.load(std::memory_order_relaxed),
                 .attempt     = retry_attempts_,
                 .next_delay  = delay
             });
