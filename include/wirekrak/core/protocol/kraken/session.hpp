@@ -81,9 +81,11 @@ Advanced users may still customize behavior by:
 
 template<transport::WebSocketConcept WS>
 class Session {
-    using pong_handler_t = std::function<void(const schema::system::Pong&)>;
-    using rejection_handler_t = std::function<void(const schema::rejection::Notice&)>;
-    using status_handler_t = std::function<void(const schema::status::Update&)>;
+    using pong_handler_t       = std::function<void(const schema::system::Pong&)>;
+    using rejection_handler_t  = std::function<void(const schema::rejection::Notice&)>;
+    using status_handler_t     = std::function<void(const schema::status::Update&)>;
+    using connect_handler_t    = std::function<void()>;
+    using disconnect_handler_t = std::function<void()>;
 
 public:
     Session()
@@ -101,6 +103,10 @@ public:
 
         connection_.on_message([this](std::string_view msg) {
             handle_message_(msg);
+        });
+
+        connection_.on_liveness_warning([this](std::chrono::milliseconds remaining) {
+            handle_liveness_warning_(remaining);
         });
 
         connection_.on_liveness_timeout([this]() {
@@ -126,6 +132,15 @@ public:
     // Register status callback
     inline void on_status(status_handler_t cb) noexcept {
         hooks_.handle_status = std::move(cb);
+    }
+
+    // Register observational connect callback
+    inline void on_connect(connect_handler_t cb) noexcept {
+        hooks_.handle_connect = std::move(cb);
+    }
+    // Register observational disconnect callback
+    inline void on_disconnect(disconnect_handler_t cb) noexcept {
+        hooks_.handle_disconnect = std::move(cb);
     }
 
     // Send ping
@@ -295,9 +310,11 @@ private:
 
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
-        pong_handler_t handle_pong{};            // Pong callback
-        rejection_handler_t handle_rejection{};  // Rejection callback
-        status_handler_t handle_status{};        // Status callback
+        pong_handler_t       handle_pong{};       // Pong callback
+        rejection_handler_t  handle_rejection{};  // Rejection callback
+        status_handler_t     handle_status{};     // Status callback
+        connect_handler_t    handle_connect{};    // Connect callback
+        disconnect_handler_t handle_disconnect{}; // Disconnect callback
     };
 
     // Handlers bundle
@@ -341,14 +358,27 @@ private:
         for (const auto& subscription : book_subscriptions) {
             subscribe(subscription.request(), subscription.callback());
         }
+        // 4) Invoke user-defined connect callback
+        if (hooks_.handle_connect) {
+            hooks_.handle_connect();
+        }
     }
 
     inline void handle_disconnect_() {
         // handle disconnect
+        // ...
+        // 1) Invoke user-defined disconnect callback
+        if (hooks_.handle_disconnect) {
+            hooks_.handle_disconnect();
+        }
     }
 
     inline void handle_message_(std::string_view sv) {
         parser_.parse_and_route(sv);
+    }
+
+    inline void handle_liveness_warning_(std::chrono::milliseconds remaining) {
+        // handle liveness warning
     }
 
     inline void handle_liveness_timeout_() {

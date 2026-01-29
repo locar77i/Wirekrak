@@ -4,5 +4,5 @@
 # -------------------------------------------------------------
 # Add examples sub-dirs
 # -------------------------------------------------------------
+add_subdirectory(contracts)
 add_subdirectory(transport)
-add_subdirectory(protocol)

@@ -53,6 +53,7 @@ logic fully isolated.
 - Replay active subscriptions after reconnect
 - Dispatch channel messages to user callbacks
 - Surface protocol-level events (status, pong, rejection)
+- Expose connection state transitions as observational events
 
 ---
 
@@ -80,6 +81,42 @@ All events are processed via an explicit `poll()` call:
 - Subscribe / unsubscribe acknowledgements
 
 No background threads or hidden execution paths are used.
+
+---
+
+## Connection State Observation
+
+The Kraken session exposes **connection state transitions** as optional,
+observational callbacks:
+
+- `on_connect()`
+- `on_disconnect()`
+
+These callbacks are **informational only**.
+
+They indicate that the underlying transport has transitioned into or out of a
+connected state, and exist to make lifecycle boundaries observable for logging,
+monitoring, and state correlation.
+
+### Important Semantics
+
+- These callbacks do **not** imply ordering guarantees with respect to message
+  delivery or subscription replay.
+- They do **not** indicate that subscriptions are active or complete.
+- They do **not** require user action.
+- Correctness does **not** depend on handling these callbacks.
+
+Replay, subscription management, and delivery guarantees remain fully enforced
+by the Core session regardless of whether these callbacks are registered.
+
+### Design Rationale
+
+Wirekrak Core does not fabricate failures or reconnects.
+Connection state transitions are surfaced only when they occur naturally at the
+transport layer.
+
+This preserves determinism while allowing advanced users to observe lifecycle
+boundaries without assuming responsibility for recovery or correctness.
 
 ---
 
