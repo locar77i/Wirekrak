@@ -16,6 +16,24 @@ this is the correct entry point.
 
 ---
 
+## Who These Examples Are For
+
+These examples are intended for:
+
+- Engineers integrating Wirekrak into production systems
+- Users validating behavioral guarantees and responsibility boundaries
+- Readers who want to understand *what Wirekrak enforces* versus *what it observes*
+- Anyone reasoning about correctness, not convenience
+
+These examples are **not intended as onboarding material**.
+
+If you are new to Wirekrak, or want to see market data flowing with minimal setup,
+start with the lightweight onboarding examples:
+
+➡️ [Lite Examples — Getting Started](../lite/README.md)
+
+---
+
 ## What these examples are
 
 Wirekrak Core examples are:
@@ -59,7 +77,9 @@ it is probably correct.
 
 ---
 
-## Transport examples <a name="transport"></a>
+## Example Progression
+
+### Transport examples <a name="transport"></a>
 
 Transport examples demonstrate **how data moves**, **how connections behave**,
 and **what the system can observe** — without protocol assumptions.
@@ -85,7 +105,7 @@ From that document, you can navigate to:
 
 ---
 
-## Protocol examples
+### Protocol examples
 
 Protocol examples demonstrate **how responsibility shifts above transport**.
 
@@ -133,4 +153,4 @@ trust the example.
 
 ---
 
-⬅️ [Back to README](../../../README.md#core-examples)
+⬅️ [Back to README](../../README.md#core-examples)

@@ -134,3 +134,7 @@ Nothing is normalized.
 
 Wirekrak reports reality.  
 It does not hide it.
+
+---
+
+⬅️ [Back to Connection Examples](../Examples.md#fragmentation)

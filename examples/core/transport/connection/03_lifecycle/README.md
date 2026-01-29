@@ -75,3 +75,7 @@ Close happens **once**.
 
 Wirekrak reports reality.  
 It does not hide lifecycle truth.
+
+---
+
+⬅️ [Back to Connection Examples](../Examples.md#lifecycle)

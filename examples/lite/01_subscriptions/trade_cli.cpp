@@ -1,3 +1,12 @@
+// ============================================================================
+// Lite example 01_subscriptions
+//
+// Demonstrates:
+// - Configurable trade subscriptions via CLI
+// - Subscribing to multiple symbols
+// - Error handling callbacks
+// - Clean unsubscribe and shutdown
+// ============================================================================
 #include <atomic>
 #include <csignal>
 #include <chrono>
@@ -5,14 +14,13 @@
 #include <thread>
 
 // SDK v1 invariant:
-// - Each callback corresponds to one price level update
-// - snapshot delivers full depth
-// - update delivers incremental changes
+// - Each callback corresponds to exactly one trade
+// - tag indicates snapshot vs live update
+// - ordering is preserved per symbol
 #include "wirekrak.hpp"
-using namespace wirekrak::lite;
 
-#include "common/cli/book_params.hpp"
-namespace cli = wirekrak::examples::cli;
+#include "common/cli/trade_params.hpp"
+
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -27,6 +35,8 @@ void on_signal(int) {
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
+    using namespace wirekrak::lite;
+
     // -------------------------------------------------------------
     // Signal handling
     // -------------------------------------------------------------
@@ -35,16 +45,18 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // CLI parsing
     // -------------------------------------------------------------
-    const auto& params = cli::book::configure(argc, argv, "Wirekrak Core - Kraken Book Subscription Example\n"
-        "This example let's you subscribe to book events on a given symbol from Kraken WebSocket API v2.\n"
+    const auto& params = wirekrak::examples::cli::trade::configure(argc, argv, "Wirekrak Lite - Kraken Trade Subscription Example\n"
+        "This example let's you subscribe to trade events on a given symbol from Kraken WebSocket API v2.\n"
     );
-    params.dump("=== Book Example Parameters ===", std::cout);
+    params.dump("=== Trade Example Parameters ===", std::cout);
 
     // -------------------------------------------------------------
     // Client setup
     // -------------------------------------------------------------
     Client client{params.url};
 
+    // Error handling is configurable via callbacks.
+    // Other lifecycle hooks are demonstrated in later examples.
     client.on_error([](const Error& err) {
         std::cerr << "[wirekrak-lite] error: " << err.message << "\n";
     });
@@ -55,28 +67,29 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------
-    // Subscribe to book updates
+    // Trade subscription
     // -------------------------------------------------------------
-    auto book_handler = [](const BookLevel& lvl) {
-        std::cout << " -> " << lvl << std::endl;
+    auto trade_handler = [](const Trade& t) {
+        std::cout << " -> " << t << std::endl;
     };
 
-    client.subscribe_book(params.symbols, book_handler, params.snapshot);
+    client.subscribe_trades(params.symbols, trade_handler, params.snapshot);
 
     // -------------------------------------------------------------
     // Main polling loop (runs until Ctrl+C)
     // -------------------------------------------------------------
     while (running.load()) {
-        client.poll();   // REQUIRED to process incoming messages
+        client.poll();  // Drives the client state machine and dispatches callbacks
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------
-    // Unsubscribe from book updates
+    // Unsubscribe from trade updates
     // -------------------------------------------------------------
-    client.unsubscribe_book(params.symbols);
+    client.unsubscribe_trades(params.symbols);
 
-    // Drain events before exit (approx. 2 seconds)
+    // Drain events before exit to allow in-flight messages
+    // to be delivered and callbacks to complete
     for (int i = 0; i < 200; ++i) {
         client.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

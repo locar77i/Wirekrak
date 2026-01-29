@@ -150,3 +150,7 @@ Everything else is layered on top.
 
 Wirekrak enforces correctness.  
 It does not hide responsibility.
+
+---
+
+⬅️ [Back to Connection Examples](../Examples.md#minimal)

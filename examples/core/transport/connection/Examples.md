@@ -7,7 +7,7 @@ If you are new to Wirekrak, **follow them in order**.
 
 ---
 
-### 🟢 Example 0 — Minimal Connection  
+### 🟢 Example 0 — Minimal Connection <a name="minimal"></a>
 *(Learning Step 1: Getting started)*
 
 **Goal:** Learn the absolute minimum required to use a `Connection`.
@@ -17,11 +17,11 @@ If you are new to Wirekrak, **follow them in order**.
 - Observe connect, message, and disconnect events
 - Close cleanly and deterministically
 
-➡️ [Minimal Connection](../../../../../examples/core/transport/connection/0_minimal/README.md)
+➡️ [Minimal Connection](./00_minimal/README.md)
 
 ---
 
-### 🟡 Example 1 — Message Shape & Fragmentation  
+### 🟡 Example 1 — Message Shape & Fragmentation <a name="fragmentation"></a>
 *(Learning Step 2: Observing the wire)*
 
 **Goal:** Understand what *actually* happens on the WebSocket wire.
@@ -31,11 +31,11 @@ If you are new to Wirekrak, **follow them in order**.
 - Message size as an observed property
 - Why sender intent does not matter
 
-➡️ [Message Shape & Fragmentation](../../../../../examples/core/transport/connection/1_fragmentation/README.md)
+➡️ [Message Shape & Fragmentation](./01_fragmentation/README.md)
 
 ---
 
-### 🟠 Example 2 — Transport vs Delivery Semantics  
+### 🟠 Example 2 — Transport vs Delivery Semantics <a name="delivery"></a>
 *(Learning Step 3: Observation ≠ delivery)*
 
 **Goal:** Learn the boundary between transport and application logic.
@@ -44,11 +44,11 @@ If you are new to Wirekrak, **follow them in order**.
 - Delivery requires an explicit message callback
 - `messages_rx_total ≠ messages_forwarded_total` is correct behavior
 
-➡️ [Transport vs Delivery Semantics](../../../../../examples/core/transport/connection/2_delivery/README.md)
+➡️ [Transport vs Delivery Semantics](./02_delivery/README.md)
 
 ---
 
-### 🔴 Example 3 — Error & Close Lifecycle  
+### 🔴 Example 3 — Error & Close Lifecycle <a name="lifecycle"></a>
 *(Learning Step 4: Failure correctness)*
 
 **Goal:** Understand Wirekrak’s deterministic lifecycle guarantees.
@@ -58,11 +58,11 @@ If you are new to Wirekrak, **follow them in order**.
 - No double counting of lifecycle events
 - Retry behavior driven by cause, not timing
 
-➡️ [Error & Close Lifecycle](../../../../../examples/core/transport/connection/3_lifecycle/README.md)
+➡️ [Error & Close Lifecycle](./03_lifecycle/README.md)
 
 ---
 
-### 🔵 Example 4 — Heartbeat-Driven Liveness  
+### 🔵 Example 4 — Heartbeat-Driven Liveness <a name="liveness"></a>
 *(Learning Step 5: Protocol responsibility)*
 
 **Goal:** Understand Wirekrak’s strict liveness model.
@@ -73,7 +73,7 @@ If you are new to Wirekrak, **follow them in order**.
 - Protocols must emit keepalive traffic
 - **Liveness warning hooks enable proactive protocol action**
 
-➡️ [Heartbeat-Driven Liveness](../../../../../examples/core/transport/connection/4_liveness/README.md)
+➡️ [Heartbeat-Driven Liveness](./04_liveness/README.md)
 
 ---
 

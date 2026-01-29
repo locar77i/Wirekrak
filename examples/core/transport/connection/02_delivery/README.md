@@ -122,3 +122,7 @@ Wirekrak separates transport from intent.
 
 Wirekrak enforces correctness —  
 it does not hide responsibility.
+
+---
+
+⬅️ [Back to Connection Examples](../Examples.md#delivery)

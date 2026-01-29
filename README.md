@@ -336,20 +336,6 @@ ctest --preset test-debug
 Wirekrak supports **two distinct usage paths**, depending on what you want
 to build and how deep you want to go.
 
-### Core SDK — Full Infrastructure Control <a name="core-examples"></a>
-
-The Core SDK exposes Wirekrak’s **transport, connection, and protocol
-foundations**.
-
-If you are:
-- integrating Wirekrak into infrastructure
-- building your own protocols
-- debugging lifecycle or liveness issues
-- learning Wirekrak’s design philosophy
-
-**Start here:**
-➡️ [Wirekrak Core Examples](./docs/core/examples/README.md)
-
 ### Lite SDK — Fast & Safe Application-level Consumption <a name="lite-examples"></a>
 
 The Lite SDK provides a **high-level, callback-based API** focused on
@@ -362,7 +348,21 @@ If you are:
 - prioritizing speed and ergonomics
 
 **Start here:**
-➡️ [Wirekrak Lite Examples](./docs/lite/examples/README.md)  
+➡️ [Wirekrak Lite Examples](./examples/lite/README.md)  
+
+### Core SDK — Full Infrastructure Control <a name="core-examples"></a>
+
+The Core SDK exposes Wirekrak’s **transport, connection, and protocol
+foundations**.
+
+If you are:
+- integrating Wirekrak into infrastructure
+- building your own protocols
+- debugging lifecycle or liveness issues
+- learning Wirekrak’s design philosophy
+
+**Start here:**
+➡️ [Wirekrak Core Examples](./examples/core/README.md)
 
 ---
 

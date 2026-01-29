@@ -1,12 +1,11 @@
-# examples/lite/CMakeLists.txt
+# examples/lite/00_quickstart/CMakeLists.txt
 
 include(${PROJECT_SOURCE_DIR}/cmake/WirekrakExamples.cmake)
 
 
 # -------------------------------------------------------------
-# Add lite sub-dirs
+# Examples
 # -------------------------------------------------------------
-add_subdirectory(00_quickstart)
-add_subdirectory(01_subscriptions)
-add_subdirectory(02_multistream)
-add_subdirectory(03_lifecycle)
+
+wirekrak_add_lite_example(wkl_00_quickstart_trade trade.cpp)
+wirekrak_add_lite_example(wkl_00_quickstart_book book.cpp)

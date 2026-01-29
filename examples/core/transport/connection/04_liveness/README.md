@@ -130,3 +130,7 @@ If your protocol listens and reacts,
 
 Wirekrak enforces correctness.  
 It does not hide responsibility.
+
+---
+
+⬅️ [Back to Connection Examples](../Examples.md#liveness)
