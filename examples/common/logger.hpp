@@ -5,9 +5,9 @@
 #include "lcr/log/logger.hpp"
 
 
-namespace wirekrak::examples {
+namespace wirekrak::log {
 
-    inline void set_log_level(const std::string& log_level) {
+    inline void set_level(const std::string& log_level) {
         using namespace lcr::log;
         if (log_level == "trace")      Logger::instance().set_level(Level::Trace);
         else if (log_level == "debug") Logger::instance().set_level(Level::Debug);
@@ -16,4 +16,4 @@ namespace wirekrak::examples {
         else                           Logger::instance().set_level(Level::Info);
     }
 
-} // namespace wirekrak::examples
+} // namespace wirekrak::log

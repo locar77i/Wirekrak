@@ -118,4 +118,4 @@ Internal correctness, determinism, and recovery are enforced by Core, but are
 
 ---
 
-⬅️ [Back to README](../../README.md#lite-examples)
+⬅️ [Back to README](../README.md#lite-examples)

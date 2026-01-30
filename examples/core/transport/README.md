@@ -1,4 +1,4 @@
-# Transport Layer — Overview
+# Transport Layer — Examples
 
 The **Transport layer** in Wirekrak Core is responsible for **observing reality**.
 
@@ -12,6 +12,26 @@ Transport does **not** interpret protocol meaning.
 It reports **facts**, enforces **invariants**, and exposes **telemetry**.
 
 The fastest way to understand this layer is through its examples.
+
+**Who this is for**
+- You need explicit control over connection behavior
+- You are integrating Wirekrak into an existing networking stack
+- You care about failure modes, reconnect logic, and state transitions
+
+**What you’ll learn**
+- How transports are modeled independently of protocols
+- How WebSocket connections are owned and driven
+- How connection lifecycle events propagate through the system
+- How to test and reason about disconnections and retries
+
+These examples operate at the lowest level exposed by Wirekrak. They are not
+required for typical usage, but they demonstrate how the system behaves under
+real operational conditions.
+
+**Notes**
+These examples intentionally avoid hiding complexity. They are meant to show
+what Wirekrak guarantees — and what it leaves to the caller — when operating at
+the transport layer.
 
 ---
 
@@ -78,7 +98,7 @@ If you want to understand **why connections behave the way they do**, start here
 
 ---
 
-## Design rule reminder
+## Remember
 
 The Transport layer follows one uncompromising rule:
 

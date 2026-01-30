@@ -2,7 +2,7 @@
 // Lite example 01_subscriptions
 //
 // Demonstrates:
-// - Configurable trade subscriptions via CLI
+// - Configurable book subscriptions via CLI
 // - Subscribing to multiple symbols
 // - Error handling callbacks
 // - Clean unsubscribe and shutdown
@@ -14,12 +14,12 @@
 #include <thread>
 
 // SDK v1 invariant:
-// - Each callback corresponds to exactly one trade
-// - tag indicates snapshot vs live update
-// - ordering is preserved per symbol
+// - Each callback corresponds to one price level update
+// - snapshot delivers full depth
+// - update delivers incremental changes
 #include "wirekrak.hpp"
 
-#include "common/cli/trade_params.hpp"
+#include "common/cli/book.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -45,10 +45,11 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // CLI parsing
     // -------------------------------------------------------------
-    const auto& params = wirekrak::examples::cli::trade::configure(argc, argv, "Wirekrak Lite - Kraken Trade Subscription Example\n"
-        "This example let's you subscribe to trade events on a given symbol from Kraken WebSocket API v2.\n"
+    const auto& params = wirekrak::cli::book::configure(argc, argv,
+        "Wirekrak Lite - Kraken Book Subscription Example\n"
+        "This example let's you subscribe to book events on a given symbol from Kraken WebSocket API v2.\n"
     );
-    params.dump("=== Trade Example Parameters ===", std::cout);
+    params.dump("=== Book Example Parameters ===", std::cout);
 
     // -------------------------------------------------------------
     // Client setup
@@ -67,13 +68,13 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------
-    // Trade subscription
+    // Subscribe to book updates
     // -------------------------------------------------------------
-    auto trade_handler = [](const Trade& t) {
-        std::cout << " -> " << t << std::endl;
+    auto book_handler = [](const BookLevel& lvl) {
+        std::cout << " -> " << lvl << std::endl;
     };
 
-    client.subscribe_trades(params.symbols, trade_handler, params.snapshot);
+    client.subscribe_book(params.symbols, book_handler, params.snapshot);
 
     // -------------------------------------------------------------
     // Main polling loop (runs until Ctrl+C)
@@ -84,9 +85,9 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------
-    // Unsubscribe from trade updates
+    // Unsubscribe from book updates
     // -------------------------------------------------------------
-    client.unsubscribe_trades(params.symbols);
+    client.unsubscribe_book(params.symbols);
 
     // Drain events before exit to allow in-flight messages
     // to be delivered and callbacks to complete

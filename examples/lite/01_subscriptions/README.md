@@ -24,7 +24,7 @@ The Lite mental model remains unchanged:
 
 ## Available Examples
 
-### `trades_cli.cpp`
+### `trades.cpp`
 Configurable trade subscriptions.
 
 - Subscribe to trade updates for one or more symbols
@@ -33,7 +33,7 @@ Configurable trade subscriptions.
 
 ---
 
-### `book_cli.cpp`
+### `book.cpp`
 Configurable order book subscriptions.
 
 - Subscribe to book updates for one or more symbols

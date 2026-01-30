@@ -8,7 +8,7 @@
 #include <CLI/CLI.hpp>
 
 
-namespace wirekrak::examples::cli {
+namespace wirekrak::cli {
 
 // -------------------------------------------------------------
 // WebSocket URL validator
@@ -83,4 +83,4 @@ inline auto depth_validator = CLI::Validator(
     "Order book depth validator"
 );
 
-} // namespace wirekrak::examples::cli
+} // namespace wirekrak::cli

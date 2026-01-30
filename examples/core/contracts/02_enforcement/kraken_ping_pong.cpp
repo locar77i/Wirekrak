@@ -22,13 +22,16 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
+#include "common/logger.hpp"
 
 int main() {
-    using namespace lcr::log;
-    Logger::instance().set_level(Level::Info);
-
     using namespace wirekrak::core;
     namespace schema = protocol::kraken::schema;
+
+    // -------------------------------------------------------------------------
+    // hard-coded configuration
+    // -------------------------------------------------------------------------
+    wirekrak::log::set_level("info");
 
     // -------------------------------------------------------------------------
     // Session setup

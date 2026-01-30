@@ -30,6 +30,7 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
+#include "common/cli/minimal.hpp"
 
 // -----------------------------------------------------------------------------
 // Lifecycle flags
@@ -37,17 +38,22 @@
 std::atomic<bool> disconnected{false};
 std::atomic<bool> reconnected{false};
 
-int main() {
-    using namespace lcr::log;
-    Logger::instance().set_level(Level::Info);
-
+int main(int argc, char** argv) {
     using namespace wirekrak::core;
     namespace schema = protocol::kraken::schema;
+
+    // -------------------------------------------------------------------------
+    // Runtime configuration (no hard-coded behavior)
+    // -------------------------------------------------------------------------
+    const auto& params = wirekrak::cli::minimal::configure(argc, argv,
+        "Wirekrak Core — Subscription Replay Example\n"
+        "Demonstrates subscription replay enforced by Wirekrak Core.\n"
+    );
+    params.dump("=== Runtime Parameters ===", std::cout);
 
     // -------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------
-
     Session session;
 
     // Register observational connect callback
@@ -75,7 +81,7 @@ int main() {
     // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
-    if (!session.connect("wss://ws.kraken.com/v2")) {
+    if (!session.connect(params.url)) {
         std::cerr << "Failed to connect\n";
         return -1;
     }
@@ -83,7 +89,7 @@ int main() {
     // -------------------------------------------------------------------------
     // Subscribe ONCE to LTC/EUR trade updates (no snapshot)
     // -------------------------------------------------------------------------
-    const std::string symbol = "LTC/EUR";
+    const std::string symbol = params.symbols.front();
 
     session.subscribe(
         schema::trade::Subscribe{

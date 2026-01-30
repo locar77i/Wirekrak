@@ -22,7 +22,7 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
-#include "common/cli/book_params.hpp"
+#include "common/cli/book.hpp"
 
 // -----------------------------------------------------------------------------
 // Lifecycle control
@@ -49,9 +49,7 @@ int main(int argc, char** argv) {
     // Runtime configuration (symbols, depth, snapshot)
     // -------------------------------------------------------------------------
     const auto& params =
-        wirekrak::examples::cli::book::configure(
-            argc,
-            argv,
+        wirekrak::cli::book::configure(argc, argv,
             "Wirekrak Core — Protocol Book Subscription Example\n"
             "Demonstrates explicit, stateful book subscriptions with ACK tracking.\n"
         );

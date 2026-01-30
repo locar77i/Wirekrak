@@ -23,7 +23,7 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
-#include "common/cli/trade_params.hpp"
+#include "common/cli/trade.hpp"
 
 // -----------------------------------------------------------------------------
 // Lifecycle control
@@ -50,9 +50,7 @@ int main(int argc, char** argv) {
     // Runtime configuration (no hard-coded behavior)
     // -------------------------------------------------------------------------
     const auto& params =
-        wirekrak::examples::cli::trade::configure(
-            argc,
-            argv,
+        wirekrak::cli::trade::configure(argc, argv,
             "Wirekrak Core — Protocol Trade Subscription Example\n"
             "Demonstrates explicit protocol subscriptions and ACK handling.\n"
         );

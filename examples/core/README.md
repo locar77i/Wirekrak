@@ -96,7 +96,7 @@ These examples are intentionally **protocol-agnostic**.
 
 Transport examples are organized following the Transport architecture described here:
 
-➡️ [Transport Examples Overview](./transport/Overview.md)
+➡️ [Transport Examples](./transport/README.md)
 
 From that document, you can navigate to:
 - WebSocket transport behavior
@@ -153,4 +153,4 @@ trust the example.
 
 ---
 
-⬅️ [Back to README](../../README.md#core-examples)
+⬅️ [Back to README](../README.md#core-examples)

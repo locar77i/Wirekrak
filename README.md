@@ -244,9 +244,10 @@ If you just want Kraken V2 market data in fewer lines of C++, start here:
 
 ```cpp
 #include "wirekrak.hpp"
-using namespace wirekrak::lite;
 
 int main() {
+    using namespace wirekrak::lite;
+
     // Client setup (Lite SDK)
     Client client{"wss://ws.kraken.com/v2"};
 
@@ -269,7 +270,7 @@ int main() {
     );
 
     // Main polling loop
-    while (!Ctrl_C) {
+    while (true) {
         client.poll();   // REQUIRED to process incoming messages
     }
 
@@ -286,7 +287,9 @@ Wirekrak is designed to support ergonomic application-level consumption through 
 that provides a stable, callback-based API for consuming Kraken market data with explicit
 snapshot and lifecycle handling:
 
-➡️ **[Wirekrak Lite - Quick Usage Guide](docs/lite/QUICK_USAGE.md)**
+➡️ [Wirekrak Lite - Quick Usage Guide](docs/lite/QUICK_USAGE.md)
+
+➡️ [Wirekrak Lite - Onboarding Examples](examples/lite/README.md)
 
 ```Note:``` This guide assumes no prior knowledge of Wirekrak internals and focuses on the most common usage patterns.
 
@@ -331,10 +334,12 @@ ctest --preset test-debug
 - Test execution is fully deterministic and reproducible
 ---
 
-## ⚙️ Usage Patterns
+## ⚙️ Usage Patterns (Examples)
 
 Wirekrak supports **two distinct usage paths**, depending on what you want
 to build and how deep you want to go.
+
+➡️ See [Wirekrak Examples](./examples/README.md)  
 
 ### Lite SDK — Fast & Safe Application-level Consumption <a name="lite-examples"></a>
 
