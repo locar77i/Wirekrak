@@ -89,11 +89,9 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Subscribe ONCE to LTC/EUR trade updates (no snapshot)
     // -------------------------------------------------------------------------
-    const std::string symbol = params.symbols.front();
-
     session.subscribe(
         schema::trade::Subscribe{
-            .symbols  = {symbol},
+            .symbols  = params.symbols,
             .snapshot = false // to avoid burst output and keep replay observable
         },
         [](const schema::trade::ResponseView& trade) {
@@ -125,14 +123,12 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
-    // Graceful unsubscribe
+    // Graceful shutdown
     // -------------------------------------------------------------------------
-    session.unsubscribe(
-        schema::trade::Unsubscribe{ .symbols = {symbol} }
-    );
+    session.close();
 
-    // Drain a short window to allow ACK processing
-    auto drain_until = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    // Drain a short window to allow event processing
+    auto drain_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
     while (std::chrono::steady_clock::now() < drain_until) {
         session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

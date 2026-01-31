@@ -56,20 +56,18 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    const std::string symbol = params.symbols.front();
-
     // -------------------------------------------------------------------------
     // Issue duplicate subscribe requests
     // -------------------------------------------------------------------------
     session.subscribe(
-        schema::trade::Subscribe{ .symbols = {symbol} },
+        schema::trade::Subscribe{ .symbols = params.symbols },
         [](const schema::trade::ResponseView& trade) {
             std::cout << " -> " << trade << std::endl;
         }
     );
 
     session.subscribe(
-        schema::trade::Subscribe{ .symbols = {symbol} },
+        schema::trade::Subscribe{ .symbols = params.symbols },
         [](const schema::trade::ResponseView&) {
             // intentionally unused
         }
@@ -79,7 +77,7 @@ int main(int argc, char** argv) {
     // Immediately unsubscribe
     // -------------------------------------------------------------------------
     session.unsubscribe(
-        schema::trade::Unsubscribe{ .symbols = {symbol} }
+        schema::trade::Unsubscribe{ .symbols = params.symbols }
     );
 
     // -------------------------------------------------------------------------
@@ -88,11 +86,21 @@ int main(int argc, char** argv) {
     auto observe_until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < observe_until) {
         session.poll();
-
         const auto& mgr = session.trade_subscriptions();
         std::cout << "[STATE] active=" << mgr.active_total() << " pending=" << mgr.pending_total() << std::endl;
-
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    // -------------------------------------------------------------------------
+    // Graceful shutdown
+    // -------------------------------------------------------------------------
+    session.close();
+
+    // Drain a short window to allow event processing
+    auto drain_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
+    while (std::chrono::steady_clock::now() < drain_until) {
+        session.poll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     std::cout << "\n[SUMMARY]\n"

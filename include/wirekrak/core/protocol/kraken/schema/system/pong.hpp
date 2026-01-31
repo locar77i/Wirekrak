@@ -31,33 +31,66 @@ struct Pong {
     // --- error-only field ---
     lcr::optional<std::string> error;
 
+    inline void to_json(std::ostream& os) const {
+        bool first = true;
+
+        os << "{";
+
+        if (success.has()) {
+            if (!first) os << ",";
+            first = false;
+            os << "\"success\":" << (success.value() ? "true" : "false");
+        }
+
+        if (req_id.has()) {
+            if (!first) os << ",";
+            first = false;
+            os << "\"req_id\":" << req_id.value();
+        }
+
+        if (!warnings.empty()) {
+            if (!first) os << ",";
+            first = false;
+
+            os << "\"warnings\":[";
+            for (std::size_t i = 0; i < warnings.size(); ++i) {
+                if (i) os << ",";
+                os << "\"" << warnings[i] << "\"";
+            }
+            os << "]";
+        }
+
+        if (time_in.has()) {
+            if (!first) os << ",";
+            first = false;
+            os << "\"time_in\":\""
+            << wirekrak::core::to_string(time_in.value())
+            << "\"";
+        }
+
+        if (time_out.has()) {
+            if (!first) os << ",";
+            first = false;
+            os << "\"time_out\":\""
+            << wirekrak::core::to_string(time_out.value())
+            << "\"";
+        }
+
+        if (error.has()) {
+            if (!first) os << ",";
+            first = false;
+            os << "\"error\":\"" << error.value() << "\"";
+        }
+
+        os << "}";
+    }
+
     // ------------------------------------------------------------
     // Debug / diagnostic dump
     // ------------------------------------------------------------
     inline void dump(std::ostream& os) const {
-        os << "[PONG] {\n";
-        if (success.has()) {
-            os << "  success: " << (success.value() ? "true" : "false") << "\n";
-        }
-        if (req_id.has()) {
-            os << "  req_id: " << req_id.value() << "\n";
-        }
-        if (!warnings.empty()) {
-            os << "  warnings:\n";
-            for (const auto& w : warnings) {
-                os << "    - " << w << "\n";
-            }
-        }
-        if (time_in.has()) {
-            os << "  time_in: " << wirekrak::core::to_string(time_in.value()) << "\n";
-        }
-        if (time_out.has()) {
-            os << "  time_out: " << wirekrak::core::to_string(time_out.value()) << "\n";
-        }
-        if (error.has()) {
-            os << "  error: " << error.value() << "\n";
-        }
-        os << "}\n";
+        os << "[PONG] ";
+        to_json(os);
     }
 
 #ifndef NDEBUG
@@ -68,7 +101,7 @@ struct Pong {
     [[nodiscard]]
     inline std::string str() const {
         std::ostringstream oss;
-        dump(oss);
+        to_json(oss);
         return oss.str();
     }
 #endif

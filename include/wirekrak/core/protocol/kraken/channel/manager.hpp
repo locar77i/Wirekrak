@@ -36,53 +36,6 @@ namespace channel {
  */
 class Manager {
 public:
-
-    class SymbolGroup {
-    public:
-        struct SymbolEntry {
-            SymbolId symbol_id;
-            uint64_t group_id;  // the req_id of the original subscription request
-        };
-
-    private:
-        std::vector<SymbolEntry> entries_;
-    
-    public:
-        [[nodiscard]]
-        inline std::vector<SymbolEntry>& entries() noexcept {
-            return entries_;
-        }
-
-        [[nodiscard]]
-        inline const std::vector<SymbolEntry>& entries() const noexcept {
-            return entries_;
-        }
-
-        [[nodiscard]]
-        inline bool empty() const noexcept {
-            return entries_.empty();
-        }
-
-        [[nodiscard]]
-        inline std::size_t size() const noexcept {
-            return entries_.size();
-        }
-
-        inline void erase(SymbolId symbol_id) noexcept {
-            auto it = std::remove_if(entries_.begin(), entries_.end(), [&](const SymbolEntry& e) { return e.symbol_id == symbol_id; });
-            if (it != entries_.end()) {
-                entries_.erase(it, entries_.end());
-            }
-        }
-
-        inline bool contains(SymbolId id) const noexcept {
-            return std::any_of(entries_.begin(), entries_.end(), [&](const SymbolEntry& e){ return e.symbol_id == id; });
-        }
-
-        
-    };
-
-public:
     Manager() = default;
 
     // Register outbound subscribe request (called before sending a subscribe request)
@@ -133,6 +86,20 @@ public:
         if (!done) WK_WARN("[SUBMGR] Unsubscription ACK omitted for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << group_id << ")");
     }
 
+    inline void try_process_rejection(std::uint64_t req_id, Symbol symbol) noexcept {
+        SymbolId symbol_id = intern_symbol(symbol);
+        // Try to reject from pending subscriptions
+        if (try_process_rejection_on_(pending_subscriptions_, req_id, symbol_id)) {
+            WK_WARN("[SUBMGR] Subscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
+            return;
+        }
+        // Try to reject from pending unsubscriptions
+        if (try_process_rejection_on_(pending_unsubscriptions_, req_id, symbol_id)) {
+            WK_WARN("[SUBMGR] Unsubscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
+            return;
+        }
+    }
+
     // ------------------------------------------------------------
     // State queries
     // ------------------------------------------------------------
@@ -158,7 +125,7 @@ public:
     }
 
     // Access active subscriptions
-    [[nodiscard]] inline const std::unordered_map<uint64_t, SymbolGroup>& active() const noexcept {
+    [[nodiscard]] inline const std::unordered_set<SymbolId>& active() const noexcept {
         return active_;
     }
 
@@ -182,7 +149,11 @@ public:
 private:
     std::unordered_map<std::uint64_t, std::vector<SymbolId>> pending_subscriptions_;
     std::unordered_map<std::uint64_t, std::vector<SymbolId>> pending_unsubscriptions_;
-    std::unordered_map<uint64_t, SymbolGroup> active_;
+    // Invariant:
+    /// active_ contains exactly the set of symbols currently subscribed on the server for this channel.
+    // It is mutated ONLY on successful subscribe/unsubscribe ACKs or reset.
+    // Rejections never touch active_.
+    std::unordered_set<SymbolId> active_;
 
 private:
     // ------------------------------------------------------------
@@ -191,6 +162,7 @@ private:
 
     // Process ACK for subscription. Called when we parse a successful {"method":"subscribe","success":true}
     [[nodiscard]] inline bool confirm_subscription_(const Symbol& symbol, std::uint64_t req_id) noexcept {
+        WK_DEBUG("[SUBMGR] Confirming subscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
         auto it = pending_subscriptions_.find(req_id);
@@ -206,15 +178,15 @@ private:
             return false;
         }
         // create active group now (if not exists)
-        auto& group = active_[req_id];  // create or reuse the group
-        // and an active entry immediately
-        group.entries().push_back({
-            .symbol_id = symbol_id,
-            .group_id = req_id
-        });
-        // Erase symbol from pending list. If no symbols left → remove req_id entry
+        auto [active_it, inserted] = active_.insert(symbol_id);
+        if (!inserted) {
+            WK_WARN("[SUBMGR] Symbol {" << symbol << "} already active");
+        }
+        // Erase symbol from pending list
+        WK_TRACE("[SUBMGR] Subscription confirmed for symbol {" << symbol << "} (req_id=" << req_id << ")");
         vec.erase(pos);
-        if (vec.empty()) {
+        if (vec.empty()) { // If no symbols left → remove req_id entry
+            WK_TRACE("[SUBMGR] All pending subscriptions confirmed for req_id=" << req_id);
             pending_subscriptions_.erase(it);
         }
 
@@ -223,6 +195,7 @@ private:
 
     // Process ACK for subscription. Called when a subscribe request returns success=false
     [[nodiscard]] inline bool reject_subscription_(const Symbol& symbol, std::uint64_t req_id) noexcept {
+        WK_DEBUG("[SUBMGR] Rejecting subscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
         auto it = pending_subscriptions_.find(req_id);
@@ -237,9 +210,11 @@ private:
             WK_WARN("[SUBMGR] Unable to reject subscription - symbol not found in pending (req_id=" << req_id << ")");
             return false;
         }
+        // Erase symbol from pending list
+        WK_TRACE("[SUBMGR] Subscription rejected for symbol {" << symbol << "} (req_id=" << req_id << ")");
         vec.erase(pos);
-         // If no symbols left → remove req_id entry
-        if (vec.empty()) {
+        if (vec.empty()) { // If no symbols left → remove req_id entry
+            WK_TRACE("[SUBMGR] All pending subscriptions rejected for req_id=" << req_id);
             pending_subscriptions_.erase(it);
         }
         return true;
@@ -251,6 +226,7 @@ private:
 
     // Process ACK for unsubscription. Called when we parse a successful {"method":"unsubscribe","success":true}
     [[nodiscard]] inline bool confirm_unsubscription_(const Symbol& symbol, std::uint64_t req_id) noexcept {
+        WK_DEBUG("[SUBMGR] Confirming unsubscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
         auto it = pending_unsubscriptions_.find(req_id);
@@ -265,18 +241,17 @@ private:
             WK_WARN("[SUBMGR] Unable to confirm unsubscription - symbol not found in pending (req_id=" << req_id << ")");
             return false;
         }
-        // Remove from active_ list
-        auto active_it = active_.find(req_id);
-        if (active_it != active_.end()) {
-            auto& group = active_it->second;
-            group.erase(symbol_id);
-            if (group.empty()) { // If the subscription group is now empty → delete it
-                active_.erase(active_it);
-            }
+        // Remove from active_ set
+        WK_TRACE("[SUBMGR] Removing symbol {" << symbol << "} from active subscriptions (req_id=" << req_id << ")");
+        std::size_t erased = active_.erase(symbol_id);
+        if (erased == 0) {
+            WK_WARN("[SUBMGR] Unsubscription ACK for non-active symbol {" << symbol << "}");
         }
-        // Erase symbol from pending list. If no symbols left → remove req_id entry
+        // Erase symbol from pending list
+        WK_TRACE("[SUBMGR] Unsubscription confirmed for symbol {" << symbol << "} (req_id=" << req_id << ")");
         vec.erase(pos);
-        if (vec.empty()) {
+        if (vec.empty()) { // If no symbols left → remove req_id entry
+            WK_TRACE("[SUBMGR] All pending unsubscriptions confirmed for req_id=" << req_id);
             pending_unsubscriptions_.erase(it);
         }
 
@@ -285,6 +260,7 @@ private:
 
     // Process ACK for unsubscription. Called when a subscribe request returns success=false
     [[nodiscard]] inline bool reject_unsubscription_(const Symbol& symbol, std::uint64_t req_id) noexcept {
+        WK_DEBUG("[SUBMGR] Rejecting unsubscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
         auto it = pending_unsubscriptions_.find(req_id);
@@ -299,11 +275,35 @@ private:
             WK_WARN("[SUBMGR] Unable to reject unsubscription - symbol not found in pending (req_id=" << req_id << ")");
             return false;
         }
+        // Erase symbol from pending list
+        WK_TRACE("[SUBMGR] Unsubscription rejected for symbol {" << symbol << "} (req_id=" << req_id << ")");
         vec.erase(pos);
-         // If no symbols left → remove req_id entry
-        if (vec.empty()) {
+        if (vec.empty()) { // If no symbols left → remove req_id entry
+            WK_TRACE("[SUBMGR] All pending unsubscriptions rejected for req_id=" << req_id);
             pending_unsubscriptions_.erase(it);
         }
+        return true;
+    }
+
+    template <typename PendingMap>
+    [[nodiscard]] inline bool try_process_rejection_on_(PendingMap& pending, std::uint64_t req_id, SymbolId symbol_id) noexcept {
+        // Find pending subscription by req_id
+        auto it = pending.find(req_id);
+        if (it == pending.end()) {
+            return false;
+        }
+        // Erase symbol_id (O(n) but n<=10 always because Kraken allows up to 10 symbols per request)
+        auto& vec = it->second;
+        auto pos = std::find(vec.begin(), vec.end(), symbol_id);
+        if (pos == vec.end()) {
+            return false;
+        }
+        vec.erase(pos);
+        // If no symbols left → remove req_id entry
+        if (vec.empty()) {
+            pending.erase(it);
+        }
+
         return true;
     }
 

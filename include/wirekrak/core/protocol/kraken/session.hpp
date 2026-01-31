@@ -114,9 +114,15 @@ public:
         });
     }
 
+    // open connection
     [[nodiscard]]
     inline bool connect(const std::string& url) {
         return connection_.open(url) == transport::Error::None;
+    }
+
+    // close connection
+    inline void close() {
+        connection_.close();
     }
 
     // Register pong callback
@@ -393,7 +399,14 @@ private:
 
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
         if (hooks_.handle_rejection) {
-            WK_WARN("[!!] TODO: Rejection internal management (f. ex. drop invalid symbols, ...)");
+            if (notice.req_id.has()) {
+                if (notice.symbol.has()) {
+                    // we cannot infer channel from notice, so we try all managers
+                    trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                    book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                }
+            }
+            
             hooks_.handle_rejection(notice);
         }
     }
@@ -446,18 +459,18 @@ private:
     // Perform subscription with ACK handling
     template<class RequestT, class Callback>
     inline void subscribe_with_ack_(RequestT req, Callback&& cb) {
-        WK_DEBUG("subscribe_with_ack_() called: " << req.to_json());
+        WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         using ResponseT = typename channel_traits<RequestT>::response_type;
         using StoredCallback = std::function<void(const ResponseT&)>;
         // 1) Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
-        WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols) << " with req_id=" << lcr::to_string(req.req_id));
         // 2) Store callback safely once and register in replay DB
         StoredCallback cb_copy = std::forward<Callback>(cb);
         replay_db_.add(req, cb_copy);
         // 3) Send JSON BEFORE moving req.symbols
+        WK_DEBUG("Sending subscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
             return;
@@ -472,15 +485,15 @@ private:
     // Perform unsubscription with ACK handling
     template<class RequestT>
     inline void unsubscribe_with_ack_(RequestT req) {
-        WK_DEBUG("unsubscribe_with_ack_() called: " << req.to_json());
+        WK_INFO("Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         // 1) Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
-        WK_INFO("Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols) << " with req_id=" << lcr::to_string(req.req_id));
         // 2) Register in replay DB (no callback needed for unsubscription)
         replay_db_.remove(req);
         // 3) Send JSON BEFORE moving req.symbols
+        WK_DEBUG("Sending unsubscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
             return;

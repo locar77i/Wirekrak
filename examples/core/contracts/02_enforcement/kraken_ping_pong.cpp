@@ -20,6 +20,7 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <atomic>
 
 #include "wirekrak/core.hpp"
 #include "common/logger.hpp"
@@ -33,6 +34,8 @@ int main() {
     // -------------------------------------------------------------------------
     wirekrak::log::set_level("info");
 
+    std::atomic<bool> pong_received{false};
+
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
@@ -45,27 +48,28 @@ int main() {
     // Observe protocol-level status events
     // -------------------------------------------------------------------------
     session.on_status([](const schema::status::Update& status) {
-        std::cout << " -> [STATUS] " << status << std::endl;
+        std::cout << " -> " << status << std::endl;
     });
 
     // -------------------------------------------------------------------------
     // Observe pong responses
     // -------------------------------------------------------------------------
     session.on_pong([&](const schema::system::Pong& pong) {
-        std::cout << " -> [PONG] " << pong << std::endl;
+        std::cout << " -> " << pong << "\n\n";
 
         // Engine-measured RTT (if provided by Kraken)
         if (pong.time_in.has() && pong.time_out.has()) {
             auto engine_rtt = pong.time_out.value() - pong.time_in.value();
-            std::cout << "    engine RTT: " << engine_rtt << std::endl;
+            std::cout << "    engine RTT: " << engine_rtt.count() << " ns\n";
         }
 
         // Local RTT using wall-clock
         auto now = std::chrono::steady_clock::now();
-        auto local_rtt =
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - ping_sent_at);
+        auto local_rtt = std::chrono::duration_cast<std::chrono::milliseconds>(now - ping_sent_at);
+        std::cout << "    local RTT : " << local_rtt.count() << " ms\n" << std::endl;
 
-        std::cout << "    local RTT: " << local_rtt.count() << " ms" << std::endl;
+        // Mark pong as received
+        pong_received.store(true, std::memory_order_relaxed);
     });
 
     // -------------------------------------------------------------------------
@@ -76,9 +80,6 @@ int main() {
         return -1;
     }
 
-    // Allow connection handshake to complete
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
     // -------------------------------------------------------------------------
     // Send control-plane ping
     // -------------------------------------------------------------------------
@@ -88,11 +89,24 @@ int main() {
     // -------------------------------------------------------------------------
     // Poll for a short, bounded observation window
     // -------------------------------------------------------------------------
-    auto until = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (std::chrono::steady_clock::now() < until) {
+    while (!pong_received.load(std::memory_order_relaxed)) {
         session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+
+    // -------------------------------------------------------------------------
+    // Graceful shutdown
+    // -------------------------------------------------------------------------
+    session.close();
+
+/*
+    // Drain a short window to allow event processing
+    auto drain_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
+    while (std::chrono::steady_clock::now() < drain_until) {
+        session.poll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+*/
 
     std::cout << "\n[SUCCESS] Control-plane interaction observed.\n";
     return 0;
