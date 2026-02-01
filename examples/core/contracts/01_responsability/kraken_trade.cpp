@@ -52,7 +52,10 @@ int main(int argc, char** argv) {
     const auto& params =
         wirekrak::cli::trade::configure(argc, argv,
             "Wirekrak Core — Protocol Trade Subscription Example\n"
-            "Demonstrates explicit protocol subscriptions and ACK handling.\n"
+            "Demonstrates explicit protocol subscriptions and ACK handling.\n",
+            "This example runs indefinitely until interrupted.\n"
+            "Press Ctrl+C to unsubscribe and exit cleanly.\n"
+            "Let's enjoy trading with Wirekrak!"
         );
 
     params.dump("=== Runtime Parameters ===", std::cout);

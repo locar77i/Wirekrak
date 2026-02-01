@@ -12,6 +12,8 @@
 #include "wirekrak/core/config/ring_sizes.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/protocol/control/req_id.hpp"
+#include "wirekrak/core/protocol/policy/liveness.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
@@ -79,6 +81,7 @@ Advanced users may still customize behavior by:
 ===============================================================================
 */
 
+
 template<transport::WebSocketConcept WS>
 class Session {
     using pong_handler_t       = std::function<void(const schema::system::Pong&)>;
@@ -86,6 +89,8 @@ class Session {
     using status_handler_t     = std::function<void(const schema::status::Update&)>;
     using connect_handler_t    = std::function<void()>;
     using disconnect_handler_t = std::function<void()>;
+    using liveness_warning_handler_t = std::function<void(std::chrono::milliseconds)>;
+    using liveness_timeout_handler_t = std::function<void()>;
 
 public:
     Session()
@@ -106,7 +111,7 @@ public:
         });
 
         connection_.on_liveness_warning([this](std::chrono::milliseconds remaining) {
-            handle_liveness_warning_(remaining);
+            handle_passive_liveness_warning_(remaining);
         });
 
         connection_.on_liveness_timeout([this]() {
@@ -144,15 +149,25 @@ public:
     inline void on_connect(connect_handler_t cb) noexcept {
         hooks_.handle_connect = std::move(cb);
     }
+
     // Register observational disconnect callback
     inline void on_disconnect(disconnect_handler_t cb) noexcept {
         hooks_.handle_disconnect = std::move(cb);
     }
 
+    // Register observational liveness warning callback
+    inline void on_liveness_warning(liveness_warning_handler_t cb) noexcept {
+        hooks_.handle_liveness_warning = std::move(cb);
+    }
+
+    // Register observational liveness timeout callback
+    inline void on_liveness_timeout(liveness_timeout_handler_t cb) noexcept {
+        hooks_.handle_liveness_timeout = std::move(cb);
+    }
+
     // Send ping
-    inline void ping(lcr::optional<std::uint64_t> req_id = {}) noexcept{
-        schema::system::Ping ping{.req_id = req_id};
-        send_raw_request_(schema::system::Ping{.req_id = req_id});
+    inline void ping() noexcept{
+        send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});
     }
 
     template <request::Subscription RequestT, class Callback>
@@ -287,6 +302,20 @@ public:
         }}
     }
 
+    //
+    inline void set_policy(policy::Liveness p) noexcept {
+        if (p == policy::Liveness::Active) {
+            connection_.on_liveness_warning([this](std::chrono::milliseconds remaining) {
+                handle_active_liveness_warning_(remaining);
+            });
+        }
+        else {
+            connection_.on_liveness_warning([this](std::chrono::milliseconds remaining) {
+                handle_passive_liveness_warning_(remaining);
+            });
+        }
+    }
+
     // Accessor to the heartbeat counter
     [[nodiscard]]
     inline uint64_t heartbeat_total() const noexcept {
@@ -308,7 +337,7 @@ public:
 
 private:
     // Sequence generator for request IDs
-    lcr::sequence req_id_seq_{};
+    lcr::sequence req_id_seq_{control::PROTOCOL_BASE};
 
     // Underlying streaming client (and telemetry)
     transport::telemetry::Connection telemetry_;
@@ -316,11 +345,13 @@ private:
 
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
-        pong_handler_t       handle_pong{};       // Pong callback
-        rejection_handler_t  handle_rejection{};  // Rejection callback
-        status_handler_t     handle_status{};     // Status callback
-        connect_handler_t    handle_connect{};    // Connect callback
-        disconnect_handler_t handle_disconnect{}; // Disconnect callback
+        pong_handler_t             handle_pong{};             // Pong callback
+        rejection_handler_t        handle_rejection{};        // Rejection callback
+        status_handler_t           handle_status{};           // Status callback
+        connect_handler_t          handle_connect{};          // Connect callback
+        disconnect_handler_t       handle_disconnect{};       // Disconnect callback
+        liveness_warning_handler_t handle_liveness_warning{}; // Liveness warning callback
+        liveness_timeout_handler_t handle_liveness_timeout{}; // Liveness timeout callback
     };
 
     // Handlers bundle
@@ -383,12 +414,23 @@ private:
         parser_.parse_and_route(sv);
     }
 
-    inline void handle_liveness_warning_(std::chrono::milliseconds remaining) {
-        // handle liveness warning
+    inline void handle_passive_liveness_warning_(std::chrono::milliseconds remaining) {
+        if (hooks_.handle_liveness_warning) {
+            hooks_.handle_liveness_warning(remaining);
+        }
+    }
+
+    inline void handle_active_liveness_warning_(std::chrono::milliseconds remaining) {
+        if (hooks_.handle_liveness_warning) {
+            hooks_.handle_liveness_warning(remaining);
+        }
+        send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});
     }
 
     inline void handle_liveness_timeout_() {
-        // handle liveness timeout
+        if (hooks_.handle_liveness_timeout) {
+            hooks_.handle_liveness_timeout();
+        }
     }
 
     inline void handle_pong_(const schema::system::Pong& pong) noexcept {

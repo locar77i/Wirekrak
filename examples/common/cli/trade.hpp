@@ -38,18 +38,14 @@ namespace wirekrak::cli::trade {
     // Build CLI for examples
     // -------------------------------------------------------------
     [[nodiscard]]
-    inline Params configure(int argc, char** argv, std::string_view description) {
+    inline Params configure(int argc, char** argv, std::string_view description, std::string_view footer) {
         CLI::App app{std::string(description)};
         Params params{};
         app.add_option("--url", params.url, "Kraken WebSocket URL")->check(ws_url_validator)->default_val(params.url);
         app.add_option("-s,--symbol", params.symbols, "Trading symbol(s) (e.g. -s BTC/USD)")->check(symbol_validator)->default_val(params.symbols);
         app.add_flag("--snapshot", params.snapshot, "Request trade snapshot");
         app.add_option("-l, --log-level", params.log_level, "Log level: trace | debug | info | warn | error")->default_val(params.log_level);
-        app.footer(
-            "This example runs indefinitely until interrupted.\n"
-            "Press Ctrl+C to unsubscribe and exit cleanly.\n"
-            "Let's enjoy trading with Wirekrak & Flashstrike!"
-        );
+        app.footer(std::string(footer));
         try {
             app.parse(argc, argv);
         } catch (const CLI::ParseError& e) {

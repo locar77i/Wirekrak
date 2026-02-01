@@ -30,7 +30,7 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
-#include "common/cli/minimal.hpp"
+#include "common/cli/symbol.hpp"
 
 // -----------------------------------------------------------------------------
 // Lifecycle flags
@@ -45,9 +45,12 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Runtime configuration (no hard-coded behavior)
     // -------------------------------------------------------------------------
-    const auto& params = wirekrak::cli::minimal::configure(argc, argv,
+    const auto& params = wirekrak::cli::symbol::configure(argc, argv,
         "Wirekrak Core — Subscription Replay Example\n"
-        "Demonstrates subscription replay enforced by Wirekrak Core.\n"
+        "Demonstrates subscription replay enforced by Wirekrak Core.\n",
+        "This example cannot be terminated via Ctrl+C\n"
+        "The only exit path is a real disconnect followed by a successful reconnect.\n"
+        "The user does not resubscribe or manage replay logic.\n"
     );
     params.dump("=== Runtime Parameters ===", std::cout);
 

@@ -47,7 +47,10 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     const auto& params = wirekrak::cli::trade::configure(argc, argv,
         "Wirekrak Lite - Kraken Trade Subscription Example\n"
-        "This example let's you subscribe to trade events on a given symbol from Kraken WebSocket API v2.\n"
+        "This example let's you subscribe to trade events on a given symbol from Kraken WebSocket API v2.\n",
+        "This example runs indefinitely until interrupted.\n"
+        "Press Ctrl+C to unsubscribe and exit cleanly.\n"
+        "Let's enjoy trading with Wirekrak!"
     );
     params.dump("=== Trade Example Parameters ===", std::cout);
 

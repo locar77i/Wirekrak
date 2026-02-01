@@ -40,7 +40,7 @@ namespace wirekrak::cli::book {
     // Build CLI for examples
     // -------------------------------------------------------------
     [[nodiscard]]
-    inline Params configure(int argc, char** argv, std::string_view description) {
+    inline Params configure(int argc, char** argv, std::string_view description, std::string_view footer) {
         CLI::App app{std::string(description)};
         Params params{};
         app.add_option("--url", params.url, "Kraken WebSocket URL")->check(ws_url_validator)->default_val(params.url);
@@ -48,11 +48,7 @@ namespace wirekrak::cli::book {
         app.add_option("-d,--depth", params.depth, "Order book depth (10, 25, 100, 500, 1000)")->check(depth_validator)->default_val(params.depth);
         app.add_flag("--snapshot", params.snapshot, "Request book snapshot");
         app.add_option("-l, --log-level", params.log_level, "Log level: trace | debug | info | warn | error")->default_val(params.log_level);
-        app.footer(
-            "This example runs indefinitely until interrupted.\n"
-            "Press Ctrl+C to unsubscribe and exit cleanly.\n"
-            "Let's enjoy trading with Wirekrak & Flashstrike!"
-        );
+        app.footer(std::string(footer));
         try {
             app.parse(argc, argv);
         } catch (const CLI::ParseError& e) {

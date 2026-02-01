@@ -22,6 +22,7 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
+#include "common/cli/symbol.hpp"
 
 // -----------------------------------------------------------------------------
 // Lifecycle control
@@ -32,9 +33,20 @@ void on_signal(int) {
     running.store(false);
 }
 
-int main() {
+int main(int argc, char** argv) {
     using namespace wirekrak::core;
     namespace schema = protocol::kraken::schema;
+
+    // -------------------------------------------------------------------------
+    // Runtime configuration (no hard-coded behavior)
+    // -------------------------------------------------------------------------
+    const auto& params = wirekrak::cli::symbol::configure(argc, argv,
+            "Wirekrak Core - Minimal Stateful Stream (Trade)\n"
+            "Demonstrates explicit subscription and poll-driven execution.\n",
+            "This example shows that stateful streams do not change Core's execution model.\n"
+            "Subscriptions are explicit, and message delivery is driven by poll().\n"
+        );
+    params.dump("=== Runtime Parameters ===", std::cout);
 
     // -------------------------------------------------------------------------
     // Signal handling (explicit termination)
@@ -46,7 +58,7 @@ int main() {
     // -------------------------------------------------------------------------
     Session session;
 
-    if (!session.connect("wss://ws.kraken.com/v2")) {
+    if (!session.connect(params.url)) {
         std::cerr << "Failed to connect\n";
         return -1;
     }
@@ -57,7 +69,7 @@ int main() {
     int messages_received = 0;
 
     session.subscribe(
-        schema::trade::Subscribe{ .symbols = {"BTC/EUR"} },
+        schema::trade::Subscribe{ .symbols = params.symbols },
         [&](const schema::trade::ResponseView& trade) {
             std::cout << " -> [TRADE] " << trade << std::endl;
             ++messages_received;
@@ -76,7 +88,7 @@ int main() {
     // Explicit unsubscription
     // -------------------------------------------------------------------------
     session.unsubscribe(
-        schema::trade::Unsubscribe{ .symbols = {"BTC/EUR"} }
+        schema::trade::Unsubscribe{ .symbols = params.symbols }
     );
 
     // -------------------------------------------------------------------------

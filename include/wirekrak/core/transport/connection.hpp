@@ -128,6 +128,7 @@ public:
     // Connection lifecycle
     [[nodiscard]]
     inline Error open(const std::string& url) noexcept {
+        WK_DEBUG("[CONN] Connecting to: " << url);
         WK_TL1( telemetry_.open_calls_total.inc() ); // This represents explicit caller intent
         if (get_state_() != State::Disconnected && get_state_() != State::WaitingReconnect) {
             WK_WARN("[CONN] open() called while not disconnected  (state: " << to_string(get_state_()) << "). Ignoring.");
@@ -148,7 +149,6 @@ public:
         // 3) Create a fresh transport instance
         create_transport_();
         // 4) Attempt reconnection
-        WK_INFO("[CONN] Connecting to: " << url);
         error = ws_->connect(parsed_url.host, parsed_url.port, parsed_url.path);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {
@@ -167,7 +167,7 @@ public:
         }
         // 5) Enter connected state
         WK_TL1( telemetry_.connect_success_total.inc() ); // This reflects a state-machine fact, not a transport fact.
-        WK_INFO("[CONN] Connected successfully.");
+        WK_INFO("[CONN] Connected to server: " << last_url_);
         enter_connected_state_();
         return Error::None;
     }
@@ -499,7 +499,8 @@ private:
             return;
         }
         WK_TL1( telemetry_.disconnect_events_total.inc() ); // transport closure as observed by Connection
-        WK_DEBUG("[CONN] WebSocket closed.");
+        WK_INFO("[CONN] Disconnected from server: " << last_url_);
+        // Invoke disconnect callback (if any)
         if (hooks_.on_disconnect_cb_) {
             hooks_.on_disconnect_cb_();
         }
@@ -549,12 +550,12 @@ private:
 
     [[nodiscard]]
     inline bool reconnect_() {
+        WK_DEBUG("[CONN] Reconnecting to: " << last_url_ << " (attempt " << (retry_attempts_) << ")");
         WK_TL1( telemetry_.retry_attempts_total.inc() ); // One attempt = one call
         if (get_state_() != State::WaitingReconnect) {
             WK_WARN("[CONN] reconnect() called while not waiting to reconnect (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
-        WK_INFO("[CONN] Attempting reconnection... (attempt " << (retry_attempts_) << ")");
         // 1) Enter connecting state
         set_state_(State::Connecting);
         // 2) Parse and validate URL
@@ -569,7 +570,6 @@ private:
         // 3) Create a fresh transport instance
         create_transport_();
         // 4) Attempt reconnection
-        WK_INFO("[CONN] Reconnecting to: " << last_url_);
         error = ws_->connect(parsed_url.host, parsed_url.port, parsed_url.path);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {

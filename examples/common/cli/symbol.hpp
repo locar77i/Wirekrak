@@ -10,16 +10,19 @@
 #include "common/cli/validators.hpp"
 #include "common/logger.hpp"
 
-namespace wirekrak::cli::minimal {
+namespace wirekrak::cli::symbol {
 
 struct Params {
     std::string url                  = "wss://ws.kraken.com/v2";
+    std::vector<std::string> symbols = {"BTC/EUR"};
     std::string log_level            = "info";
 
     inline void dump(const std::string& header, std::ostream& os) const {
-        os << header << ":\n";
-        os << "  URL       : " << url << "\n";
-        os << "  Log Level : " << log_level << "\n";
+        os << header << ":\n  URL       : " << url << "\n" << "  Symbols   : ";
+        for (const auto& s : symbols) {
+            os << s << " ";
+        }
+        os << "\n  Log Level : " << log_level << "\n";
     }
 };
 
@@ -29,6 +32,7 @@ inline Params configure(int argc, char** argv, std::string_view description, std
     Params params{};
 
     app.add_option("--url", params.url, "WebSocket endpoint")->check(ws_url_validator)->default_val(params.url);
+    app.add_option("-s,--symbol", params.symbols, "Symbol(s) to use (e.g. -s BTC/EUR)")->check(symbol_validator)->default_val(params.symbols);
     app.add_option("-l,--log-level", params.log_level, "Log level: trace | debug | info | warn | error")->default_val(params.log_level);
 
     app.footer(std::string(footer));
@@ -44,4 +48,4 @@ inline Params configure(int argc, char** argv, std::string_view description, std
     return params;
 }
 
-} // namespace wirekrak::cli::minimal
+} // namespace wirekrak::cli::symbol

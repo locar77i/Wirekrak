@@ -23,18 +23,25 @@
 #include <atomic>
 
 #include "wirekrak/core.hpp"
-#include "common/logger.hpp"
+#include "common/cli/minimal.hpp"
 
-int main() {
+int main(int argc, char** argv) {
     using namespace wirekrak::core;
     namespace schema = protocol::kraken::schema;
 
-    // -------------------------------------------------------------------------
-    // hard-coded configuration
-    // -------------------------------------------------------------------------
-    wirekrak::log::set_level("info");
-
     std::atomic<bool> pong_received{false};
+
+    // -------------------------------------------------------------------------
+    // Runtime configuration (no hard-coded behavior)
+    // -------------------------------------------------------------------------
+    const auto& params = wirekrak::cli::minimal::configure(argc, argv,
+        "Wirekrak Core - Control Plane (Ping / Pong)\n"
+        "Demonstrates Wirekrak Core's control-plane support.\n",
+        "This example requires no market data subscriptions.\n"
+        "It shows ping/pong interaction and status observation.\n"
+        "Engine timestamps and local wall-clock time can be correlated.\n"
+    );
+    params.dump("=== Runtime Parameters ===", std::cout);
 
     // -------------------------------------------------------------------------
     // Session setup
@@ -75,16 +82,15 @@ int main() {
     // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
-    if (!session.connect("wss://ws.kraken.com/v2")) {
-        std::cerr << "Failed to connect\n";
+    if (!session.connect(params.url)) {
         return -1;
     }
 
     // -------------------------------------------------------------------------
     // Send control-plane ping
     // -------------------------------------------------------------------------
-    std::cout << "[PING] sending ping\n";
-    session.ping(1);   // explicit req_id for observability
+    std::cout << "[example] Sending ping...\n";
+    session.ping(); // req_id is auto-assigned internally (0 is ping-reserved for control-plane)
 
     // -------------------------------------------------------------------------
     // Poll for a short, bounded observation window
@@ -98,15 +104,6 @@ int main() {
     // Graceful shutdown
     // -------------------------------------------------------------------------
     session.close();
-
-/*
-    // Drain a short window to allow event processing
-    auto drain_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
-    while (std::chrono::steady_clock::now() < drain_until) {
-        session.poll();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-*/
 
     std::cout << "\n[SUCCESS] Control-plane interaction observed.\n";
     return 0;

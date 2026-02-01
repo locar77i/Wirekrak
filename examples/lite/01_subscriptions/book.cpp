@@ -47,7 +47,10 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     const auto& params = wirekrak::cli::book::configure(argc, argv,
         "Wirekrak Lite - Kraken Book Subscription Example\n"
-        "This example let's you subscribe to book events on a given symbol from Kraken WebSocket API v2.\n"
+        "This example let's you subscribe to book events on a given symbol from Kraken WebSocket API v2.\n",
+        "This example runs indefinitely until interrupted.\n"
+        "Press Ctrl+C to unsubscribe and exit cleanly.\n"
+        "Let's enjoy trading with Wirekrak!"
     );
     params.dump("=== Book Example Parameters ===", std::cout);
 

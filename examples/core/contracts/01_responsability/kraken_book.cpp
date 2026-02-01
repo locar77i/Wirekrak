@@ -51,7 +51,10 @@ int main(int argc, char** argv) {
     const auto& params =
         wirekrak::cli::book::configure(argc, argv,
             "Wirekrak Core — Protocol Book Subscription Example\n"
-            "Demonstrates explicit, stateful book subscriptions with ACK tracking.\n"
+            "Demonstrates explicit, stateful book subscriptions with ACK tracking.\n",
+            "This example runs indefinitely until interrupted.\n"
+            "Press Ctrl+C to unsubscribe and exit cleanly.\n"
+            "Let's enjoy trading with Wirekrak!"
         );
 
     params.dump("=== Runtime Parameters ===", std::cout);

@@ -18,7 +18,7 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
-#include "common/cli/minimal.hpp"
+#include "common/cli/symbol.hpp"
 
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
@@ -29,9 +29,13 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Runtime configuration (no hard-coded behavior)
     // -------------------------------------------------------------------------
-    const auto& params = wirekrak::cli::minimal::configure(argc, argv,
+    const auto& params = wirekrak::cli::symbol::configure(argc, argv,
         "Wirekrak Core — Subscription ACK Enforcement Example\n"
-        "Demonstrates that subscription state in Wirekrak Core is strictly ACK-driven.\n"
+        "Demonstrates that subscription state in Wirekrak Core is strictly ACK-driven.\n",
+        "Subscriptions are NOT assumed active until ACKed.\n"
+        "Duplicate subscribe requests are not merged optimistically.\n"
+        "Unsubscribe before ACK is handled deterministically.\n"
+        "Core never infers or fabricates subscription state.\n"
     );
     params.dump("=== Runtime Parameters ===", std::cout);
 
