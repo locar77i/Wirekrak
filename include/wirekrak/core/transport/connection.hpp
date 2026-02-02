@@ -82,6 +82,21 @@ It is intentionally decoupled from any exchange schema or message format.
 ===============================================================================
 */
 
+enum class Liveness : uint8_t {
+    Healthy,
+    Warning,   // within danger window
+    TimedOut   // timeout decision taken
+};
+
+std::string_view to_string(Liveness liveness) {
+    switch (liveness) {
+        case Liveness::Healthy:  return "Healthy";
+        case Liveness::Warning:  return "Warning";
+        case Liveness::TimedOut: return "TimedOut";
+        default:                 return "Unknown";
+    }
+}
+
 // Context structure for retry callbacks
 // Provides information about the retry attempt.
 struct RetryContext {
@@ -102,8 +117,6 @@ public:
     using message_handler_t          = std::function<void(std::string_view)>;
     using connect_handler_t          = std::function<void()>;
     using disconnect_handler_t       = std::function<void()>;
-    using liveness_handler_t         = std::function<void()>;
-    using liveness_warning_handler_t = std::function<void(std::chrono::milliseconds remaining)>;
     using retry_handler_t            = std::function<void(const RetryContext&)>;
 
 public:
@@ -214,30 +227,6 @@ public:
 
     // // Event loop
     inline void poll() noexcept {
-        if (get_state_() == State::Connected) {
-            // === Liveness warning check ===
-            if (!liveness_warning_fired_ && hooks_.on_liveness_warning_cb_) {
-                auto remaining = liveness_remaining_();
-                // Check if we are within the liveness danger window
-                if (remaining <= liveness_danger_window_ && remaining.count() > 0) {
-                    WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
-                    liveness_warning_fired_ = true;
-                    hooks_.on_liveness_warning_cb_(remaining);
-                }
-            }
-            // === Liveness timeout check ===
-            if (is_liveness_stale_()) {
-                WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
-                last_error_.store(Error::Timeout, std::memory_order_relaxed);
-                WK_TRACE("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
-                set_state_(State::ForcedDisconnection);
-                if (hooks_.on_liveness_timeout_cb_) {
-                    hooks_.on_liveness_timeout_cb_();
-                }
-                // Force transport failure → triggers reconnection
-                ws_->close();
-            }
-        }
         // === Reconnection logic ===
         auto now = std::chrono::steady_clock::now();
         if (get_state_() == State::WaitingReconnect && now >= next_retry_) {
@@ -249,6 +238,30 @@ public:
                 } else {
                     set_state_(State::Disconnected);
                 }
+            }
+        }
+        // === Liveness logic ===
+        // NOTE: liveness is evaluated only while Connected.
+        // Once a timeout forces disconnection, reconnection logic takes over.
+        if (get_state_() == State::Connected) {
+            // === Liveness warning check ===
+            if (liveness_.load(std::memory_order_relaxed) == Liveness::Healthy) {
+                auto remaining = liveness_remaining_();
+                // Check if we are within the liveness danger window
+                if (remaining <= liveness_danger_window_ && remaining.count() > 0) {
+                    WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
+                    liveness_.store(Liveness::Warning, std::memory_order_relaxed);
+                }
+            }
+            // === Liveness timeout check ===
+            if (is_liveness_stale_()) {
+                WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
+                last_error_.store(Error::Timeout, std::memory_order_relaxed);
+                WK_TRACE("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
+                liveness_.store(Liveness::TimedOut, std::memory_order_relaxed);
+                set_state_(State::ForcedDisconnection);
+                // Force transport failure → triggers reconnection
+                ws_->close();
             }
         }
     }
@@ -266,14 +279,6 @@ public:
         hooks_.on_disconnect_cb_ = std::move(cb);
     }
 
-    void on_liveness_warning(liveness_warning_handler_t cb) noexcept {
-        hooks_.on_liveness_warning_cb_ = std::move(cb);
-    }
-    
-    void on_liveness_timeout(liveness_handler_t cb) noexcept {
-        hooks_.on_liveness_timeout_cb_ = std::move(cb);
-    }
-
     void on_retry(retry_handler_t cb) noexcept {
         hooks_.on_retry_cb_ = std::move(cb);
     }
@@ -282,6 +287,16 @@ public:
     [[nodiscard]]
     inline State get_state() const noexcept {
         return state_;
+    }
+
+    [[nodiscard]]
+    inline Liveness liveness() const noexcept {
+        return liveness_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]]
+    inline std::chrono::milliseconds liveness_remaining() const noexcept {
+        return liveness_remaining_();
     }
 
     [[nodiscard]]
@@ -359,14 +374,13 @@ private:
     std::chrono::milliseconds message_timeout_{15000};
     double liveness_warning_ratio_;
     std::chrono::milliseconds liveness_danger_window_;
+    std::atomic<Liveness> liveness_{Liveness::Healthy};
 
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
         message_handler_t    on_message_cb_{};
         connect_handler_t    on_connect_cb_{};
         disconnect_handler_t on_disconnect_cb_{};
-        liveness_warning_handler_t on_liveness_warning_cb_{};
-        liveness_handler_t   on_liveness_timeout_cb_{};
         retry_handler_t      on_retry_cb_{};
     };
 
@@ -375,8 +389,6 @@ private:
 
     std::atomic<Error> last_error_{Error::None};
     std::atomic<Error> retry_root_error_{Error::None};
-
-    bool liveness_warning_fired_{false};
 
     // State machine 
     State state_{State::Disconnected};
@@ -402,10 +414,10 @@ private:
         retry_attempts_ = 0;
         retry_root_error_.store(Error::None, std::memory_order_relaxed);
         // Reset liveness tracking
-        liveness_warning_fired_ = false;
         auto now = std::chrono::steady_clock::now();
         last_heartbeat_ts_.store(now, std::memory_order_relaxed);
         last_message_ts_.store(now, std::memory_order_relaxed);
+        liveness_.store(Liveness::Healthy, std::memory_order_relaxed);
         // Invoke connect callback (if any)
         if (hooks_.on_connect_cb_) {
             hooks_.on_connect_cb_();
@@ -467,8 +479,10 @@ private:
     inline void on_message_received_(std::string_view msg) {
         // Set last message timestamp
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        // Reset liveness warning state
-        liveness_warning_fired_ = false;
+        if (get_state_() == State::Connected) {
+            liveness_.store(Liveness::Healthy);
+        }
+        // Invoke message callback (if any)
         if (hooks_.on_message_cb_) {
             WK_TL1( telemetry_.messages_forwarded_total.inc() ); // This marks handoff, not consumption
             hooks_.on_message_cb_(msg);
@@ -587,6 +601,7 @@ private:
 
     // Schedule immediate retry (no backoff)
     void arm_immediate_reconnect_(Error error) noexcept {
+        WK_DEBUG("[CONN] Scheduling immediate reconnection attempt.");
         retry_root_error_.store(error, std::memory_order_relaxed);
         retry_attempts_ = 1;
         // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
@@ -594,6 +609,7 @@ private:
 
     // Schedule next retry with backoff
     void schedule_next_retry_() noexcept {
+        WK_DEBUG("[CONN] Scheduling next reconnection attempt with backoff.");
         retry_attempts_++;
         auto now = std::chrono::steady_clock::now();
         auto delay = backoff_(retry_root_error_.load(std::memory_order_relaxed), retry_attempts_);

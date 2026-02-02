@@ -41,6 +41,7 @@ F3. Only message stale
 
 #include "wirekrak/core/transport/connection.hpp"
 #include "common/mock_websocket.hpp"
+#include "common/mock_websocket_script.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -58,11 +59,6 @@ void test_liveness_both_stale() {
     telemetry::Connection telemetry;
     Connection<test::MockWebSocket> connection{telemetry};
 
-    bool liveness_called = false;
-    connection.on_liveness_timeout([&]() {
-        liveness_called = true;
-    });
-
     // Establish connection
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
@@ -74,8 +70,8 @@ void test_liveness_both_stale() {
     // Drive decision logic
     connection.poll();
 
-    // Liveness hook must fire
-    TEST_CHECK(liveness_called == true);
+    // Liveness state must be TimedOut
+    TEST_CHECK(connection.liveness() == Liveness::TimedOut);
 
     // Transport must be closed exactly once
     TEST_CHECK(test::MockWebSocket::close_count() == 1);
@@ -95,11 +91,6 @@ void test_liveness_only_heartbeat_stale() {
     telemetry::Connection telemetry;
     Connection<test::MockWebSocket> connection{telemetry};
 
-    bool liveness_called = false;
-    connection.on_liveness_timeout([&]() {
-        liveness_called = true;
-    });
-
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
     const auto now   = clock::now();
@@ -112,7 +103,7 @@ void test_liveness_only_heartbeat_stale() {
     connection.poll();
 
     // No liveness timeout
-    TEST_CHECK(liveness_called == false);
+    TEST_CHECK(connection.liveness() == Liveness::Healthy);
 
     // Transport must not be closed
     TEST_CHECK(test::MockWebSocket::close_count() == 0);
@@ -132,11 +123,6 @@ void test_liveness_only_message_stale() {
     telemetry::Connection telemetry;
     Connection<test::MockWebSocket> connection{telemetry};
 
-    bool liveness_called = false;
-    connection.on_liveness_timeout([&]() {
-        liveness_called = true;
-    });
-
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
     const auto now   = clock::now();
@@ -149,10 +135,90 @@ void test_liveness_only_message_stale() {
     connection.poll();
 
     // No liveness timeout
-    TEST_CHECK(liveness_called == false);
+    TEST_CHECK(connection.liveness() == Liveness::Healthy);
 
     // Transport must not be closed
     TEST_CHECK(test::MockWebSocket::close_count() == 0);
+
+    std::cout << "[TEST] OK\n";
+}
+
+
+// -----------------------------------------------------------------------------
+// F4. Liveness state transitions
+// -----------------------------------------------------------------------------
+//
+//   - Liveness is a deterministic state machine
+//   - Transitions are monotonic:
+//       Healthy -> Warning -> TimedOut
+//   - Each transition fires at most once per silence window
+//   - Liveness resets to Healthy only on observable traffic
+//   - No callbacks, no hooks, no side effects
+//
+// This test validates transport-level liveness semantics only.
+// ============================================================================
+void test_connection_liveness_state_transitions()
+{
+    std::cout << "[TEST] Group F4: liveness state transitions\n";
+    test::MockWebSocket::reset();
+
+    telemetry::Connection telemetry;
+    Connection<test::MockWebSocket> conn(
+        telemetry,
+        std::chrono::seconds(5),   // heartbeat timeout
+        std::chrono::seconds(5),   // message timeout
+        0.8                        // warning ratio (80%)
+    );   
+
+    // -------------------------------------------------------------------------
+    // Connect
+    // -------------------------------------------------------------------------
+    TEST_CHECK(conn.open("wss://test") == Error::None);
+    TEST_CHECK(conn.get_state() == State::Connected);
+    TEST_CHECK(conn.liveness() == Liveness::Healthy);
+
+    const auto now = std::chrono::steady_clock::now();
+
+    // -------------------------------------------------------------------------
+    // Still healthy (inside safe window)
+    // -------------------------------------------------------------------------
+    conn.force_last_message(now - std::chrono::seconds(2));
+    conn.force_last_heartbeat(now - std::chrono::seconds(2));
+    conn.poll();
+
+    TEST_CHECK(conn.get_state() == State::Connected);
+    TEST_CHECK(conn.liveness() == Liveness::Healthy);
+
+    // -------------------------------------------------------------------------
+    // Enter warning window
+    // -------------------------------------------------------------------------
+    conn.force_last_message(now - std::chrono::seconds(4));
+    conn.force_last_heartbeat(now - std::chrono::seconds(4));
+    conn.poll();
+
+    TEST_CHECK(conn.get_state() == State::Connected);
+    TEST_CHECK(conn.liveness() == Liveness::Warning);
+
+    // Poll again — must NOT regress or refire
+    conn.poll();
+
+    TEST_CHECK(conn.get_state() == State::Connected);
+    TEST_CHECK(conn.liveness() == Liveness::Warning);
+
+    // -------------------------------------------------------------------------
+    // Enter timeout
+    // -------------------------------------------------------------------------
+    conn.force_last_message(now - std::chrono::seconds(7));
+    conn.force_last_heartbeat(now - std::chrono::seconds(7));
+    conn.poll();
+
+    TEST_CHECK(conn.get_state() == State::WaitingReconnect);
+    TEST_CHECK(conn.liveness() == Liveness::TimedOut);
+
+    // Poll again — must reconnect
+    conn.poll();
+    TEST_CHECK(conn.get_state() == State::Connected);
+    TEST_CHECK(conn.liveness() == Liveness::Healthy);
 
     std::cout << "[TEST] OK\n";
 }
@@ -168,6 +234,7 @@ int main() {
     test_liveness_both_stale();
     test_liveness_only_heartbeat_stale();
     test_liveness_only_message_stale();
+    test_connection_liveness_state_transitions();
 
     std::cout << "\n[GROUP F — LIVENESS DETECTION TESTS PASSED]\n";
     return 0;

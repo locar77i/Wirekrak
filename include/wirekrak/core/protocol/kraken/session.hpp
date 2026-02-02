@@ -89,8 +89,6 @@ class Session {
     using status_handler_t     = std::function<void(const schema::status::Update&)>;
     using connect_handler_t    = std::function<void()>;
     using disconnect_handler_t = std::function<void()>;
-    using liveness_warning_handler_t = std::function<void(std::chrono::milliseconds)>;
-    using liveness_timeout_handler_t = std::function<void()>;
 
 public:
     Session()
@@ -108,14 +106,6 @@ public:
 
         connection_.on_message([this](std::string_view msg) {
             handle_message_(msg);
-        });
-
-        connection_.on_liveness_warning([this](std::chrono::milliseconds remaining) {
-            handle_passive_liveness_warning_(remaining);
-        });
-
-        connection_.on_liveness_timeout([this]() {
-            handle_liveness_timeout_();
         });
     }
 
@@ -153,16 +143,6 @@ public:
     // Register observational disconnect callback
     inline void on_disconnect(disconnect_handler_t cb) noexcept {
         hooks_.handle_disconnect = std::move(cb);
-    }
-
-    // Register observational liveness warning callback
-    inline void on_liveness_warning(liveness_warning_handler_t cb) noexcept {
-        hooks_.handle_liveness_warning = std::move(cb);
-    }
-
-    // Register observational liveness timeout callback
-    inline void on_liveness_timeout(liveness_timeout_handler_t cb) noexcept {
-        hooks_.handle_liveness_timeout = std::move(cb);
     }
 
     // Send ping
@@ -215,6 +195,15 @@ public:
     inline void poll() {
         // === Heartbeat liveness & reconnection logic ===
         connection_.poll();
+        if (connection_.liveness() != last_liveness_) {
+            if (last_liveness_ == transport::Liveness::Healthy && connection_.liveness() == transport::Liveness::Warning) {
+                if (liveness_policy_ == policy::Liveness::Active) {
+                    send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});
+                }
+            }
+            last_liveness_ = connection_.liveness();
+        }
+
         // ===============================================================================
         // PROCESS PONG MESSAGES
         // ===============================================================================
@@ -302,18 +291,21 @@ public:
         }}
     }
 
-    //
+    // Set liveness policy
     inline void set_policy(policy::Liveness p) noexcept {
-        if (p == policy::Liveness::Active) {
-            connection_.on_liveness_warning([this](std::chrono::milliseconds remaining) {
-                handle_active_liveness_warning_(remaining);
-            });
-        }
-        else {
-            connection_.on_liveness_warning([this](std::chrono::milliseconds remaining) {
-                handle_passive_liveness_warning_(remaining);
-            });
-        }
+        liveness_policy_ = p;
+    }
+
+    // Accessor to the current liveness state
+    [[nodiscard]]
+    inline transport::Liveness liveness() const noexcept {
+        return connection_.liveness();
+    }
+
+    // Accessor to the remaining liveness time
+    [[nodiscard]]
+    inline std::chrono::milliseconds liveness_remaining() const noexcept {
+        return connection_.liveness_remaining();
     }
 
     // Accessor to the heartbeat counter
@@ -350,12 +342,15 @@ private:
         status_handler_t           handle_status{};           // Status callback
         connect_handler_t          handle_connect{};          // Connect callback
         disconnect_handler_t       handle_disconnect{};       // Disconnect callback
-        liveness_warning_handler_t handle_liveness_warning{}; // Liveness warning callback
-        liveness_timeout_handler_t handle_liveness_timeout{}; // Liveness timeout callback
     };
 
     // Handlers bundle
     Hooks hooks_;
+
+    // Liveness policy
+    policy::Liveness liveness_policy_{policy::Liveness::Passive};
+    // Last observed liveness state
+    transport::Liveness last_liveness_{transport::Liveness::Healthy};
 
     // Session context (owning)
     Context ctx_;
@@ -412,25 +407,6 @@ private:
 
     inline void handle_message_(std::string_view sv) {
         parser_.parse_and_route(sv);
-    }
-
-    inline void handle_passive_liveness_warning_(std::chrono::milliseconds remaining) {
-        if (hooks_.handle_liveness_warning) {
-            hooks_.handle_liveness_warning(remaining);
-        }
-    }
-
-    inline void handle_active_liveness_warning_(std::chrono::milliseconds remaining) {
-        if (hooks_.handle_liveness_warning) {
-            hooks_.handle_liveness_warning(remaining);
-        }
-        send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});
-    }
-
-    inline void handle_liveness_timeout_() {
-        if (hooks_.handle_liveness_timeout) {
-            hooks_.handle_liveness_timeout();
-        }
     }
 
     inline void handle_pong_(const schema::system::Pong& pong) noexcept {

@@ -56,12 +56,11 @@ int main(int argc, char** argv) {
     // Runtime configuration (no hard-coded behavior)
     // -------------------------------------------------------------------------
     const auto& params = wirekrak::cli::minimal::configure(argc, argv,
-            "Wirekrak Core - Liveness timeout exposure example\n"
-            "Demonstrates liveness timeout and forced disconnect.\n",
-            "This example shows that Core exposes liveness failure instead of smoothing it.\n"
-            "No subscriptions will be created.\nNo pings will be sent.\n"
-        );
-
+        "Wirekrak Core - Liveness timeout exposure example\n"
+        "Demonstrates liveness timeout and forced disconnect.\n",
+        "This example shows that Core exposes liveness failure instead of smoothing it.\n"
+        "No subscriptions will be created.\nNo pings will be sent.\n"
+    );
     params.dump("=== Runtime Parameters ===", std::cout);
 
     // -------------------------------------------------------------------------
@@ -72,18 +71,6 @@ int main(int argc, char** argv) {
     // Status handler (shows initial protocol traffic)
     session.on_status([](const schema::status::Update& status) {
         std::cout << " -> " << status << std::endl;
-    });
-
-    // Liveness warning exposure
-    session.on_liveness_warning([](std::chrono::milliseconds remaining) {
-        std::cout << "[example] liveness warning: " << remaining.count() << " ms remaining before timeout\n";
-        warned.store(true);
-    });
-
-    // Liveness timeout exposure
-    session.on_liveness_timeout([] {
-        std::cout << "[example] liveness timeout: no protocol traffic observed\n";
-        timed_out.store(true);
     });
 
     // -------------------------------------------------------------------------
@@ -98,8 +85,22 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     std::cout << "\n[example] Waiting for liveness to expire...\n\n";
 
+    auto last_liveness = session.liveness();
     while (!timed_out.load()) {
         session.poll();
+        auto liveness = session.liveness();
+        if (last_liveness != liveness) {
+            std::cout << "[example] liveness state changed: " << to_string(last_liveness) << " -> " << to_string(liveness) << "\n";
+            if (last_liveness == transport::Liveness::Healthy && liveness == transport::Liveness::Warning) {
+                std::cout << "[example] liveness warning: " << session.liveness_remaining().count() << " ms remaining before timeout\n";
+                warned.store(true);
+            }
+            else if (last_liveness == transport::Liveness::Warning && liveness == transport::Liveness::TimedOut) { // once timed out, we can exit
+                std::cout << "[example] liveness timeout: no protocol traffic observed\n";
+                timed_out.store(true);
+            }
+            last_liveness = liveness;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

@@ -100,23 +100,27 @@ inline int run_example(
     const char* url,
     const char* description,
     const char* ping_payload = nullptr,
-    int enable_ping_after_reconnects = 0,
+    int enable_ping_after_failures = 0,
     std::chrono::seconds observe_for = std::chrono::seconds(10)
 ) {
-    std::signal(SIGINT, on_signal);
+    using namespace wirekrak::core::transport;
 
-    std::cout
-        << "=== Wirekrak Connection - Heartbeat-driven Liveness (" << name << ") ===\n\n"
+    std::cout << "=== Wirekrak Connection - Heartbeat-driven Liveness (" << name << ") ===\n\n"
         << description << "\n\n";
+
+    // -------------------------------------------------------------------------
+    // Signal handling (explicit termination)
+    // -------------------------------------------------------------------------
+    std::signal(SIGINT, on_signal);
 
     // -------------------------------------------------------------------------
     // Connection setup
     // -------------------------------------------------------------------------
-    wirekrak::core::transport::telemetry::Connection telemetry;
-    wirekrak::core::transport::Connection<WS> connection(telemetry);
+    telemetry::Connection telemetry;
+    Connection<WS> connection(telemetry);
 
     std::atomic<uint64_t> forwarded{0};
-    std::atomic<int> reconnects{0};
+    std::atomic<int> disconnects{0};
     std::atomic<bool> ping_enabled{false};
     std::atomic<bool> connected{false};
 
@@ -130,15 +134,8 @@ inline int run_example(
     connection.on_disconnect([&] {
         connected.store(false, std::memory_order_relaxed);
         std::cout << "[example] Disconnected\n";
-    });
-
-    // Install the retry hook
-    connection.on_retry([&](const wirekrak::core::transport::RetryContext& rc) {
-        std::cout << "[example] Retry context -> url '" << rc.url << "'"
-                  << ", attempt " << rc.attempt << ", delay " << rc.next_delay.count() << " ms, error '" << wirekrak::core::transport::to_string(rc.error) << "'\n";
-        const int r = ++reconnects;
-        if (ping_payload && enable_ping_after_reconnects > 0 &&
-            r >= enable_ping_after_reconnects) {
+        const int d = ++disconnects;
+        if (d >= enable_ping_after_failures) {
             ping_enabled.store(true);
         }
     });
@@ -146,8 +143,7 @@ inline int run_example(
     // -------------------------------------------------------------------------
     // Open connection
     // -------------------------------------------------------------------------
-    std::cout << "[example] Connecting to " << url << "\n";
-    if (connection.open(url) != wirekrak::core::transport::Error::None) {
+    if (connection.open(url) != Error::None) {
         std::cerr << "[example] Failed to connect\n";
         return 1;
     }
@@ -173,7 +169,6 @@ inline int run_example(
         std::cout << "[example] Forwarded message: " << msg << " (" << msg.size() << " bytes)\n";
     });
 
-    start = std::chrono::steady_clock::now();
     while (!ping_enabled.load(std::memory_order_relaxed) && running.load(std::memory_order_relaxed)) {
         connection.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -184,17 +179,24 @@ inline int run_example(
     // -------------------------------------------------------------------------
     std::cout << "\n[example] Phase C - protocol-managed heartbeat\n";
 
-    // Install the liveness warning hook
-    connection.on_liveness_warning([&](std::chrono::milliseconds remaining) {
+    auto on_liveness_warning = [&](std::chrono::milliseconds remaining) {
         if (!ping_enabled.load(std::memory_order_relaxed)) return;
         if (!connected.load(std::memory_order_relaxed)) return;
         if (!ping_payload) return;
         std::cout << "[example] Liveness warning (" << remaining.count() << " ms remaining) -> sending protocol ping\n";
         (void)connection.send(ping_payload);
-    });
+    };
 
+    auto last_liveness = connection.liveness();
     while (running.load(std::memory_order_relaxed)) {
         connection.poll();
+        if (connection.liveness() != last_liveness) {
+            // Liveness is state-based. We react only to state transitions to preserve determinism.
+            if (last_liveness == Liveness::Healthy && connection.liveness() == Liveness::Warning) {
+                on_liveness_warning(connection.liveness_remaining());
+            }
+            last_liveness = connection.liveness();
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

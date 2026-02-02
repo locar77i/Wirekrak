@@ -40,11 +40,11 @@ int main(int argc, char** argv) {
     // Runtime configuration (no hard-coded behavior)
     // -------------------------------------------------------------------------
     const auto& params = wirekrak::cli::symbol::configure(argc, argv,
-            "Wirekrak Core - Minimal Stateful Stream (Order Book)\n"
-            "Demonstrates explicit subscription and poll-driven execution.\n",
-            "This example shows that stateful streams do not change Core's execution model.\n"
-            "Subscriptions are explicit, and message delivery is driven by poll().\n"
-        );
+        "Wirekrak Core - Minimal Stateful Stream (Order Book)\n"
+        "Demonstrates explicit subscription and poll-driven execution.\n",
+        "This example shows that stateful streams do not change Core's execution model.\n"
+        "Subscriptions are explicit, and message delivery is driven by poll().\n"
+    );
     params.dump("=== Runtime Parameters ===", std::cout);
 
     // -------------------------------------------------------------------------
