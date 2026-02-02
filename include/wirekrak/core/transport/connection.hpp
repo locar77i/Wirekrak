@@ -174,6 +174,7 @@ public:
             }
             else {
                 set_state_(State::Disconnected);
+                disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
             }
             WK_ERROR("[CONN] Connection failed (" << to_string(error) << ")");
             return error;
@@ -199,6 +200,7 @@ public:
         }
         // Proceed to close
         set_state_(State::Disconnecting);
+        disconnect_reason_.store(DisconnectReason::LocalClose, std::memory_order_relaxed);
         if (ws_) {
             // close() does not cancel pending retry state explicitly;
             // retry resolution is handled by transport close callback.
@@ -225,7 +227,7 @@ public:
         return false;
     }
 
-    // // Event loop
+    // Event loop
     inline void poll() noexcept {
         // === Reconnection logic ===
         auto now = std::chrono::steady_clock::now();
@@ -255,11 +257,12 @@ public:
             }
             // === Liveness timeout check ===
             if (is_liveness_stale_()) {
+                WK_TRACE("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
                 WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
                 last_error_.store(Error::Timeout, std::memory_order_relaxed);
-                WK_TRACE("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
                 liveness_.store(Liveness::TimedOut, std::memory_order_relaxed);
-                set_state_(State::ForcedDisconnection);
+                disconnect_reason_.store(DisconnectReason::LivenessTimeout, std::memory_order_relaxed);
+                set_state_(State::Disconnecting);
                 // Force transport failure → triggers reconnection
                 ws_->close();
             }
@@ -390,6 +393,8 @@ private:
     std::atomic<Error> last_error_{Error::None};
     std::atomic<Error> retry_root_error_{Error::None};
 
+    std::atomic<DisconnectReason> disconnect_reason_{DisconnectReason::None};
+
     // State machine 
     State state_{State::Disconnected};
     std::chrono::steady_clock::time_point next_retry_{};
@@ -418,6 +423,7 @@ private:
         last_heartbeat_ts_.store(now, std::memory_order_relaxed);
         last_message_ts_.store(now, std::memory_order_relaxed);
         liveness_.store(Liveness::Healthy, std::memory_order_relaxed);
+        disconnect_reason_.store(DisconnectReason::None, std::memory_order_relaxed);
         // Invoke connect callback (if any)
         if (hooks_.on_connect_cb_) {
             hooks_.on_connect_cb_();
@@ -491,18 +497,20 @@ private:
 
     // Placeholder for user-defined behavior on transport errors
     inline void on_transport_error_(Error error) {
-        // Do NOT overwrite last error after a forced decision
-        if (get_state_() == State::ForcedDisconnection) {
+        // Do not override an intentional disconnect decision
+        const auto reason = disconnect_reason_.load(std::memory_order_relaxed);
+        if (reason == DisconnectReason::LivenessTimeout ||
+            reason == DisconnectReason::LocalClose) {
             return;
         }
         WK_WARN("[CONN] Transport error: " << to_string(error));
         last_error_.store(error, std::memory_order_relaxed);
-        // Errors are handled by the receive loop and lead to closure
-        // Higher-level protocols can observe closure via on_disconnect callback
+        disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
     }
 
     // Placeholder for user-defined behavior on transport closure
     inline void on_transport_closed_() {
+        WK_TRACE("[CONN] Disconnect reason: " << to_string(disconnect_reason_.load(std::memory_order_relaxed)));
         // Guard against multiple invocations
         if (get_state_() == State::Disconnected) {
             return; // already resolved
@@ -520,8 +528,8 @@ private:
         }
         // Determine retry based on the current state and last error
         const auto error = last_error_.load(std::memory_order_relaxed);
-        if ((get_state_() == State::Connected || get_state_() == State::ForcedDisconnection)
-            && should_retry_(error)) {
+        const auto reason = disconnect_reason_.load(std::memory_order_relaxed);
+        if (reason != DisconnectReason::LocalClose && should_retry_(error)) {
             WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
             set_state_(State::WaitingReconnect);
             // Retry immediately
@@ -587,9 +595,10 @@ private:
         error = ws_->connect(parsed_url.host, parsed_url.port, parsed_url.path);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {
+            WK_ERROR("[CONN] Reconnection failed.");
             WK_TL1( telemetry_.retry_failure_total.inc() ); // Failure = attempt did not connect
             set_state_(State::WaitingReconnect);
-            WK_ERROR("[CONN] Reconnection failed.");
+            disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
             return false;
         }
         // 5) Enter connected state

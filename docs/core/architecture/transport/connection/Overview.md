@@ -67,12 +67,11 @@ When liveness expires:
 
 The transport connection operates using an explicit, deterministic state machine:
 
-- `Disconnected`
 - `Connecting`
 - `Connected`
-- `ForcedDisconnection`
 - `WaitingReconnect`
 - `Disconnecting`
+- `Disconnected`
 
 All state transitions are logged and observable, making behavior predictable and debuggable.
 

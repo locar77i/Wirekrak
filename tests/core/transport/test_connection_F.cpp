@@ -1,36 +1,61 @@
 /*
 ===============================================================================
- transport::Connection — Group F Unit Tests
+ transport::Connection — Group F Unit Tests (Liveness State Machine)
 ===============================================================================
 
 Scope:
 ------
-These tests validate liveness detection logic inside Connection.
+These tests validate the transport-level liveness *state machine* implemented
+by transport::Connection.
 
-Liveness is determined conservatively:
-- A timeout is triggered ONLY when both heartbeat and message activity
-  are stale beyond configured thresholds.
+Liveness is modeled as an explicit, deterministic state:
 
-These tests intentionally avoid:
-- Transport scripts
-- Reconnection logic
+    Healthy → Warning → TimedOut
+
+and is derived exclusively from observable timestamps:
+  - last message activity
+  - last heartbeat activity
+
+No callbacks, hooks, timers, or background execution are involved.
+
+-------------------------------------------------------------------------------
+Liveness semantics
+-------------------------------------------------------------------------------
+- Liveness transitions are evaluated during poll()
+- A timeout occurs ONLY when BOTH heartbeat and message signals are stale
+- Warning is entered once the danger window is crossed
+- Each transition is monotonic and fires at most once per silence window
+- Liveness resets to Healthy only on observable traffic
+
+-------------------------------------------------------------------------------
+What these tests intentionally avoid
+-------------------------------------------------------------------------------
+- Transport scripting or message sequencing
+- Network I/O simulation
 - Backoff timing
-- Network sequencing
+- Retry policy validation
+- Protocol/session behavior
 
-They exercise pure decision logic driven by poll().
+These tests exercise *pure decision logic* only.
 
-Covered Requirements:
----------------------
+-------------------------------------------------------------------------------
+Covered requirements
+-------------------------------------------------------------------------------
 F1. Both heartbeat and message stale
-    - poll() triggers on_liveness_timeout
+    - Liveness transitions to TimedOut
     - Transport is force-closed
-    - State transitions to ForcedDisconnection
+    - State machine proceeds to reconnect path
 
 F2. Only heartbeat stale
-    - No liveness timeout
+    - Liveness remains Healthy
 
 F3. Only message stale
-    - No liveness timeout
+    - Liveness remains Healthy
+
+F4. Liveness state transitions
+    - Healthy → Warning → TimedOut
+    - No repeated transitions across polls
+    - Reset to Healthy on reconnection
 
 ===============================================================================
 */
@@ -48,7 +73,7 @@ using namespace wirekrak::core::transport;
 
 
 // -----------------------------------------------------------------------------
-// F1. Both heartbeat and message stale → liveness timeout fires
+// F1. Both heartbeat and message stale → liveness transitions to TimedOut
 // -----------------------------------------------------------------------------
 void test_liveness_both_stale() {
     std::cout << "[TEST] Group F1: both heartbeat and message stale\n";
@@ -67,13 +92,13 @@ void test_liveness_both_stale() {
     connection.force_last_message(stale);
     connection.force_last_heartbeat(stale);
 
-    // Drive decision logic
+    // Drive liveness state evaluation
     connection.poll();
 
     // Liveness state must be TimedOut
     TEST_CHECK(connection.liveness() == Liveness::TimedOut);
 
-    // Transport must be closed exactly once
+    // Transport must be force-closed to enter reconnect path
     TEST_CHECK(test::MockWebSocket::close_count() == 1);
 
     std::cout << "[TEST] OK\n";
@@ -100,6 +125,7 @@ void test_liveness_only_heartbeat_stale() {
     connection.force_last_message(now);
     connection.force_last_heartbeat(stale);
 
+    // Drive liveness state evaluation
     connection.poll();
 
     // No liveness timeout
@@ -132,6 +158,7 @@ void test_liveness_only_message_stale() {
     connection.force_last_message(stale);
     connection.force_last_heartbeat(now);
 
+    // Drive liveness state evaluation
     connection.poll();
 
     // No liveness timeout
