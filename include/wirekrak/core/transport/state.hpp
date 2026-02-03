@@ -37,6 +37,47 @@ inline constexpr std::string_view to_string(State s) noexcept {
 
 
 // ===============================================================
+// EVENT ENUM
+// ===============================================================
+enum class Event : uint8_t {
+    // --- User intent ---
+    OpenRequested,
+    CloseRequested,
+
+    // --- Transport lifecycle --- 
+    TransportConnected,   // Succeeded (open → connect)
+    TransportConnectFailed,      // Failed (open → connect)
+    TransportReconnectFailed,    // Failed (reconnect → connect)
+    TransportClosed,
+
+    // --- Liveness ---
+    LivenessTimeout,
+
+    // --- Retry ---
+    RetryTimerExpired
+};
+
+// ===============================================================
+// Event → string
+// ===============================================================
+[[nodiscard]]
+inline constexpr std::string_view to_string(Event e) noexcept {
+    switch (e) {
+        case Event::OpenRequested:             return "OpenRequested";
+        case Event::CloseRequested:            return "CloseRequested";
+        case Event::TransportConnected:        return "TransportConnected";
+        case Event::TransportConnectFailed:    return "TransportConnectFailed";
+        case Event::TransportReconnectFailed:  return "TransportReconnectFailed";
+        case Event::TransportClosed:           return "TransportClosed";
+        case Event::LivenessTimeout:           return "LivenessTimeout";
+        case Event::RetryTimerExpired:         return "RetryTimerExpired";
+        default:                               return "UnknownEvent";
+    }
+}
+
+
+
+// ===============================================================
 // DISCONNECT REASON ENUM
 // ===============================================================
 enum class DisconnectReason : uint8_t {

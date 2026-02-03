@@ -1,0 +1,38 @@
+digraph ConnectionFSM {
+    rankdir=LR;
+    node [shape=ellipse, fontname="Helvetica"];
+
+    Disconnected;
+    Connecting;
+    Connected;
+    Disconnecting;
+    WaitingReconnect;
+
+    // --- Open ---
+    Disconnected -> Connecting [label="OpenRequested"];
+    WaitingReconnect -> Connecting [label="OpenRequested"];
+
+    // --- Initial connect ---
+    Connecting -> Connected [label="TransportConnected"];
+    Connecting -> WaitingReconnect [label="TransportConnectFailed (retry)"];
+    Connecting -> Disconnected [label="TransportConnectFailed (no retry)"];
+    Connecting -> Disconnected [label="TransportClosed"];
+    Connecting -> Disconnected [label="CloseRequested"];
+
+    // --- Connected ---
+    Connected -> Disconnecting [label="CloseRequested"];
+    Connected -> Disconnecting [label="LivenessTimeout"];
+    Connected -> WaitingReconnect [label="TransportClosed (retry)"];
+    Connected -> Disconnected [label="TransportClosed (no retry)"];
+
+    // --- Disconnecting ---
+    Disconnecting -> WaitingReconnect [label="TransportClosed (retry)"];
+    Disconnecting -> Disconnected [label="TransportClosed (no retry)"];
+
+    // --- Retry loop ---
+    WaitingReconnect -> Connecting [label="RetryTimerExpired"];
+    WaitingReconnect -> Disconnected [label="CloseRequested"];
+
+    // Styling
+    Connected [shape=doublecircle];
+}

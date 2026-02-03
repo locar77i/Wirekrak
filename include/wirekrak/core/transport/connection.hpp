@@ -12,6 +12,7 @@
 #include "wirekrak/core/transport/parse_url.hpp"
 #include "wirekrak/core/transport/state.hpp"
 #include "wirekrak/core/telemetry.hpp"
+#include "lcr/optional.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -143,50 +144,45 @@ public:
     inline Error open(const std::string& url) noexcept {
         WK_DEBUG("[CONN] Connecting to: " << url);
         WK_TL1( telemetry_.open_calls_total.inc() ); // This represents explicit caller intent
+
+        // --- Synchronous preconditions (must succeed before FSM starts) ---
+
+        // 0) PRECONDITION: must be disconnected to open()
         if (get_state_() != State::Disconnected && get_state_() != State::WaitingReconnect) {
             WK_WARN("[CONN] open() called while not disconnected  (state: " << to_string(get_state_()) << "). Ignoring.");
             return Error::InvalidState;
         }
+        // 1) PRECONDITION: parse and validate URL
         last_url_ = url;
-        // 1) Enter connecting state
-        set_state_(State::Connecting);
-        // 2) Parse and validate URL
-        ParsedUrl parsed_url;
-        auto error = parse_url(url, parsed_url);
+        ParsedUrl tmp;
+        auto error = parse_url(url, tmp);
         if (error != Error::None) {
             WK_ERROR("[CONN] URL parsing failed");
             last_error_.store(error, std::memory_order_relaxed);
-            set_state_(State::Disconnected);
             return error;
         }
+        parsed_url_ = std::move(tmp);
+        // 2) Enter FSM: all preconditions satisfied, begin connection attempt
+        transition_(Event::OpenRequested);
         // 3) Create a fresh transport instance
         create_transport_();
         // 4) Attempt reconnection
-        error = ws_->connect(parsed_url.host, parsed_url.port, parsed_url.path);
+        error = ws_->connect(parsed_url_.value().host, parsed_url_.value().port, parsed_url_.value().path);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {
-            WK_TL1( telemetry_.connect_failure_total.inc() );
-            if (should_retry_(error)) {
-                WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
-                set_state_(State::WaitingReconnect);
-                // Retry immediately
-                arm_immediate_reconnect_(error);
-            }
-            else {
-                set_state_(State::Disconnected);
-                disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
-            }
             WK_ERROR("[CONN] Connection failed (" << to_string(error) << ")");
+            // Transport connection attempt failed (initial connect path)
+            transition_(Event::TransportConnectFailed, error);
             return error;
         }
-        // 5) Enter connected state
-        WK_TL1( telemetry_.connect_success_total.inc() ); // This reflects a state-machine fact, not a transport fact.
+        // 5) Transport connection established -> finalize Connected state
         WK_INFO("[CONN] Connected to server: " << last_url_);
-        enter_connected_state_();
+        WK_TL1( telemetry_.connect_success_total.inc() ); // This reflects a state-machine fact, not a transport fact.
+        transition_(Event::TransportConnected);
         return Error::None;
     }
 
-    // Manual disconnec - tclose() performs an unconditional shutdown and
+    // Manual disconnect - close() performs an unconditional shutdown and
     // cancels any pending reconnection attempts.
     inline void close() noexcept {
         WK_TL1( telemetry_.close_calls_total.inc() ); // This represents explicit user intent
@@ -198,17 +194,8 @@ public:
         if (state == State::Disconnecting) {
             return; // already closing
         }
-        // Proceed to close
-        set_state_(State::Disconnecting);
-        disconnect_reason_.store(DisconnectReason::LocalClose, std::memory_order_relaxed);
-        if (ws_) {
-            // close() does not cancel pending retry state explicitly;
-            // retry resolution is handled by transport close callback.
-            ws_->close();
-        }
-        else {
-            set_state_(State::Disconnected);
-        }
+        // User intent: request graceful shutdown of the logical connection
+        transition_(Event::CloseRequested);
     }
 
     // Sending
@@ -232,15 +219,7 @@ public:
         // === Reconnection logic ===
         auto now = std::chrono::steady_clock::now();
         if (get_state_() == State::WaitingReconnect && now >= next_retry_) {
-            if (!reconnect_()) {
-                const auto error = last_error_.load(std::memory_order_relaxed);
-                if (should_retry_(error)) {
-                    // Schedule next retry with backoff
-                    schedule_next_retry_();
-                } else {
-                    set_state_(State::Disconnected);
-                }
-            }
+            (void)reconnect_();
         }
         // === Liveness logic ===
         // NOTE: liveness is evaluated only while Connected.
@@ -258,13 +237,8 @@ public:
             // === Liveness timeout check ===
             if (is_liveness_stale_()) {
                 WK_TRACE("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
-                WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
-                last_error_.store(Error::Timeout, std::memory_order_relaxed);
                 liveness_.store(Liveness::TimedOut, std::memory_order_relaxed);
-                disconnect_reason_.store(DisconnectReason::LivenessTimeout, std::memory_order_relaxed);
-                set_state_(State::Disconnecting);
-                // Force transport failure → triggers reconnection
-                ws_->close();
+                transition_(Event::LivenessTimeout, Error::Timeout);
             }
         }
     }
@@ -353,7 +327,9 @@ public:
 #endif // WK_UNIT_TEST
 
 private:
-    std::string last_url_;
+    std::string last_url_;                 // for logging / retry callbacks
+    lcr::optional<ParsedUrl> parsed_url_;  // Invariant: parsed_url_.has() == true -> Valid endpoint
+
     transport::telemetry::Connection& telemetry_;
     std::unique_ptr<WS> ws_;
 
@@ -412,21 +388,161 @@ private:
         state_ = new_state;
     }
 
-    inline void enter_connected_state_() noexcept {
-        // Update state
-        set_state_(State::Connected);
-        // Reset retry state
-        retry_attempts_ = 0;
-        retry_root_error_.store(Error::None, std::memory_order_relaxed);
-        // Reset liveness tracking
-        auto now = std::chrono::steady_clock::now();
-        last_heartbeat_ts_.store(now, std::memory_order_relaxed);
-        last_message_ts_.store(now, std::memory_order_relaxed);
-        liveness_.store(Liveness::Healthy, std::memory_order_relaxed);
-        disconnect_reason_.store(DisconnectReason::None, std::memory_order_relaxed);
-        // Invoke connect callback (if any)
-        if (hooks_.on_connect_cb_) {
-            hooks_.on_connect_cb_();
+    // State machine transition function
+    inline void transition_(Event event, Error error = Error::None) noexcept {
+        const State state  = state_;
+        const auto reason  = disconnect_reason_.load(std::memory_order_relaxed);
+
+        WK_TRACE("[FSM] (" << to_string(state) << ") --" << to_string(event) << "-->");
+
+        switch (state) {
+
+        // ================================================================
+        case State::Disconnected:
+            switch (event) {
+            case Event::OpenRequested:
+                set_state_(State::Connecting);
+                break;
+
+            default:
+                break;
+            }
+            break;
+
+        // ================================================================
+        case State::Connecting:
+            switch (event) {
+            case Event::TransportConnected:
+                // Transport connection established -> enter fully connected state
+                set_state_(State::Connected);
+                // Reset retry state
+                retry_attempts_ = 0;
+                retry_root_error_.store(Error::None, std::memory_order_relaxed);
+                { // Reset liveness tracking
+                    auto now = std::chrono::steady_clock::now();
+                    last_heartbeat_ts_.store(now, std::memory_order_relaxed);
+                    last_message_ts_.store(now, std::memory_order_relaxed);
+                    liveness_.store(Liveness::Healthy, std::memory_order_relaxed);
+                }
+                disconnect_reason_.store(DisconnectReason::None, std::memory_order_relaxed);
+                // Invoke connect callback (if any)
+                if (hooks_.on_connect_cb_) {
+                    hooks_.on_connect_cb_();
+                }
+                break;
+
+            case Event::TransportConnectFailed:
+                WK_TL1( telemetry_.connect_failure_total.inc() );
+                if (should_retry_(error)) {
+                    WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
+                    set_state_(State::WaitingReconnect);
+                    arm_immediate_reconnect_(error); // Retry immediately
+                }
+                else {
+                    set_state_(State::Disconnected);
+                    disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
+                }
+                break;
+
+            case Event::TransportReconnectFailed:
+                // Reconnection attempt failed -> apply backoff-based retry policy
+                WK_TL1( telemetry_.retry_failure_total.inc() );
+                set_state_(State::WaitingReconnect);
+                disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
+                if (should_retry_(error)) {
+                    schedule_next_retry_();  // Schedule next retry with backoff
+                } else {
+                    set_state_(State::Disconnected);
+                }
+                break;
+
+            case Event::TransportClosed:
+                // Transport closed before reaching Connected -> resolve to Disconnected
+                set_state_(State::Disconnected);
+                break;
+
+            case Event::CloseRequested:
+                set_state_(State::Disconnected);
+                break;
+
+            default:
+                break;
+            }
+            break;
+
+        // ================================================================
+        case State::Connected:
+            switch (event) {
+            case Event::LivenessTimeout:
+                WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
+                last_error_.store(error, std::memory_order_relaxed);
+                disconnect_reason_.store(DisconnectReason::LivenessTimeout, std::memory_order_relaxed);
+                set_state_(State::Disconnecting);
+                ws_->close(); // Force transport failure → triggers reconnection
+                break;
+
+            case Event::CloseRequested:
+                disconnect_reason_.store(DisconnectReason::LocalClose, std::memory_order_relaxed);
+                set_state_(State::Disconnecting);
+                // CloseRequested does not cancel pending retry state explicitly;
+                // retry resolution is handled by transport close callback.
+                ws_->close();
+                break;
+
+            case Event::TransportClosed:
+                if (reason != DisconnectReason::LocalClose &&
+                    should_retry_(last_error_.load(std::memory_order_relaxed))) {
+                    WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
+                    set_state_(State::WaitingReconnect);
+                    arm_immediate_reconnect_(last_error_.load());
+                } else {
+                    set_state_(State::Disconnected);
+                }
+                break;
+
+            default:
+                break;
+            }
+            break;
+
+        // ================================================================
+        case State::Disconnecting:
+            switch (event) {
+            case Event::TransportClosed:
+                if (reason != DisconnectReason::LocalClose &&
+                    should_retry_(last_error_.load(std::memory_order_relaxed))) {
+                    set_state_(State::WaitingReconnect);
+                    arm_immediate_reconnect_(last_error_.load());
+                } else {
+                    set_state_(State::Disconnected);
+                }
+                break;
+
+            default:
+                break;
+            }
+            break;
+
+        // ================================================================
+        case State::WaitingReconnect:
+            switch (event) {
+            case Event::RetryTimerExpired:
+                set_state_(State::Connecting);
+                break;
+
+            case Event::OpenRequested:
+                // Explicit open() overrides pending retry cycle
+                set_state_(State::Connecting);
+                break;
+
+            case Event::CloseRequested:
+                set_state_(State::Disconnected);
+                break;
+
+            default:
+                break;
+            }
+            break;
         }
     }
 
@@ -515,9 +631,8 @@ private:
         if (get_state_() == State::Disconnected) {
             return; // already resolved
         }
-        // Guard against connect() never completing
-        if (get_state_() == State::Connecting) { // connect never completed — this is not a disconnect event
-            set_state_(State::Disconnected);
+        // While Connecting, closure is resolved entirely by the FSM
+        if (get_state_() == State::Connecting) {
             return;
         }
         WK_TL1( telemetry_.disconnect_events_total.inc() ); // transport closure as observed by Connection
@@ -526,18 +641,9 @@ private:
         if (hooks_.on_disconnect_cb_) {
             hooks_.on_disconnect_cb_();
         }
-        // Determine retry based on the current state and last error
+        // Notify FSM that the transport has closed (resolution is state-dependent)
         const auto error = last_error_.load(std::memory_order_relaxed);
-        const auto reason = disconnect_reason_.load(std::memory_order_relaxed);
-        if (reason != DisconnectReason::LocalClose && should_retry_(error)) {
-            WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
-            set_state_(State::WaitingReconnect);
-            // Retry immediately
-            arm_immediate_reconnect_(error);
-        }
-        else {
-            set_state_(State::Disconnected);
-        }
+        transition_(Event::TransportClosed, error);
     }
 
     // Determines whether a transport error represents a transient, external
@@ -574,37 +680,30 @@ private:
     inline bool reconnect_() {
         WK_DEBUG("[CONN] Reconnecting to: " << last_url_ << " (attempt " << (retry_attempts_) << ")");
         WK_TL1( telemetry_.retry_attempts_total.inc() ); // One attempt = one call
+        // 0) PRECONDITION: must be waiting to reconnect
         if (get_state_() != State::WaitingReconnect) {
             WK_WARN("[CONN] reconnect() called while not waiting to reconnect (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
-        // 1) Enter connecting state
-        set_state_(State::Connecting);
-        // 2) Parse and validate URL
-        ParsedUrl parsed_url;
-        auto error = parse_url(last_url_, parsed_url);
-        if (error != Error::None) {
-            WK_ERROR("[CONN] URL parsing failed");
-            last_error_.store(error, std::memory_order_relaxed);
-            set_state_(State::Disconnected);
-            return false;
-        }
-        // 3) Create a fresh transport instance
+        // INVARIANT: parsed_url_ must be valid here
+        assert(parsed_url_.has() && "reconnect_() without parsed_url");
+        // 1) Retry delay elapsed -> FSM may initiate reconnection attempt
+        transition_(Event::RetryTimerExpired);
+        // 2) Create a fresh transport instance
         create_transport_();
-        // 4) Attempt reconnection
-        error = ws_->connect(parsed_url.host, parsed_url.port, parsed_url.path);
+        // 3) Attempt reconnection
+        auto error = ws_->connect(parsed_url_.value().host, parsed_url_.value().port, parsed_url_.value().path);
         last_error_.store(error, std::memory_order_relaxed);
         if (error != Error::None) {
             WK_ERROR("[CONN] Reconnection failed.");
-            WK_TL1( telemetry_.retry_failure_total.inc() ); // Failure = attempt did not connect
-            set_state_(State::WaitingReconnect);
-            disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
+            // Reconnection attempt failed -> apply backoff-based retry policy
+            transition_(Event::TransportReconnectFailed, error);
             return false;
         }
-        // 5) Enter connected state
-        WK_TL1( telemetry_.retry_success_total.inc() ); // State-based success, not transport-based
+        // 4) Enter connected state
         WK_INFO("[CONN] Connection re-established with server '" << last_url_ << "'.");
-        enter_connected_state_();
+        WK_TL1( telemetry_.retry_success_total.inc() ); // State-based success, not transport-based
+        transition_(Event::TransportConnected);
         return true;
     }
 
