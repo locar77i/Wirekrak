@@ -17,9 +17,9 @@ struct Params {
     std::string log_level            = "info";
 
     inline void dump(const std::string& header, std::ostream& os) const {
-        os << header << ":\n";
+        os << "\n" << header << "\n";
         os << "  URL       : " << url << "\n";
-        os << "  Log Level : " << log_level << "\n";
+        os << "  Log Level : " << log_level << "\n\n";
     }
 };
 

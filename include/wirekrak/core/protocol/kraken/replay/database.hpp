@@ -43,6 +43,17 @@ public:
         return subscription_table_for_<RequestT>().contains(symbol);
     }
 
+    inline bool try_process_rejection(std::uint64_t req_id, Symbol symbol) noexcept {
+        bool done = trade_.try_process_rejection(req_id, symbol);
+        if (!done) {
+            done = book_.try_process_rejection(req_id, symbol);
+        }
+        if (done) {
+            WK_DEBUG("[REPLAY:DB] Processed rejection for symbol {" << symbol << "} (req_id=" << req_id << ")");
+        }
+        return done;
+    }
+
     template<class RequestT>
     [[nodiscard]]
     inline std::vector<Subscription<RequestT>>&& take_subscriptions() noexcept {
@@ -52,6 +63,7 @@ public:
     // CLEAR ALL DATA
     inline void clear_all() noexcept {
         trade_.clear();
+        book_.clear();
     }
 
 private:

@@ -24,13 +24,13 @@ namespace wirekrak::cli::trade {
         std::string log_level            = "info";
 
         inline void dump(const std::string& header, std::ostream& os) const {
-            os << header << ":\n"
+            os << "\n" << header << "\n"
                << "  URL       : " << url << "\n"
                << "  Symbols   : ";
             for (const auto& s : symbols) { os << s << " "; }
             os << "\n"
                << "  Snapshot  : " << (snapshot ? "true" : "false") << "\n"
-               << "  Log Level : " << log_level << "\n";
+               << "  Log Level : " << log_level << "\n\n";
         }
     };
 

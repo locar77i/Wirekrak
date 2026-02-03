@@ -8,8 +8,7 @@
 #include "wirekrak.hpp"
 using namespace wirekrak::lite;
 
-#include "common/cli/book_params.hpp"
-namespace cli = wirekrak::examples::cli;
+#include "common/cli/book.hpp"
 
 #include "flashstrike/globals.hpp"
 #include "flashstrike/matching_engine/manager.hpp"
@@ -137,8 +136,9 @@ int main(int argc, char** argv)
     // -------------------------------------------------------------
     // CLI parsing
     // -------------------------------------------------------------
-    const auto& params = cli::book::configure(argc, argv,
-        "This example show you how to integrate Flashstrike Matching Engine with Wirekrak Kraken WebSocket API v2.\n"
+    const auto& params = wirekrak::cli::book::configure(argc, argv,
+        "This example show you how to integrate Flashstrike Matching Engine with Wirekrak Kraken WebSocket API v2.\n",
+        "Subscribes to order book updates for a given symbol and feeds them to Flashstrike Matching Engine.\n"
     );
     params.dump("=== Wirekrak & Flashstrike Parameters ===", std::cout);
     const std::string& symbol = params.symbols.back(); // use last symbol for simplicity

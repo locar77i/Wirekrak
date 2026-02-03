@@ -40,8 +40,9 @@ public:
     // table_.emplace_back(request, callback)
     // ------------------------------------------------------------
     inline void add(RequestT req, Callback cb) {
+        std::uint64_t req_id = req.req_id.has() ? req.req_id.value() : INVALID_REQ_ID;
         subscriptions_.emplace_back(std::move(req), std::move(cb));
-        WK_TRACE("[REPLAY] Added subscription with " << subscriptions_.back().request().symbols.size() << " symbol(s)  (total subscriptions=" << subscriptions_.size() << ")");
+        WK_TRACE("[REPLAY:TABLE] Added subscription with req_id=" << req_id << " and " << subscriptions_.back().request().symbols.size() << " symbol(s) " << " (total subscriptions=" << subscriptions_.size() << ")");
     }
 
     // ------------------------------------------------------------
@@ -61,6 +62,22 @@ public:
         return false;
     }
 
+    inline bool try_process_rejection(std::uint64_t req_id, Symbol symbol) noexcept {
+        bool done = false;
+        for (auto it = subscriptions_.begin(); it != subscriptions_.end(); ++it) {
+            bool done = it->try_process_rejection(req_id, symbol);
+            if (done) {
+                WK_TRACE("[REPLAY:TABLE] Rejected symbol {" << symbol << "} from subscription (req_id=" << req_id << ")");
+                if (it->empty()) {
+                    WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << req_id << " (total subscriptions=" << subscriptions_.size() - 1 << ")");
+                    it = subscriptions_.erase(it);
+                    break;
+                }
+            }
+        }
+        return done;
+    }
+
     // ------------------------------------------------------------
     // Erase the first occurrence of a symbol from any subscription
     // This matches Kraken unsubscribe semantics:
@@ -72,15 +89,14 @@ public:
             auto& subscription = subscriptions_[i];
             bool removed = subscription.erase_symbol(symbol);
             if (removed) {
-                WK_TRACE("[REPLAY] Erased symbol {" << symbol << "}" << " from subscription #" << i);
                 if (subscription.empty()) {
                     subscriptions_.erase(subscriptions_.begin() + i);
-                    WK_TRACE("[REPLAY] Removed empty subscription #" << i << "  (total subscriptions=" << subscriptions_.size() << ")");
+                    WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << subscription.req_id() << "  (total subscriptions=" << subscriptions_.size() << ")");
                 }
                 return;
             }
         }
-        WK_WARN("[REPLAY] Failed to erase symbol {" << symbol << "} from any subscription (not found)");
+        WK_WARN("[REPLAY:TABLE] Failed to erase symbol {" << symbol << "} from any subscription (not found)");
     }
 
     // ------------------------------------------------------------

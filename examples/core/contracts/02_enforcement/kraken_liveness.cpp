@@ -70,19 +70,13 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     protocol::kraken::Session<transport::winhttp::WebSocket> session;
 
-    std::atomic<int> disconnects{0};
-
-
-    // -------------------------------------------------------------------------
     // Observe connection lifecycle
-    // -------------------------------------------------------------------------
+    std::atomic<int> disconnects{0};
     session.on_disconnect([&] {
         int d = ++disconnects;
     });
 
-    // -------------------------------------------------------------------------
     // Observe pong messages (only relevant in Active policy)
-    // -------------------------------------------------------------------------
     session.on_pong([](const schema::system::Pong& pong) {
         std::cout << " -> " << pong << std::endl;
     });

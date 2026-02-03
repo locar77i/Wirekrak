@@ -87,11 +87,11 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Observe ACKs and state transitions
     // -------------------------------------------------------------------------
+    const auto& mgr = session.trade_subscriptions();
     auto observe_until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < observe_until) {
         session.poll();
-        const auto& mgr = session.trade_subscriptions();
-        std::cout << "[STATE] active=" << mgr.active_total() << " pending=" << mgr.pending_total() << std::endl;
+        std::cout << "[example] Trade subscriptions: active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 

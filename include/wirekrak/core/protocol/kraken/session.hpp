@@ -382,13 +382,25 @@ private:
         book_channel_manager_.clear_all();
         // 2) Replay trade subscriptions
         auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
-        for (const auto& subscription : trade_subscriptions) {
-            subscribe(subscription.request(), subscription.callback());
+        if(!trade_subscriptions.empty()) {
+            WK_DEBUG("[REPLAY] Replaying " << trade_subscriptions.size() << " trade subscription(s)");
+            for (const auto& subscription : trade_subscriptions) {
+                subscribe(subscription.request(), subscription.callback());
+            }
+        }
+        else {
+            WK_DEBUG("[REPLAY] No trade subscriptions to replay");
         }
         // 3) Replay book subscriptions
         auto book_subscriptions = replay_db_.take_subscriptions<schema::book::Subscribe>();
-        for (const auto& subscription : book_subscriptions) {
-            subscribe(subscription.request(), subscription.callback());
+        if(!book_subscriptions.empty()) {
+            WK_DEBUG("[REPLAY] Replaying " << book_subscriptions.size() << " book subscription(s)");
+            for (const auto& subscription : book_subscriptions) {
+                subscribe(subscription.request(), subscription.callback());
+            }
+        }
+        else {
+            WK_DEBUG("[REPLAY] No book subscriptions to replay");
         }
         // 4) Invoke user-defined connect callback
         if (hooks_.handle_connect) {
@@ -422,6 +434,7 @@ private:
                     // we cannot infer channel from notice, so we try all managers
                     trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
                     book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                    replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
                 }
             }
             

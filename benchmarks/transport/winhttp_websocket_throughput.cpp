@@ -164,7 +164,7 @@ int main() {
 */
 
     std::cout << "[WS] Connecting to ws.kraken.com ..." << std::endl;
-    if (!ws.connect("ws.kraken.com", "443", "/v2")) {
+    if (ws.connect("ws.kraken.com", "443", "/v2") != transport::Error::None) {
         std::cerr << "Connect failed for 'ws.kraken.com'" << std::endl;
         return 1;
     }
