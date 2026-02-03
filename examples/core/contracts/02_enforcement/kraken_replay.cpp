@@ -32,11 +32,6 @@
 #include "wirekrak/core.hpp"
 #include "common/cli/symbol.hpp"
 
-// -----------------------------------------------------------------------------
-// Lifecycle flags
-// -----------------------------------------------------------------------------
-std::atomic<bool> disconnected{false};
-std::atomic<bool> reconnected{false};
 
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
@@ -53,6 +48,12 @@ int main(int argc, char** argv) {
         "The user does not resubscribe or manage replay logic.\n"
     );
     params.dump("=== Runtime Parameters ===", std::cout);
+
+    // -----------------------------------------------------------------------------
+    // Lifecycle flags
+    // -----------------------------------------------------------------------------
+    std::atomic<bool> disconnected{false};
+    std::atomic<bool> reconnected{false};
 
     // -------------------------------------------------------------
     // Session setup
