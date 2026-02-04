@@ -3,37 +3,6 @@
 /*
 ===============================================================================
 Example 2 - Connection vs Transport Semantics
-===============================================================================
-
-This runner demonstrates the semantic boundary between:
-
-  • WebSocket transport (what arrives on the wire)
-  • Connection layer (what is forwarded to user code)
-
-It shows that receiving messages does NOT imply delivery to the application.
-
-The example runs in two phases:
-
-  Phase A:
-    - No message callback installed
-    - Transport receives messages
-    - Connection forwards nothing
-
-  Phase B:
-    - Message callback installed
-    - Connection begins forwarding messages
-
-This proves:
-  messages_forwarded_total != messages_rx_total is correct behavior.
-
-===============================================================================
-*/
-
-#pragma once
-
-/*
-===============================================================================
-Example 2 - Connection vs Transport Semantics
 (Learning Step 3: Observation ≠ Delivery)
 ===============================================================================
 
@@ -131,9 +100,6 @@ Wirekrak separates **fact**, **policy**, and **intent** - on purpose.
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 
-// WebSocket transport specialization
-using WS = wirekrak::core::transport::winhttp::WebSocket;
-
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
 // -----------------------------------------------------------------------------
@@ -148,42 +114,59 @@ inline void on_signal(int) {
 // -----------------------------------------------------------------------------
 
 inline int run_example(const char* name, const char* url, const char* description, const char* subscribe_payload) {
+    using namespace wirekrak::core::transport;
+    // WebSocket transport specialization
+    using WS = winhttp::WebSocket;
 
+    std::cout << "=== Wirekrak Connection - Transport vs Delivery (" << name << ") ===\n\n" << description << "\n\n"; 
+
+    // -------------------------------------------------------------------------
+    // Signal handling (explicit termination)
+    // -------------------------------------------------------------------------
     std::signal(SIGINT, on_signal);
-
-    std::cout
-        << "=== Wirekrak Connection - Transport vs Delivery (" << name << ") ===\n\n"
-        << description << "\n\n";
 
     // -------------------------------------------------------------------------
     // Connection setup
     // -------------------------------------------------------------------------
-    wirekrak::core::transport::telemetry::Connection telemetry;
-    wirekrak::core::transport::Connection<WS> connection(telemetry);
+    telemetry::Connection telemetry;
+    Connection<WS> connection(telemetry);
 
-    std::atomic<uint64_t> forwarded{0};
+    // -------------------------------------------------------------------------
+    // Lambda to drain events
+    // -------------------------------------------------------------------------
+    auto drain_events = [&]() {
+        TransitionEvent ev;
 
-    connection.on_connect([&] {
-        std::cout << "[example] Connected to " << name << " WebSocket\n";
-    });
+        while (connection.poll_event(ev)) {
+            switch (ev) {
+                case TransitionEvent::Connected:
+                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    break;
 
-    connection.on_disconnect([&] {
-        std::cout << "[example] Disconnected\n";
-    });
+                case TransitionEvent::Disconnected:
+                    std::cout << "[example] Disconnect from " << name << " observed!\n";
+                    break;
+
+                case TransitionEvent::RetryScheduled:
+                    std::cout << "[example] Retry schedule observed!\n";
+                    break;
+        
+                default:
+                    break;
+            }
+        }
+    };
 
     // -------------------------------------------------------------------------
     // Open connection
     // -------------------------------------------------------------------------
-    std::cout << "[example] Connecting to " << url << "\n";
-    if (connection.open(url) != wirekrak::core::transport::Error::None) {
-        std::cerr << "[example] Failed to connect\n";
+    if (connection.open(url) != Error::None) {
         return 1;
     }
 
     // -------------------------------------------------------------------------
     // Subscribe immediately
     // -------------------------------------------------------------------------
-    std::cout << "[example] Sending subscription\n";
     (void)connection.send(subscribe_payload);
 
     // -------------------------------------------------------------------------
@@ -192,8 +175,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     std::cout << "\n[example] Phase A - transport receives, connection does NOT forward\n";
 
     auto phase_a_start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - phase_a_start < std::chrono::seconds(10)
-           && running.load(std::memory_order_relaxed)) {
+    while (std::chrono::steady_clock::now() - phase_a_start < std::chrono::seconds(10) && running.load(std::memory_order_relaxed)) {
         connection.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -203,13 +185,15 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     std::cout << "\n[example] Phase B - installing message callback\n";
 
+    std::atomic<uint64_t> forwarded{0};
     connection.on_message([&](std::string_view msg) {
         ++forwarded;
         std::cout << "[example] Forwarded message (" << msg.size() << " bytes)\n";
     });
 
     while (running.load(std::memory_order_relaxed)) {
-        connection.poll();
+        connection.poll();  // Poll driven progression
+        drain_events();     // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -220,7 +204,8 @@ inline int run_example(const char* name, const char* url, const char* descriptio
 
     // Drain remaining events (~200 ms)
     for (int i = 0; i < 20; ++i) {
-        connection.poll();
+        connection.poll();  // Poll driven progression
+        drain_events();     // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

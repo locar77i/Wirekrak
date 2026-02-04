@@ -55,8 +55,7 @@ Non-Goals:
 #include <iostream>
 #include <string>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
+#include "common/connection_harness.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -67,24 +66,19 @@ using namespace wirekrak::core::transport;
 // -----------------------------------------------------------------------------
 void test_open_success() {
     std::cout << "[TEST] Group B1: open() succeeds from Disconnected\n";
-    test::MockWebSocket::reset();
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
-
-    int connect_calls = 0;
-    connection.on_connect([&]() {
-        ++connect_calls;
-    });
+    test::ConnectionHarness h;
 
     // Default MockWebSocket connect result is Error::None
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
+
+    h.drain_events();
 
     // on_connect must fire exactly once
-    TEST_CHECK(connect_calls == 1);
+    TEST_CHECK(h.connect_events == 1);
 
     // Transport must be connected
-    TEST_CHECK(connection.ws().is_connected());
+    TEST_CHECK(h.connection->ws().is_connected());
 
     std::cout << "[TEST] OK\n";
 }
@@ -94,32 +88,33 @@ void test_open_success() {
 // -----------------------------------------------------------------------------
 void test_open_retriable_failure() {
     std::cout << "[TEST] Group B2: open() fails with retriable error\n";
-    test::MockWebSocket::reset();
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
     // Force next connect attempt to fail with a retriable error
     test::MockWebSocket::set_next_connect_result(Error::ConnectionFailed);
 
-    bool connected_called = false;
-    connection.on_connect([&]() {
-        connected_called = true;
-    });
-
     // open() must return the transport error
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::ConnectionFailed);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::ConnectionFailed);
+
+    h.drain_events();
 
     // on_connect must NOT be called
-    TEST_CHECK(connected_called == false);
+    TEST_CHECK(h.connect_events == 0);
 
     // Transport must not be connected
-    TEST_CHECK(connection.ws().is_connected() == false);
+    TEST_CHECK(h.connection->ws().is_connected() == false);
 
     // Reconnect is scheduled implicitly:
     // observable behavior → calling poll() must attempt reconnect
-    // (retry_attempts_ == 1 internally)
-    connection.poll();
+    h.connection->poll();
+
+    h.drain_events();
+
+    // Check connection events
+    TEST_CHECK(h.connect_events == 0);     // No connect calls
+    TEST_CHECK(h.disconnect_events == 0);  // No disconnect calls
+    TEST_CHECK(h.retry_schedule_events == 1);       // (retry_attempts_ == 1 internally)
 
     std::cout << "[TEST] OK\n";
 }
@@ -129,24 +124,26 @@ void test_open_retriable_failure() {
 // -----------------------------------------------------------------------------
 void test_open_non_retriable_failure() {
     std::cout << "[TEST] Group B3: open() fails with non-retriable error\n";
-    test::MockWebSocket::reset();
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
-
-    bool connected_called = false;
-    connection.on_connect([&]() {
-        connected_called = true;
-    });
+    test::ConnectionHarness h;
 
     // Invalid URL → parse_and_connect_ fails before transport retry logic
-    TEST_CHECK(connection.open("invalid://url") == Error::InvalidUrl);
+    TEST_CHECK(h.connection->open("invalid://url") == Error::InvalidUrl);
 
-    // No callbacks
-    TEST_CHECK(connected_called == false);
+    h.drain_events();
+
+    // No connect calls
+    TEST_CHECK(h.connect_events == 0);
 
     // poll() must not trigger reconnect attempts
-    connection.poll();
+    h.connection->poll();
+
+    h.drain_events();
+
+    // Check connection events
+    TEST_CHECK(h.connect_events == 0);     // No connect calls
+    TEST_CHECK(h.disconnect_events == 0);  // No disconnect calls
+    TEST_CHECK(h.retry_schedule_events == 0);       // No retries scheduled
 
     // Transport should never have been connected
     TEST_CHECK(test::MockWebSocket::close_count() == 0);
@@ -159,28 +156,28 @@ void test_open_non_retriable_failure() {
 // -----------------------------------------------------------------------------
 void test_open_while_connected() {
     std::cout << "[TEST] Group B4: open() while already connected\n";
-    test::MockWebSocket::reset();
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
-
-    int connect_calls = 0;
-    connection.on_connect([&]() {
-        ++connect_calls;
-    });
+    test::ConnectionHarness h;
 
     // First open succeeds
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
-    TEST_CHECK(connect_calls == 1);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
+
+    h.drain_events();
+
+    TEST_CHECK(h.connect_events == 1);
 
     // Second open must fail with InvalidState
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::InvalidState);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::InvalidState);
 
-    // No additional callbacks
-    TEST_CHECK(connect_calls == 1);
+    h.drain_events();
+
+    // Check connection events
+    TEST_CHECK(h.connect_events == 1);
+    TEST_CHECK(h.disconnect_events == 0);
+    TEST_CHECK(h.retry_schedule_events == 0);
 
     // Transport remains connected
-    TEST_CHECK(connection.ws().is_connected());
+    TEST_CHECK(h.connection->ws().is_connected() == true);
 
     std::cout << "[TEST] OK\n";
 }

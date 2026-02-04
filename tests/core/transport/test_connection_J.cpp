@@ -22,8 +22,8 @@ These tests MUST NOT involve reconnection scripts beyond initial setup.
 #include <iostream>
 #include <memory>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
+#include "common/mock_websocket_script.hpp"
+#include "common/connection_harness.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -35,23 +35,23 @@ using namespace wirekrak::core::transport;
 void test_close_graceful_shutdown() {
     std::cout << "[TEST] Group J1: close() performs graceful shutdown\n";
 
-    test::MockWebSocket::reset();
+    test::ConnectionHarness h;
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
-    int disconnect_calls = 0;
+    h.connection->close();
 
-    connection.on_disconnect([&]() {
-        ++disconnect_calls;
-    });
+    h.connection->poll();
 
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    h.drain_events();
 
-    connection.close();
+    // Check events
+    TEST_CHECK(h.connect_events == 1);
+    TEST_CHECK(h.disconnect_events == 1);
+    TEST_CHECK(h.retry_schedule_events == 0);
 
-    TEST_CHECK(disconnect_calls == 1);
-    TEST_CHECK(connection.ws().close_count() == 1);
+    // Transport must be closed exactly once
+    TEST_CHECK(h.connection->ws().close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -63,18 +63,23 @@ void test_close_graceful_shutdown() {
 void test_destructor_closes_transport() {
     std::cout << "[TEST] Group J2: destructor closes transport\n";
 
-    test::MockWebSocket::reset();
+    test::ConnectionHarness h;
 
-    int close_calls = 0;
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
-    {
-        telemetry::Connection telemetry;
-        Connection<test::MockWebSocket> connection{telemetry};
+    h.drain_events();
 
-        TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    // Check events
+    TEST_CHECK(h.connect_events == 1);  // Initial connect
 
-        close_calls = connection.ws().close_count();
-    }
+    h.destroy_connection();  // The connection object is no longer observable
+
+    h.drain_events();    // None to drain
+
+    // Check events
+    TEST_CHECK(h.connect_events == 1);        // No new connect events after destruction
+    TEST_CHECK(h.disconnect_events == 0);     // IMPOSSIBLE to observe side effects of an object after its storage has been destroyed.
+    TEST_CHECK(h.retry_schedule_events == 0); // IMPOSSIBLE to observe side effects of an object after its storage has been destroyed.
 
     // Destructor must have closed transport
     TEST_CHECK(test::MockWebSocket::close_count() == 1);
@@ -89,25 +94,23 @@ void test_destructor_closes_transport() {
 void test_close_idempotent() {
     std::cout << "[TEST] Group J3: close() is idempotent\n";
 
-    test::MockWebSocket::reset();
+    test::ConnectionHarness h;
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
-    int disconnect_calls = 0;
+    h.connection->close();
+    h.connection->close();
+    h.connection->close();
 
-    connection.on_disconnect([&]() {
-        ++disconnect_calls;
-    });
+    h.drain_events();
 
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    // Check events
+    TEST_CHECK(h.connect_events == 1);
+    TEST_CHECK(h.disconnect_events == 1);
+    TEST_CHECK(h.retry_schedule_events == 0);
 
-    connection.close();
-    connection.close();
-    connection.close();
-
-    TEST_CHECK(disconnect_calls == 1);
-    TEST_CHECK(connection.ws().close_count() == 1);
+    // Transport must be closed exactly once
+    TEST_CHECK(h.connection->ws().close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -115,38 +118,58 @@ void test_close_idempotent() {
 // -----------------------------------------------------------------------------
 // J4. Destructor does not schedule reconnect
 // -----------------------------------------------------------------------------
+//
+// Contract:
+// ---------
+// - Retry scheduling is a semantic transition
+// - Transitions are observable ONLY while the Connection object is alive
+// - Destructor terminates all semantic emission
+//
+// This test verifies that:
+// - No RetryScheduled event is emitted before destruction
+// - Destructor does not cause retry scheduling
+// -----------------------------------------------------------------------------
 
 void test_destructor_no_reconnect() {
     std::cout << "[TEST] Group J4: destructor does not schedule reconnect\n";
 
-    test::MockWebSocket::reset();
+    test::MockWebSocketScript script;
+    script.connect_ok();
 
-    int retry_calls = 0;
-    int connect_calls = 0;
+    test::ConnectionHarness h;
 
-    {
-        telemetry::Connection telemetry;
-        Connection<test::MockWebSocket> connection{telemetry};
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
-        connection.on_retry([&](const RetryContext&) {
-            ++retry_calls;
-        });
+    // Step initial connect
+    script.step(h.connection->ws());
 
-        connection.on_connect([&]() {
-            ++connect_calls;
-        });
+    h.drain_events();
 
-        TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    // Exactly one connect event
+    TEST_CHECK(h.connect_events == 1);
+    TEST_CHECK(h.retry_schedule_events == 0);
 
-        // Simulate transport failure
-        connection.ws().emit_error(Error::RemoteClosed);
-        connection.ws().close();
+    // Simulate retriable transport failure
+    h.connection->ws().emit_error(Error::RemoteClosed);
+    h.connection->ws().close();
 
-        // Do NOT poll — destructor must prevent retries
-    }
+    // IMPORTANT:
+    // We intentionally do NOT call poll().
+    // Retry scheduling only occurs during poll().
+    //
+    // Now destroy the connection.
+    h.destroy_connection();
 
-    TEST_CHECK(retry_calls == 0);
-    TEST_CHECK(connect_calls == 1); // only initial connect
+    // No further events are observable after destruction
+    h.drain_events();
+
+    // Assertions
+    TEST_CHECK(h.connect_events == 1);          // initial connect only
+    TEST_CHECK(h.retry_schedule_events == 0);   // no retry scheduled
+    TEST_CHECK(h.disconnect_events == 0);       // destructor is not a semantic transition
+
+    // Transport must have been closed
+    TEST_CHECK(test::MockWebSocket::close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }

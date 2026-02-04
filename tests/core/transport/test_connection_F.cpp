@@ -190,7 +190,7 @@ void test_connection_liveness_state_transitions()
     test::MockWebSocket::reset();
 
     telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> conn(
+    Connection<test::MockWebSocket> connection(
         telemetry,
         std::chrono::seconds(5),   // heartbeat timeout
         std::chrono::seconds(5),   // message timeout
@@ -200,52 +200,52 @@ void test_connection_liveness_state_transitions()
     // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
-    TEST_CHECK(conn.open("wss://test") == Error::None);
-    TEST_CHECK(conn.get_state() == State::Connected);
-    TEST_CHECK(conn.liveness() == Liveness::Healthy);
+    TEST_CHECK(connection.open("wss://test") == Error::None);
+    TEST_CHECK(connection.get_state() == State::Connected);
+    TEST_CHECK(connection.liveness() == Liveness::Healthy);
 
     const auto now = std::chrono::steady_clock::now();
 
     // -------------------------------------------------------------------------
     // Still healthy (inside safe window)
     // -------------------------------------------------------------------------
-    conn.force_last_message(now - std::chrono::seconds(2));
-    conn.force_last_heartbeat(now - std::chrono::seconds(2));
-    conn.poll();
+    connection.force_last_message(now - std::chrono::seconds(2));
+    connection.force_last_heartbeat(now - std::chrono::seconds(2));
+    connection.poll();
 
-    TEST_CHECK(conn.get_state() == State::Connected);
-    TEST_CHECK(conn.liveness() == Liveness::Healthy);
+    TEST_CHECK(connection.get_state() == State::Connected);
+    TEST_CHECK(connection.liveness() == Liveness::Healthy);
 
     // -------------------------------------------------------------------------
     // Enter warning window
     // -------------------------------------------------------------------------
-    conn.force_last_message(now - std::chrono::seconds(4));
-    conn.force_last_heartbeat(now - std::chrono::seconds(4));
-    conn.poll();
+    connection.force_last_message(now - std::chrono::seconds(4));
+    connection.force_last_heartbeat(now - std::chrono::seconds(4));
+    connection.poll();
 
-    TEST_CHECK(conn.get_state() == State::Connected);
-    TEST_CHECK(conn.liveness() == Liveness::Warning);
+    TEST_CHECK(connection.get_state() == State::Connected);
+    TEST_CHECK(connection.liveness() == Liveness::Warning);
 
     // Poll again — must NOT regress or refire
-    conn.poll();
+    connection.poll();
 
-    TEST_CHECK(conn.get_state() == State::Connected);
-    TEST_CHECK(conn.liveness() == Liveness::Warning);
+    TEST_CHECK(connection.get_state() == State::Connected);
+    TEST_CHECK(connection.liveness() == Liveness::Warning);
 
     // -------------------------------------------------------------------------
     // Enter timeout
     // -------------------------------------------------------------------------
-    conn.force_last_message(now - std::chrono::seconds(7));
-    conn.force_last_heartbeat(now - std::chrono::seconds(7));
-    conn.poll();
+    connection.force_last_message(now - std::chrono::seconds(7));
+    connection.force_last_heartbeat(now - std::chrono::seconds(7));
+    connection.poll();
 
-    TEST_CHECK(conn.get_state() == State::WaitingReconnect);
-    TEST_CHECK(conn.liveness() == Liveness::TimedOut);
+    TEST_CHECK(connection.get_state() == State::WaitingReconnect);
+    TEST_CHECK(connection.liveness() == Liveness::TimedOut);
 
     // Poll again — must reconnect
-    conn.poll();
-    TEST_CHECK(conn.get_state() == State::Connected);
-    TEST_CHECK(conn.liveness() == Liveness::Healthy);
+    connection.poll();
+    TEST_CHECK(connection.get_state() == State::Connected);
+    TEST_CHECK(connection.liveness() == Liveness::Healthy);
 
     std::cout << "[TEST] OK\n";
 }

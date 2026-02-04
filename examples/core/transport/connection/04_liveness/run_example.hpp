@@ -79,8 +79,6 @@ Wirekrak enforces correctness — it does not hide responsibility.
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 
-// WebSocket transport specialization
-using WS = wirekrak::core::transport::winhttp::WebSocket;
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -95,18 +93,13 @@ inline void on_signal(int) {
 // Runner
 // -----------------------------------------------------------------------------
 
-inline int run_example(
-    const char* name,
-    const char* url,
-    const char* description,
-    const char* ping_payload = nullptr,
-    int enable_ping_after_failures = 0,
-    std::chrono::seconds observe_for = std::chrono::seconds(10)
-) {
+inline int run_example(const char* name, const char* url, const char* description, const char* ping_payload = nullptr,
+                       int enable_ping_after_failures = 0, std::chrono::seconds observe_for = std::chrono::seconds(10)) {
     using namespace wirekrak::core::transport;
+    // WebSocket transport specialization
+    using WS = winhttp::WebSocket;
 
-    std::cout << "=== Wirekrak Connection - Heartbeat-driven Liveness (" << name << ") ===\n\n"
-        << description << "\n\n";
+    std::cout << "=== Wirekrak Connection - Heartbeat-driven Liveness (" << name << ") ===\n\n" << description << "\n\n";
 
     // -------------------------------------------------------------------------
     // Signal handling (explicit termination)
@@ -124,27 +117,44 @@ inline int run_example(
     std::atomic<bool> ping_enabled{false};
     std::atomic<bool> connected{false};
 
-    // Install the connect hook
-    connection.on_connect([&] {
-        connected.store(true, std::memory_order_relaxed);
-        std::cout << "[example] Connected to " << name << " WebSocket\n";
-    });
+    // -------------------------------------------------------------------------
+    // Lambda to drain events
+    // -------------------------------------------------------------------------
+    auto drain_events = [&]() {
+        TransitionEvent ev;
 
-    // Install the disconnect hook
-    connection.on_disconnect([&] {
-        connected.store(false, std::memory_order_relaxed);
-        std::cout << "[example] Disconnected\n";
-        const int d = ++disconnects;
-        if (d >= enable_ping_after_failures) {
-            ping_enabled.store(true);
+        while (connection.poll_event(ev)) {
+            switch (ev) {
+                case TransitionEvent::Connected:
+                    connected.store(true, std::memory_order_relaxed);
+                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    break;
+
+                case TransitionEvent::Disconnected:
+                    connected.store(false, std::memory_order_relaxed);
+                    std::cout << "[example] Disconnect from " << name << " observed! (exactly once)\n";
+                    {
+                        const int d = ++disconnects;
+                        if (d >= enable_ping_after_failures) {
+                            ping_enabled.store(true);
+                        }
+                    }
+                    break;
+
+                case TransitionEvent::RetryScheduled:
+                    std::cout << "[example] Retry schedule observed!\n";
+                    break;
+        
+                default:
+                    break;
+            }
         }
-    });
+    };
 
     // -------------------------------------------------------------------------
     // Open connection
     // -------------------------------------------------------------------------
     if (connection.open(url) != Error::None) {
-        std::cerr << "[example] Failed to connect\n";
         return 1;
     }
 
@@ -189,7 +199,8 @@ inline int run_example(
 
     auto last_liveness = connection.liveness();
     while (running.load(std::memory_order_relaxed)) {
-        connection.poll();
+        connection.poll();  // Poll driven progression
+        drain_events();     // Drain any pending events
         if (connection.liveness() != last_liveness) {
             // Liveness is state-based. We react only to state transitions to preserve determinism.
             if (last_liveness == Liveness::Healthy && connection.liveness() == Liveness::Warning) {
@@ -203,11 +214,11 @@ inline int run_example(
     // -------------------------------------------------------------------------
     // Close connection
     // -------------------------------------------------------------------------
-    std::cout << "\n[example] Closing connection\n";
     connection.close();
 
     for (int i = 0; i < 20; ++i) {
-        connection.poll();
+        connection.poll();  // Poll driven progression
+        drain_events();     // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

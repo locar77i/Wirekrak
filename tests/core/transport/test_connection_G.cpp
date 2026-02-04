@@ -30,9 +30,8 @@ Tests MUST NOT expect poll() to "do nothing" before the first retry.
 #include <chrono>
 #include <thread>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
 #include "common/mock_websocket_script.hpp"
+#include "common/connection_harness.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -43,7 +42,6 @@ using namespace wirekrak::core::transport;
 // -----------------------------------------------------------------------------
 void test_immediate_retry_on_retriable_error() {
     std::cout << "[TEST] Group G1: immediate retry on retriable error\n";
-    test::MockWebSocket::reset();
 
     test::MockWebSocketScript script;
     script
@@ -52,30 +50,34 @@ void test_immediate_retry_on_retriable_error() {
         .close()
         .connect_ok(); // reconnect succeeds
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int connect_calls = 0;
-    connection.on_connect([&]() {
-        ++connect_calls;
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
     // Initial connect
-    script.step(connection.ws());
-    TEST_CHECK(connect_calls == 1);
+    script.step(h.connection->ws());
+
+    h.drain_events();
+
+    // Assertions
+    TEST_CHECK(h.connect_events == 1);
 
     // Transport failure + close
-    script.step(connection.ws());
-    script.step(connection.ws());
+    script.step(h.connection->ws());
+    script.step(h.connection->ws());
 
     // Reconnect happens immediately in poll()
-    connection.poll();
+    h.connection->poll();
 
     // Reconnect succeeds
-    script.step(connection.ws());
-    TEST_CHECK(connect_calls == 2);
+    script.step(h.connection->ws());
+
+    h.drain_events();
+
+    // Check events
+    TEST_CHECK(h.connect_events == 2);
+    TEST_CHECK(h.disconnect_events == 1);
+    TEST_CHECK(h.retry_schedule_events == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -132,7 +134,6 @@ void test_failed_reconnect_schedules_backoff() {
 // -----------------------------------------------------------------------------
 void test_successful_reconnect_resets_retry_state() {
     std::cout << "[TEST] Group G3: successful reconnect resets retry state\n";
-    test::MockWebSocket::reset();
 
     test::MockWebSocketScript script;
     script
@@ -141,32 +142,32 @@ void test_successful_reconnect_resets_retry_state() {
         .close()
         .connect_ok(); // first reconnect SUCCEEDS
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int connect_calls = 0;
-    int retry_calls = 0;
-
-    connection.on_connect([&]() { ++connect_calls; });
-    connection.on_retry([&](const RetryContext&) { ++retry_calls; });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
     // Initial connect
-    script.step(connection.ws());
-    TEST_CHECK(connect_calls == 1);
+    script.step(h.connection->ws());
+
+    h.drain_events();
+
+    // First connection event
+    TEST_CHECK(h.connect_events == 1);
 
     // Transport failure + close
-    script.step(connection.ws());
-    script.step(connection.ws());
+    script.step(h.connection->ws());
+    script.step(h.connection->ws());
 
     // Reconnect attempt succeeds
-    connection.poll();
-    script.step(connection.ws());
+    h.connection->poll();
+    script.step(h.connection->ws());
 
-    // Assertions
-    TEST_CHECK(connect_calls == 2);   // initial + reconnect
-    TEST_CHECK(retry_calls == 0);     // SUCCESS ⇒ no retry callback
+    h.drain_events();
+
+    // Check events
+    TEST_CHECK(h.connect_events == 2);      // initial + reconnect
+    TEST_CHECK(h.disconnect_events == 1);   // single disconnect
+    TEST_CHECK(h.retry_schedule_events == 0);        // SUCCESS ⇒ no retry callback
 
     std::cout << "[TEST] OK\n";
 }
@@ -307,7 +308,6 @@ and retry indefinitely, violating user intent and causing resource churn.
 
 void test_retry_aborts_on_non_retriable_reconnect_failure() {
     std::cout << "[TEST] Group G5: retry abort on non-retriable reconnect failure\n";
-    test::MockWebSocket::reset();
 
     test::MockWebSocketScript script;
     script
@@ -321,38 +321,30 @@ void test_retry_aborts_on_non_retriable_reconnect_failure() {
         // Immediate reconnect attempt FAILS with non-retriable error
         .connect_fail(Error::LocalShutdown);
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int retry_calls = 0;
-    int disconnect_calls = 0;
-
-    connection.on_retry([&](const RetryContext&) {
-        ++retry_calls;
-    });
-
-    connection.on_disconnect([&]() {
-        ++disconnect_calls;
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
     // Initial connect
-    script.step(connection.ws());
+    script.step(h.connection->ws());
 
     // Transport error + close
-    script.step(connection.ws());
-    script.step(connection.ws());
+    script.step(h.connection->ws());
+    script.step(h.connection->ws());
 
     // Immediate reconnect attempt fails
-    script.step(connection.ws());
-    connection.poll();
+    script.step(h.connection->ws());
+    h.connection->poll();
+
+    h.drain_events();
 
     // Assertions
-    TEST_CHECK(retry_calls == 0);          // MUST NOT retry
-    TEST_CHECK(disconnect_calls == 1);     // Single disconnect event
-    TEST_CHECK(connection.get_state() == State::Disconnected);
-    TEST_CHECK(!test::MockWebSocket::is_connected());
+    TEST_CHECK(h.connect_events == 1);      // only initial connect
+    TEST_CHECK(h.disconnect_events == 1);   // Single disconnect event
+    TEST_CHECK(h.retry_schedule_events == 0);        // MUST NOT retry
+
+    TEST_CHECK(h.connection->get_state() == State::Disconnected);
+    TEST_CHECK(test::MockWebSocket::is_connected() == false);
 
     std::cout << "[TEST] OK\n";
 }
@@ -395,7 +387,6 @@ endpoints, and confusing UX.
 
 void test_open_cancels_retry_cycle() {
     std::cout << "[TEST] Group G6: open cancels retry cycle\n";
-    test::MockWebSocket::reset();
 
     test::MockWebSocketScript script;
     script
@@ -409,40 +400,36 @@ void test_open_cancels_retry_cycle() {
         // User explicitly reopens connection
         .connect_ok(); // clean connect to new URL
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
-
-    int connect_calls = 0;
-    int retry_calls = 0;
-
-    connection.on_connect([&]() {
-        ++connect_calls;
-    });
-
-    connection.on_retry([&](const RetryContext&) {
-        ++retry_calls;
-    });
+    test::ConnectionHarness h;
 
     // Initial open
-    TEST_CHECK(connection.open("wss://old.example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://old.example.com/ws") == Error::None);
 
     // Initial connect
-    script.step(connection.ws());
-    TEST_CHECK(connect_calls == 1);
+    script.step(h.connection->ws());
+
+    h.drain_events();
+
+    // First connect event
+    TEST_CHECK(h.connect_events == 1);
 
     // Transport error + close (retry armed)
-    script.step(connection.ws());
-    script.step(connection.ws());
+    script.step(h.connection->ws());
+    script.step(h.connection->ws());
 
     // User explicitly opens a new connection
-    TEST_CHECK(connection.open("wss://new.example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://new.example.com/ws") == Error::None);
 
     // New connection succeeds
-    script.step(connection.ws());
+    script.step(h.connection->ws());
 
-    // Assertions
-    TEST_CHECK(connect_calls == 2);   // initial + explicit open
-    TEST_CHECK(retry_calls == 0);     // retry cycle was cancelled
+    h.connection->poll();
+    h.drain_events();
+
+    // Check events
+    TEST_CHECK(h.connect_events == 2);    // initial + explicit open
+    TEST_CHECK(h.disconnect_events == 1); // single disconnect
+    TEST_CHECK(h.retry_schedule_events == 0);      // retry cycle was cancelled
 
     std::cout << "[TEST] OK\n";
 }
@@ -484,46 +471,36 @@ executes without an explicit triggering event.
 */
 void test_poll_is_noop_while_connected() {
     std::cout << "[TEST] Group G7: poll no-op while connected\n";
-    test::MockWebSocket::reset();
 
     test::MockWebSocketScript script;
     script
         .connect_ok(); // clean connection, no further events
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int connect_calls = 0;
-    int disconnect_calls = 0;
-    int retry_calls = 0;
-
-    connection.on_connect([&]() {
-        ++connect_calls;
-    });
-
-    connection.on_disconnect([&]() {
-        ++disconnect_calls;
-    });
-
-    connection.on_retry([&](const RetryContext&) {
-        ++retry_calls;
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
     // Initial connect
-    script.step(connection.ws());
-    TEST_CHECK(connect_calls == 1);
+    script.step(h.connection->ws());
+
+    h.drain_events();
+
+    // First connect event
+    TEST_CHECK(h.connect_events == 1);
 
     // Call poll() repeatedly with no transport activity
     for (int i = 0; i < 100; ++i) {
-        connection.poll();
+        h.connection->poll();
     }
 
-    // Assertions: absolutely nothing happens
-    TEST_CHECK(connect_calls == 1);
-    TEST_CHECK(disconnect_calls == 0);
-    TEST_CHECK(retry_calls == 0);
+    h.drain_events();
+
+    // Check events: absolutely nothing happens
+    TEST_CHECK(h.connect_events == 1);
+    TEST_CHECK(h.disconnect_events == 0);
+    TEST_CHECK(h.retry_schedule_events == 0);
+
+    // Websocket remains connected
     TEST_CHECK(test::MockWebSocket::is_connected());
 
     std::cout << "[TEST] OK\n";

@@ -34,9 +34,8 @@ E3. Transport close while Disconnecting
 #include <cassert>
 #include <iostream>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
 #include "common/mock_websocket_script.hpp"
+#include "common/connection_harness.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -47,7 +46,6 @@ using namespace wirekrak::core::transport;
 // -----------------------------------------------------------------------------
 void test_transport_close_retriable() {
     std::cout << "[TEST] Group E1: transport close retriable\n";
-    test::MockWebSocket::reset();
 
     test::MockWebSocketScript script;
     script
@@ -56,47 +54,36 @@ void test_transport_close_retriable() {
         .close()
         .connect_ok();              // reconnect succeeds
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int disconnect_calls = 0;
-    int connect_calls = 0;
-    int retry_calls = 0;
-
-    connection.on_disconnect([&]() {
-        ++disconnect_calls;
-    });
-
-    connection.on_connect([&]() {
-        ++connect_calls;
-    });
-
-    connection.on_retry([&](const RetryContext&) {
-        ++retry_calls;
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
     // Initial connect
-    script.step(connection.ws());
-    TEST_CHECK(connect_calls == 1);
+    script.step(h.connection->ws());
 
-    // Error from transport
-    script.step(connection.ws());
-
-    // Transport closes
-    script.step(connection.ws());
-
-    // poll triggers reconnect
-    connection.poll();
-
-    // Reconnect succeeds
-    script.step(connection.ws());
+    h.drain_events();
 
     // Assertions
-    TEST_CHECK(disconnect_calls == 1);
-    TEST_CHECK(connect_calls == 2);   // initial + reconnect
-    TEST_CHECK(retry_calls == 0);     // reconnect succeeded
+    TEST_CHECK(h.connect_events == 1);
+
+    // Error from transport
+    script.step(h.connection->ws());
+
+    // Transport closes
+    script.step(h.connection->ws());
+
+    // poll triggers reconnect
+    h.connection->poll();
+
+    // Reconnect succeeds
+    script.step(h.connection->ws());
+
+    h.drain_events();
+
+    // Check events
+    TEST_CHECK(h.connect_events == 2);         // initial + reconnect
+    TEST_CHECK(h.disconnect_events == 1);      // Single disconnect
+    TEST_CHECK(h.retry_schedule_events == 0);  // No retry scheduled
 
     std::cout << "[TEST] OK\n";
 }
@@ -106,7 +93,6 @@ void test_transport_close_retriable() {
 // -----------------------------------------------------------------------------
 void test_transport_close_non_retriable() {
     std::cout << "[TEST] Group E2: transport close non-retriable\n";
-    test::MockWebSocket::reset();
 
     test::MockWebSocketScript script;
     script
@@ -114,39 +100,30 @@ void test_transport_close_non_retriable() {
         .error(Error::LocalShutdown)
         .close();
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int disconnect_calls = 0;
-    int retry_calls = 0;
-
-    connection.on_disconnect([&]() {
-        ++disconnect_calls;
-    });
-
-    connection.on_retry([&](const RetryContext&) {
-        ++retry_calls;
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
     // Step connect
-    script.step(connection.ws());
+    script.step(h.connection->ws());
 
     // Step explicit non-retriable error
-    script.step(connection.ws());
+    script.step(h.connection->ws());
 
     // Step close
-    script.step(connection.ws());
+    script.step(h.connection->ws());
 
     // Drive state machine
-    connection.poll();
+    h.connection->poll();
+
+    // Drain events and check
+    h.drain_events();
 
     // Disconnect callback fires once
-    TEST_CHECK(disconnect_calls == 1);
+    TEST_CHECK(h.disconnect_events == 1);
 
     // No retry scheduled
-    TEST_CHECK(retry_calls == 0);
+    TEST_CHECK(h.retry_schedule_events == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -156,46 +133,35 @@ void test_transport_close_non_retriable() {
 // -----------------------------------------------------------------------------
 void test_transport_close_while_disconnecting() {
     std::cout << "[TEST] Group E3: transport close while Disconnecting\n";
-    test::MockWebSocket::reset();
 
     test::MockWebSocketScript script;
     script
         .connect_ok()
         .close();
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int disconnect_calls = 0;
-    int retry_calls = 0;
-
-    connection.on_disconnect([&]() {
-        ++disconnect_calls;
-    });
-
-    connection.on_retry([&](const RetryContext&) {
-        ++retry_calls;
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
     // Step connect
-    script.step(connection.ws());
+    script.step(h.connection->ws());
 
     // User initiates shutdown
-    connection.close();
+    h.connection->close();
 
     // Transport reports close
-    script.step(connection.ws());
+    script.step(h.connection->ws());
 
     // Drive state machine
-    connection.poll();
+    h.connection->poll();
+
+    h.drain_events();
 
     // Disconnect fires once
-    TEST_CHECK(disconnect_calls == 1);
+    TEST_CHECK(h.disconnect_events == 1);
 
     // No retry scheduled
-    TEST_CHECK(retry_calls == 0);
+    TEST_CHECK(h.retry_schedule_events == 0);
 
     std::cout << "[TEST] OK\n";
 }

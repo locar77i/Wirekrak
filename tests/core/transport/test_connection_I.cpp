@@ -27,9 +27,8 @@ All reconnect outcomes MUST be scripted via MockWebSocketScript
 #include <string>
 #include <iostream>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
 #include "common/mock_websocket_script.hpp"
+#include "common/connection_harness.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -38,50 +37,39 @@ using namespace wirekrak::core::transport;
 // I1. on_disconnect fires before reconnect
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-// I1. on_disconnect fires before reconnect
-// -----------------------------------------------------------------------------
-
 void test_on_disconnect_before_reconnect() {
     std::cout << "[TEST] Group I1: on_disconnect fires before reconnect\n";
 
-    test::MockWebSocket::reset();
-
-    test::MockWebSocketScript script;
+   test::MockWebSocketScript script;
     script
         .connect_ok()
         .error(Error::RemoteClosed)
         .close()
         .connect_ok(); // reconnect succeeds
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    std::vector<std::string> events;
-
-    connection.on_connect([&]() {
-        events.push_back("connect");
-    });
-
-    connection.on_disconnect([&]() {
-        events.push_back("disconnect");
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
-    script.step(connection.ws()); // initial connect
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
+    script.step(h.connection->ws()); // initial connect
 
     // Inject error + close
-    script.step(connection.ws());
-    script.step(connection.ws());
+    script.step(h.connection->ws());
+    script.step(h.connection->ws());
 
     // poll triggers reconnect
-    connection.poll();
-    script.step(connection.ws());
+    h.connection->poll();
+    script.step(h.connection->ws());
 
-    TEST_CHECK(events.size() == 3);
-    TEST_CHECK(events[0] == "connect");
-    TEST_CHECK(events[1] == "disconnect");
-    TEST_CHECK(events[2] == "connect");
+    h.drain_events();
+
+    // Check events
+    TEST_CHECK(h.connect_events == 2);
+    TEST_CHECK(h.disconnect_events = 1);
+    TEST_CHECK(h.retry_schedule_events == 0);
+    TEST_CHECK(h.events.size() == 3);
+    TEST_CHECK(h.events[0] == TransitionEvent::Connected);
+    TEST_CHECK(h.events[1] == TransitionEvent::Disconnected);
+    TEST_CHECK(h.events[2] == TransitionEvent::Connected);
 
     std::cout << "[TEST] OK\n";
 }
@@ -93,29 +81,25 @@ void test_on_disconnect_before_reconnect() {
 void test_on_connect_not_duplicated() {
     std::cout << "[TEST] Group I2: on_connect never fires twice without disconnect\n";
 
-    test::MockWebSocket::reset();
-
     test::MockWebSocketScript script;
     script.connect_ok();
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int connect_calls = 0;
-
-    connection.on_connect([&]() {
-        ++connect_calls;
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
-    script.step(connection.ws());
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
+    script.step(h.connection->ws());
 
     // Multiple polls must not re-emit on_connect
-    for (int i = 0; i < 5; ++i) {
-        connection.poll();
+    for (int i = 0; i < 10; ++i) {
+        h.connection->poll();
     }
 
-    TEST_CHECK(connect_calls == 1);
+    h.drain_events();
+
+    // Check events
+    TEST_CHECK(h.connect_events == 1);
+    TEST_CHECK(h.disconnect_events == 0);
+    TEST_CHECK(h.retry_schedule_events == 0);
 
     std::cout << "[TEST] OK\n";
 }

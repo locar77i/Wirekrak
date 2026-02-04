@@ -12,6 +12,10 @@ across transient transport failures and internal reconnections.
 It is the foundational component beneath protocol sessions (e.g. Kraken) and is intentionally
 decoupled from message schemas, subscriptions, and business logic.
 
+Unlike callback-driven designs, Wirekrak exposes **explicit, pull-based transition events**
+that make lifecycle changes observable, deterministic, and suitable for ultra-low-latency
+(ULL) environments.
+
 ---
 
 ## Key Characteristics
@@ -21,6 +25,7 @@ decoupled from message schemas, subscriptions, and business logic.
 - **Transport-agnostic** (any WebSocket backend implementing `WebSocketConcept`)
 - **Deterministic, poll-driven execution**
 - **No background threads or timers**
+- **ULL-safe** (no blocking, no allocations on hot paths)
 - **Fully unit-testable with mock transports**
 
 ---
@@ -33,11 +38,37 @@ decoupled from message schemas, subscriptions, and business logic.
   - last received message timestamp
   - last received heartbeat timestamp
 - Automatically reconnect with bounded exponential backoff
-- Expose explicit hooks for:
-  - message reception
-  - connection establishment
-  - disconnection
-  - liveness timeout
+- Emit **explicit connection transition events** (no lifecycle hooks)
+
+---
+
+## Event Model (TransitionEvent)
+
+Connection lifecycle changes are surfaced via a **single-shot event stream** consumed
+explicitly by the user.
+
+- Events are emitted synchronously during `poll()` execution
+- Events are buffered internally using a lock-free SPSC ring
+- Events are never blocking
+- Events are never inferred or synthesized
+
+Typical events include:
+
+- `Connected`
+- `Disconnected`
+- `RetryScheduled`
+- `None` (no transition)
+
+The consumer retrieves events using:
+
+```cpp
+TransitionEvent ev;
+while (conn.poll_event(ev)) {
+    // handle transition
+}
+```
+
+This replaces traditional `on_connect`, `on_disconnect`, and `on_retry` hooks.
 
 ---
 
@@ -54,10 +85,11 @@ robust health check.
 When liveness expires:
 
 - The underlying transport is force-closed
+- A `Disconnected` transition event is emitted
 - State transitions to `WaitingReconnect`
 - Reconnection attempts begin with bounded exponential backoff
 - A fresh transport instance is created on each attempt
-- Higher-level protocol sessions are responsible for replaying subscriptions
+- Higher-level protocol sessions decide what (if anything) to replay
 
 ➡️ **[Connection Liveness on Wirekrak](./Liveness.md)**
 
@@ -73,7 +105,12 @@ The transport connection operates using an explicit, deterministic state machine
 - `Disconnecting`
 - `Disconnected`
 
-All state transitions are logged and observable, making behavior predictable and debuggable.
+State transitions:
+
+- Are fully deterministic
+- Are logged
+- Are externally observable via `TransitionEvent`
+- Never depend on timing, background threads, or implicit callbacks
 
 ---
 
@@ -83,24 +120,28 @@ All state transitions are logged and observable, making behavior predictable and
 wirekrak::core::transport::telemetry::Connection telemetry;
 wirekrak::core::transport::Connection<WS> conn(telemetry);
 
-conn.on_message([](std::string_view msg) {
-    // forward raw frames to the protocol layer
-});
-
-conn.on_connect([]() {
-    // protocol session may (re)subscribe here
-});
-
-conn.on_disconnect([]() {
-    // handle disconnection if needed
-});
-
 conn.open("wss://ws.kraken.com/v2");
 
 while (running) {
     conn.poll();
+
+    TransitionEvent ev;
+    while (conn.poll_event(ev)) {
+        // react explicitly to lifecycle changes
+    }
 }
 ```
+
+---
+
+## Destructor Semantics
+
+- The destructor **always closes the underlying transport**
+- No retries are scheduled during destruction
+- No transition events are emitted after object lifetime ends
+- Side effects after destruction are intentionally **not observable**
+
+This guarantees safety, predictability, and testability.
 
 ---
 
@@ -111,7 +152,9 @@ while (running) {
 - Transport instances are **destroyed and recreated** on reconnect to avoid
   undefined internal state
 - All logic is driven explicitly via `poll()`
+- The Connection never guesses intent and never repairs protocol-level failures
 
 ---
 
 ⬅️ [Back to README](../../../ARCHITECTURE.md#transport-connection)
+

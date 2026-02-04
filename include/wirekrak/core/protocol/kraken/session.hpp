@@ -96,14 +96,6 @@ public:
         , ctx_view_{ctx_}
         , parser_(ctx_view_)
     {
-        connection_.on_connect([this]() {
-            handle_connect_();
-        });
-
-        connection_.on_disconnect([this]() {
-            handle_disconnect_();
-        });
-
         connection_.on_message([this](std::string_view msg) {
             handle_message_(msg);
         });
@@ -195,6 +187,10 @@ public:
     inline void poll() {
         // === Heartbeat liveness & reconnection logic ===
         connection_.poll();
+        transport::TransitionEvent ev;
+        while (connection_.poll_event(ev)) {
+            handle_transition_event_(ev);
+        }
         if (connection_.liveness() != last_liveness_) {
             if (last_liveness_ == transport::Liveness::Healthy && connection_.liveness() == transport::Liveness::Warning) {
                 if (liveness_policy_ == policy::Liveness::Active) {
@@ -445,6 +441,22 @@ private:
     inline void handle_status_(const schema::status::Update& status) noexcept {
         if (hooks_.handle_status) {
             hooks_.handle_status(status);
+        }
+    }
+
+    inline void handle_transition_event_(transport::TransitionEvent ev) noexcept {
+        switch (ev) {
+        case transport::TransitionEvent::Connected:
+            handle_connect_();
+            break;
+        case transport::TransitionEvent::Disconnected:
+            handle_disconnect_();
+            break;
+        case transport::TransitionEvent::RetryScheduled:
+            // Currently no user-defined hook for retry scheduled
+            break;
+        default:
+            break;
         }
     }
 

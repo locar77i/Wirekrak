@@ -11,8 +11,10 @@
 #include "wirekrak/core/transport/telemetry/connection.hpp"
 #include "wirekrak/core/transport/parse_url.hpp"
 #include "wirekrak/core/transport/state.hpp"
+#include "wirekrak/core/transport/connection/transition_event.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/optional.hpp"
+#include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -104,7 +106,7 @@ struct RetryContext {
     std::string_view url;
     Error error;
     int attempt;
-    std::chrono::milliseconds next_delay;
+    std::chrono::steady_clock::time_point next_retry;
 };
 
 
@@ -116,8 +118,6 @@ class Connection {
 
 public:
     using message_handler_t          = std::function<void(std::string_view)>;
-    using connect_handler_t          = std::function<void()>;
-    using disconnect_handler_t       = std::function<void()>;
     using retry_handler_t            = std::function<void(const RetryContext&)>;
 
 public:
@@ -243,17 +243,14 @@ public:
         }
     }
 
+    [[nodiscard]]
+    inline bool poll_event(TransitionEvent& out) noexcept {
+        return events_.pop(out);
+    }
+
     // Callbacks
     void on_message(message_handler_t cb) noexcept {
         hooks_.on_message_cb_ = std::move(cb);
-    }
-
-    void on_connect(connect_handler_t cb) noexcept {
-        hooks_.on_connect_cb_ = std::move(cb);
-    }
-
-    void on_disconnect(disconnect_handler_t cb) noexcept {
-        hooks_.on_disconnect_cb_ = std::move(cb);
     }
 
     void on_retry(retry_handler_t cb) noexcept {
@@ -358,8 +355,6 @@ private:
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
         message_handler_t    on_message_cb_{};
-        connect_handler_t    on_connect_cb_{};
-        disconnect_handler_t on_disconnect_cb_{};
         retry_handler_t      on_retry_cb_{};
     };
 
@@ -375,6 +370,28 @@ private:
     State state_{State::Disconnected};
     std::chrono::steady_clock::time_point next_retry_{};
     int retry_attempts_{0}; // It is 1-based and represents the ordinal number of the next retry attempt (not completed attempts).
+
+    // The pending transition events
+    lcr::lockfree::spsc_ring<TransitionEvent, 16> events_;
+
+    inline void emit_(TransitionEvent ev) noexcept {
+        // Fast path: try to push
+        if (events_.push(ev)) [[likely]] {
+            return;
+        }
+
+        // Buffer full: drop oldest event
+        TransitionEvent dropped;
+        (void)events_.pop(dropped); // guaranteed to succeed if full
+
+        // Retry push (must succeed now)
+        if (!events_.push(ev)) {
+            // This should be impossible in SPSC; log defensively
+            WK_ERROR("[CONN] TransitionEvent buffer corrupted; event lost: " << to_string(ev));
+        } else {
+            WK_WARN("[CONN] TransitionEvent buffer full; dropped oldest event: " << to_string(dropped));
+        }
+    }
 
 private:
     // State accessor
@@ -415,6 +432,7 @@ private:
             case Event::TransportConnected:
                 // Transport connection established -> enter fully connected state
                 set_state_(State::Connected);
+                emit_(TransitionEvent::Connected);
                 // Reset retry state
                 retry_attempts_ = 0;
                 retry_root_error_.store(Error::None, std::memory_order_relaxed);
@@ -425,10 +443,6 @@ private:
                     liveness_.store(Liveness::Healthy, std::memory_order_relaxed);
                 }
                 disconnect_reason_.store(DisconnectReason::None, std::memory_order_relaxed);
-                // Invoke connect callback (if any)
-                if (hooks_.on_connect_cb_) {
-                    hooks_.on_connect_cb_();
-                }
                 break;
 
             case Event::TransportConnectFailed:
@@ -447,9 +461,10 @@ private:
             case Event::TransportReconnectFailed:
                 // Reconnection attempt failed -> apply backoff-based retry policy
                 WK_TL1( telemetry_.retry_failure_total.inc() );
-                set_state_(State::WaitingReconnect);
                 disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
                 if (should_retry_(error)) {
+                    set_state_(State::WaitingReconnect);
+                    emit_(TransitionEvent::RetryScheduled);
                     schedule_next_retry_();  // Schedule next retry with backoff
                 } else {
                     set_state_(State::Disconnected);
@@ -490,8 +505,7 @@ private:
                 break;
 
             case Event::TransportClosed:
-                if (reason != DisconnectReason::LocalClose &&
-                    should_retry_(last_error_.load(std::memory_order_relaxed))) {
+                if (reason != DisconnectReason::LocalClose && should_retry_(last_error_.load(std::memory_order_relaxed))) {
                     WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
                     set_state_(State::WaitingReconnect);
                     arm_immediate_reconnect_(last_error_.load());
@@ -509,8 +523,7 @@ private:
         case State::Disconnecting:
             switch (event) {
             case Event::TransportClosed:
-                if (reason != DisconnectReason::LocalClose &&
-                    should_retry_(last_error_.load(std::memory_order_relaxed))) {
+                if (reason != DisconnectReason::LocalClose && should_retry_(last_error_.load(std::memory_order_relaxed))) {
                     set_state_(State::WaitingReconnect);
                     arm_immediate_reconnect_(last_error_.load());
                 } else {
@@ -637,10 +650,7 @@ private:
         }
         WK_TL1( telemetry_.disconnect_events_total.inc() ); // transport closure as observed by Connection
         WK_INFO("[CONN] Disconnected from server: " << last_url_);
-        // Invoke disconnect callback (if any)
-        if (hooks_.on_disconnect_cb_) {
-            hooks_.on_disconnect_cb_();
-        }
+        emit_(TransitionEvent::Disconnected);
         // Notify FSM that the transport has closed (resolution is state-dependent)
         const auto error = last_error_.load(std::memory_order_relaxed);
         transition_(Event::TransportClosed, error);
@@ -728,7 +738,7 @@ private:
                 .url         = last_url_,
                 .error       = retry_root_error_.load(std::memory_order_relaxed),
                 .attempt     = retry_attempts_,
-                .next_delay  = delay
+                .next_retry  = next_retry_
             });
         }
         // convert to seconds for logging

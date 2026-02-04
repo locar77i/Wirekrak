@@ -1,7 +1,5 @@
 #pragma once
 
-#pragma once
-
 /*
 ===============================================================================
 Example 3 - Error & Close Lifecycle
@@ -130,84 +128,89 @@ It **models it precisely**.
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 
-using WS         = wirekrak::core::transport::winhttp::WebSocket;
-using Connection = wirekrak::core::transport::Connection<WS>;
 
 inline int run_example(const char* name, const char* url, const char* description, const char* subscribe_payload,
                        std::chrono::seconds runtime = std::chrono::seconds(5)) {
-    std::cout << "=== Wirekrak Connection - Error & Close Lifecycle (" << name << ") ===\n\n";
-    std::cout << description << "\n\n";
+    using namespace wirekrak::core::transport;
+    // WebSocket transport specialization
+    using WS = winhttp::WebSocket;
 
+    std::cout << "=== Wirekrak Connection - Error & Close Lifecycle (" << name << ") ===\n\n" << description << "\n\n";
+  
+    // -------------------------------------------------------------------------
+    // Connection setup
+    // -------------------------------------------------------------------------
     wirekrak::core::transport::telemetry::Connection telemetry;
-    Connection conn(telemetry);
+    Connection<WS> connection(telemetry);
 
-    // ---------------------------------------------------------------------
-    // Callbacks (order matters!)
-    // ---------------------------------------------------------------------
-
-    conn.on_connect([] {
-        std::cout << "[example] Connected\n";
-    });
-
-    conn.on_message([&](std::string_view msg) {
+    connection.on_message([&](std::string_view msg) {
         std::cout << "[example] RX message (" << msg.size() << " bytes)\n";
     });
 
-    conn.on_disconnect([] {
-        std::cout << "[example] Disconnected (exactly once)\n";
-    });
+    // -------------------------------------------------------------------------
+    // Lambda to drain events
+    // -------------------------------------------------------------------------
+    auto drain_events = [&]() {
+        TransitionEvent ev;
 
-    conn.on_retry([](const wirekrak::core::transport::RetryContext& ctx) {
-        std::cout << "[example] Retry scheduled after error: "
-                  << to_string(ctx.error)
-                  << " (attempt " << ctx.attempt << ")\n";
-    });
+        while (connection.poll_event(ev)) {
+            switch (ev) {
+                case TransitionEvent::Connected:
+                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    break;
 
+                case TransitionEvent::Disconnected:
+                    std::cout << "[example] Disconnect from " << name << " observed! (exactly once)\n";
+                    break;
+
+                case TransitionEvent::RetryScheduled:
+                    std::cout << "[example] Retry schedule observed!\n";
+                    break;
+        
+                default:
+                    break;
+            }
+        }
+    };
+  
     // ---------------------------------------------------------------------
     // Open connection
     // ---------------------------------------------------------------------
-
-    std::cout << "[example] Connecting to " << url << "\n";
-    if (conn.open(url) != wirekrak::core::transport::Error::None) {
-        std::cerr << "[example] Failed to connect\n";
+    if (connection.open(url) != wirekrak::core::transport::Error::None) {
         return 1;
     }
 
     // ---------------------------------------------------------------------
     // Send subscription (if any)
     // ---------------------------------------------------------------------
-
     if (subscribe_payload && subscribe_payload[0] != '\0') {
-        std::cout << "[example] Sending subscription\n";
-        (void)conn.send(subscribe_payload);
+        (void)connection.send(subscribe_payload);
     }
 
     // ---------------------------------------------------------------------
     // Observation window
     // ---------------------------------------------------------------------
-
     auto start = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - start < runtime) {
-        conn.poll();
+        connection.poll();  // Poll driven progression
+        drain_events();     // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // ---------------------------------------------------------------------
     // Force local shutdown (idempotent)
     // ---------------------------------------------------------------------
-
-    std::cout << "[example] Initiating local close()\n";
-    conn.close();
+    connection.close();
 
     for (int i = 0; i < 20; ++i) {
-        conn.poll();
+        connection.poll();  // Poll driven progression
+        drain_events();     // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // ---------------------------------------------------------------------
     // Dump telemetry
     // ---------------------------------------------------------------------
-
     std::cout << "\n=== Connection Telemetry ===\n";
     telemetry.debug_dump(std::cout);
 

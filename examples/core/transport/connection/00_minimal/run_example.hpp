@@ -67,8 +67,6 @@ Everything else builds on this.
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 
-// WebSocket transport specialization
-using WS = wirekrak::core::transport::winhttp::WebSocket;
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -85,31 +83,51 @@ inline void on_signal(int) {
 
 inline int run_example(const char* name, const char* url, const char* description,
                        std::chrono::seconds runtime = std::chrono::seconds(10)) {
-    std::signal(SIGINT, on_signal);
+    using namespace wirekrak::core::transport;
+    // WebSocket transport specialization
+    using WS = winhttp::WebSocket;
 
-    std::cout << "=== Wirekrak Connection - Minimal Lifecycle (" << name << ") ===\n\n"
-        << description << "\n\n";
+    std::cout << "=== Wirekrak Connection - Minimal Lifecycle (" << name << ") ===\n\n" << description << "\n\n";
+
+    // -------------------------------------------------------------------------
+    // Signal handling (explicit termination)
+    // -------------------------------------------------------------------------
+    std::signal(SIGINT, on_signal);
 
     // -------------------------------------------------------------------------
     // Connection setup
     // -------------------------------------------------------------------------
     // Telemetry is mandatory - it is not optional in Wirekrak.
-    wirekrak::core::transport::telemetry::Connection telemetry;
+    telemetry::Connection telemetry;
 
     // Connection owns the logical lifecycle, retries, and liveness.
-    wirekrak::core::transport::Connection<WS> connection(telemetry);
+    Connection<WS> connection(telemetry);
 
     // -------------------------------------------------------------------------
-    // Lifecycle callbacks
+    // Lambda to drain events
     // -------------------------------------------------------------------------
+    auto drain_events = [&]() {
+        TransitionEvent ev;
 
-    connection.on_connect([&] {
-        std::cout << "[example] Connected\n";
-    });
+        while (connection.poll_event(ev)) {
+            switch (ev) {
+                case TransitionEvent::Connected:
+                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    break;
 
-    connection.on_disconnect([&] {
-        std::cout << "[example] Disconnected\n";
-    });
+                case TransitionEvent::Disconnected:
+                    std::cout << "[example] Disconnect from " << name << " observed!\n";
+                    break;
+
+                case TransitionEvent::RetryScheduled:
+                    std::cout << "[example] Retry schedule observed!\n";
+                    break;
+        
+                default:
+                    break;
+            }
+        }
+    };
 
     // Note:
     // No message callback is installed on purpose.
@@ -118,9 +136,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     // Open connection
     // -------------------------------------------------------------------------
-    std::cout << "[example] Connecting to " << url << "\n";
-    if (connection.open(url) != wirekrak::core::transport::Error::None) {
-        std::cerr << "[example] Failed to connect\n";
+    if (connection.open(url) != Error::None) {
         return 1;
     }
 
@@ -131,21 +147,21 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // If you do not call poll(), nothing progresses.
     auto start = std::chrono::steady_clock::now();
 
-    while (running.load(std::memory_order_relaxed) &&
-           std::chrono::steady_clock::now() - start < runtime) {
-        connection.poll();
+    while (running.load(std::memory_order_relaxed) && std::chrono::steady_clock::now() - start < runtime) {
+        connection.poll(); // Poll driven progression
+        drain_events();    // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
     // Close connection
     // -------------------------------------------------------------------------
-    std::cout << "[example] Closing connection\n";
     connection.close();
 
     // Drain remaining events (~200 ms)
     for (int i = 0; i < 20; ++i) {
         connection.poll();
+        drain_events();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

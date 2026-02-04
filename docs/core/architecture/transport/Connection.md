@@ -22,6 +22,7 @@ decoupled from message schemas, subscriptions, and business logic.
 - **Deterministic, poll-driven execution**
 - **No background threads or timers**
 - **Fully unit-testable with mock transports**
+- **ULL-safe** (no blocking, no dynamic allocation on hot paths)
 
 ---
 
@@ -33,11 +34,37 @@ decoupled from message schemas, subscriptions, and business logic.
   - last received message timestamp
   - last received heartbeat timestamp
 - Automatically reconnect with bounded exponential backoff
-- Expose explicit hooks for:
-  - message reception
-  - connection establishment
-  - disconnection
-  - liveness timeout
+- Emit **explicit, semantic connection transition events**
+- Remain silent about protocol intent (no subscription or message replay)
+
+---
+
+## Event-Driven Lifecycle Model
+
+The transport connection does **not** expose lifecycle callbacks.
+
+Instead, it emits **discrete transition events** that can be polled explicitly by the user.
+
+This design:
+
+- Eliminates hidden control flow
+- Makes lifecycle observation deterministic
+- Is safe for ultra-low-latency (ULL) environments
+- Avoids callback reentrancy and destructor-time ambiguity
+
+### Transition Events
+
+The connection emits `TransitionEvent` values, such as:
+
+- `Connected`
+- `Disconnected`
+- `RetryScheduled`
+- `None` (no transition occurred)
+
+Events are queued internally and retrieved via `poll_event()`.
+
+No event emission ever blocks.  
+If the internal queue is full, the **oldest event is dropped and logged**.
 
 ---
 
@@ -54,10 +81,12 @@ robust health check.
 When liveness expires:
 
 - The underlying transport is force-closed
-- State transitions to `WaitingReconnect`
+- The logical connection becomes unusable
+- State transitions toward reconnection
 - Reconnection attempts begin with bounded exponential backoff
 - A fresh transport instance is created on each attempt
-- Higher-level protocol sessions are responsible for replaying subscriptions
+
+Higher-level protocol sessions are responsible for deciding **what to replay** (if anything).
 
 ---
 
@@ -71,7 +100,10 @@ The transport connection operates using an explicit, deterministic state machine
 - `Disconnecting`
 - `Disconnected`
 
-All state transitions are logged and observable, making behavior predictable and debuggable.
+State transitions are **observable via transition events**, not callbacks.
+
+A `Disconnected` event represents that the **logical connection became unusable**,
+not merely that the final terminal state was reached.
 
 ---
 
@@ -81,24 +113,43 @@ All state transitions are logged and observable, making behavior predictable and
 wirekrak::core::transport::telemetry::Connection telemetry;
 wirekrak::core::transport::Connection<WS> conn(telemetry);
 
-conn.on_message([](std::string_view msg) {
-    // forward raw frames to the protocol layer
-});
-
-conn.on_connect([]() {
-    // protocol session may (re)subscribe here
-});
-
-conn.on_disconnect([]() {
-    // handle disconnection if needed
-});
-
 conn.open("wss://ws.kraken.com/v2");
 
 while (running) {
     conn.poll();
+
+    TransitionEvent ev;
+    while (conn.poll_event(ev)) {
+        switch (ev) {
+        case TransitionEvent::Connected:
+            // connection established
+            break;
+
+        case TransitionEvent::Disconnected:
+            // logical connection became unusable
+            break;
+
+        case TransitionEvent::RetryScheduled:
+            // retry cycle started
+            break;
+
+        default:
+            break;
+        }
+    }
 }
 ```
+
+---
+
+## Destructor Semantics
+
+- The destructor **always closes the underlying transport**
+- No retries are scheduled after destruction
+- No transition events are observable after object lifetime ends
+- Destructor side effects are **not observable by design**
+
+This guarantees deterministic teardown and avoids use-after-destruction ambiguity.
 
 ---
 
@@ -106,9 +157,9 @@ while (running) {
 
 - URL parsing is intentionally minimal (`ws://` and `wss://` only)
 - TLS handling is delegated to the transport layer (e.g. WinHTTP + SChannel)
-- Transport instances are **destroyed and recreated** on reconnect to avoid
-  undefined internal state
-- All logic is driven explicitly via `poll()`
+- Transport instances are **destroyed and recreated** on reconnect
+- All progress is driven explicitly via `poll()`
+- The connection never invents traffic, retries, or protocol intent
 
 ---
 

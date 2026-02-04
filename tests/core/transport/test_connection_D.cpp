@@ -81,8 +81,7 @@ void test_message_dispatch_updates_liveness() {
     TEST_CHECK(received == "hello-world");
 
     // Liveness must be updated
-    const auto after =
-        connection.get_last_message_ts().load(std::memory_order_relaxed);
+    const auto after = connection.get_last_message_ts().load(std::memory_order_relaxed);
     TEST_CHECK(after > before);
 
     std::cout << "[TEST] OK\n";
@@ -109,8 +108,7 @@ void test_message_dispatch_without_handler() {
 
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
-    const auto before =
-        connection.get_last_message_ts().load(std::memory_order_relaxed);
+    const auto before = connection.get_last_message_ts().load(std::memory_order_relaxed);
 
     // Step connect_ok
     script.step(connection.ws());
@@ -119,8 +117,7 @@ void test_message_dispatch_without_handler() {
     script.step(connection.ws());
 
     // Liveness must still be updated
-    const auto after =
-        connection.get_last_message_ts().load(std::memory_order_relaxed);
+    const auto after = connection.get_last_message_ts().load(std::memory_order_relaxed);
     TEST_CHECK(after > before);
 
     std::cout << "[TEST] OK\n";

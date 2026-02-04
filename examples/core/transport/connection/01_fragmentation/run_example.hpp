@@ -88,8 +88,6 @@ Telemetry reflects **what happened**, not what was meant.
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 
-// WebSocket transport specialization
-using WS = wirekrak::core::transport::winhttp::WebSocket;
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -104,27 +102,23 @@ inline void on_signal(int) {
 // Runner
 // -----------------------------------------------------------------------------
 
-inline int run_example(
-    const char* name,
-    const char* url,
-    const char* description,
-    const char* subscribe_payload
-) {
-    std::signal(SIGINT, on_signal);  // Handle Ctrl+C
+inline int run_example(const char* name, const char* url, const char* description, const char* subscribe_payload) {
+    using namespace wirekrak::core::transport;
+    // WebSocket transport specialization
+    using WS = winhttp::WebSocket;
 
-    std::cout
-        << "=== Wirekrak Connection - Message Shape & Fragmentation (" << name << ") ===\n\n"
-        << description << "\n\n";
+    std::cout << "=== Wirekrak Connection - Message Shape & Fragmentation (" << name << ") ===\n\n" << description << "\n\n";
+
+    // -------------------------------------------------------------------------
+    // Signal handling (explicit termination)
+    // -------------------------------------------------------------------------
+    std::signal(SIGINT, on_signal);
 
     // -------------------------------------------------------------------------
     // Connection setup
     // -------------------------------------------------------------------------
-    wirekrak::core::transport::telemetry::Connection telemetry;
-    wirekrak::core::transport::Connection<WS> connection(telemetry);
-
-    connection.on_connect([&] {
-        std::cout << "[example] Connected to " << name << " WebSocket\n";
-    });
+    telemetry::Connection telemetry;
+    Connection<WS> connection(telemetry);
 
     connection.on_message([&](std::string_view msg) {
         std::cout << "[example] RX message (" << msg.size() << " bytes)\n";
@@ -132,30 +126,50 @@ inline int run_example(
         //std::cout << msg << "\n";
     });
 
-    connection.on_disconnect([&] {
-        std::cout << "[example] Disconnected\n";
-    });
+    // -------------------------------------------------------------------------
+    // Lambda to drain events
+    // -------------------------------------------------------------------------
+    auto drain_events = [&]() {
+        TransitionEvent ev;
+
+        while (connection.poll_event(ev)) {
+            switch (ev) {
+                case TransitionEvent::Connected:
+                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    break;
+
+                case TransitionEvent::Disconnected:
+                    std::cout << "[example] Disconnect from " << name << " observed!\n";
+                    break;
+
+                case TransitionEvent::RetryScheduled:
+                    std::cout << "[example] Retry schedule observed!\n";
+                    break;
+        
+                default:
+                    break;
+            }
+        }
+    };
 
     // -------------------------------------------------------------------------
     // Open connection
     // -------------------------------------------------------------------------
-    std::cout << "[example] Connecting to " << url << "\n";
-    if (connection.open(url) != wirekrak::core::transport::Error::None) {
-        std::cerr << "[example] Failed to connect\n";
+    if (connection.open(url) != Error::None) {
         return 1;
     }
 
     // -------------------------------------------------------------------------
     // Subscribe
     // -------------------------------------------------------------------------
-    std::cout << "[example] Sending subscription\n";
     (void)connection.send(subscribe_payload);
 
     // -------------------------------------------------------------------------
     // Main polling loop (runs until Ctrl+C)
     // -------------------------------------------------------------------------
     while (running.load(std::memory_order_relaxed)) {
-        connection.poll();
+        connection.poll(); // Poll driven progression
+        drain_events();    // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -166,7 +180,8 @@ inline int run_example(
 
     // Drain any remaining messages (~200 ms)
     for (int i = 0; i < 20; ++i) {
-        connection.poll();
+        connection.poll(); // Poll driven progression
+        drain_events();    // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

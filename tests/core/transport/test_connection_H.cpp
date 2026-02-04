@@ -30,9 +30,8 @@ and observes whether the connection enters WaitingReconnect or Disconnected.
 #include <iostream>
 #include <vector>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
 #include "common/mock_websocket_script.hpp"
+#include "common/connection_harness.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -53,7 +52,6 @@ void test_retriable_errors_trigger_retry() {
     };
 
     for (auto error : retriable_errors) {
-        test::MockWebSocket::reset();
 
         test::MockWebSocketScript script;
         script
@@ -62,25 +60,30 @@ void test_retriable_errors_trigger_retry() {
             .close()
             .connect_ok(); // reconnect succeeds
 
-        telemetry::Connection telemetry;
-        Connection<test::MockWebSocket> connection{telemetry};
+        test::ConnectionHarness h;
 
-        int connect_calls = 0;
-        connection.on_connect([&]() { ++connect_calls; });
+        TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
+        script.step(h.connection->ws()); // initial connect
 
-        TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
-        script.step(connection.ws()); // initial connect
-        TEST_CHECK(connect_calls == 1);
+        h.drain_events();
+
+        // First connect event
+        TEST_CHECK(h.connect_events == 1);
 
         // inject error + close
-        script.step(connection.ws());
-        script.step(connection.ws());
+        script.step(h.connection->ws());
+        script.step(h.connection->ws());
 
         // poll triggers immediate retry
-        connection.poll();
-        script.step(connection.ws());
+        h.connection->poll();
+        script.step(h.connection->ws());
 
-        TEST_CHECK(connect_calls == 2);
+        h.drain_events();
+
+        // Check events
+        TEST_CHECK(h.connect_events == 2);
+        TEST_CHECK(h.disconnect_events == 1);
+        TEST_CHECK(h.retry_schedule_events == 0); 
 
         std::cout << "  ✓ retriable: " << to_string(error) << "\n";
     }
@@ -103,7 +106,6 @@ void test_non_retriable_errors_never_retry() {
     };
 
     for (auto error : non_retriable_errors) {
-        test::MockWebSocket::reset();
 
         test::MockWebSocketScript script;
         script
@@ -111,25 +113,30 @@ void test_non_retriable_errors_never_retry() {
             .error(error)
             .close();
 
-        telemetry::Connection telemetry;
-        Connection<test::MockWebSocket> connection{telemetry};
+        test::ConnectionHarness h;
 
-        int connect_calls = 0;
-        connection.on_connect([&]() { ++connect_calls; });
+        TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
+        script.step(h.connection->ws()); // initial connect
 
-        TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
-        script.step(connection.ws()); // initial connect
-        TEST_CHECK(connect_calls == 1);
+        h.drain_events();
+
+        // First connect event
+        TEST_CHECK(h.connect_events == 1);
 
         // inject error + close
-        script.step(connection.ws());
-        script.step(connection.ws());
+        script.step(h.connection->ws());
+        script.step(h.connection->ws());
 
         // poll should NOT retry
-        connection.poll();
-        connection.poll();
+        h.connection->poll();
+        h.connection->poll();
 
-        TEST_CHECK(connect_calls == 1);
+        h.drain_events();
+
+        // Check events
+        TEST_CHECK(h.connect_events == 1);
+        TEST_CHECK(h.disconnect_events == 1);
+        TEST_CHECK(h.retry_schedule_events == 0);
 
         std::cout << "  ✓ non-retriable: " << to_string(error) << "\n";
     }

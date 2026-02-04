@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <string_view>
 
-#include "lcr/bit/pack.hpp"
-
 
 namespace wirekrak::core::transport {
 
