@@ -85,20 +85,6 @@ It is intentionally decoupled from any exchange schema or message format.
 ===============================================================================
 */
 
-enum class Liveness : uint8_t {
-    Healthy,
-    Warning,   // within danger window
-    TimedOut   // timeout decision taken
-};
-
-std::string_view to_string(Liveness liveness) {
-    switch (liveness) {
-        case Liveness::Healthy:  return "Healthy";
-        case Liveness::Warning:  return "Warning";
-        case Liveness::TimedOut: return "TimedOut";
-        default:                 return "Unknown";
-    }
-}
 
 // Context structure for retry callbacks
 // Provides information about the retry attempt.
@@ -109,12 +95,12 @@ struct RetryContext {
     std::chrono::steady_clock::time_point next_retry;
 };
 
+constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15); // default heartbeat timeout
+constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15); // default message timeout
+constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of liveness window is elapsed
 
 template <transport::WebSocketConcept WS>
 class Connection {
-    static constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15); // default heartbeat timeout
-    static constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15); // default message timeout
-    static constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of liveness window is elapsed
 
 public:
     using message_handler_t          = std::function<void(std::string_view)>;
@@ -226,19 +212,20 @@ public:
         // Once a timeout forces disconnection, reconnection logic takes over.
         if (get_state_() == State::Connected) {
             // === Liveness warning check ===
-            if (liveness_.load(std::memory_order_relaxed) == Liveness::Healthy) {
+            if (!liveness_warning_emitted_) {
                 auto remaining = liveness_remaining_();
                 // Check if we are within the liveness danger window
-                if (remaining <= liveness_danger_window_ && remaining.count() > 0) {
+                if (remaining <= liveness_danger_window_) {
                     WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
-                    liveness_.store(Liveness::Warning, std::memory_order_relaxed);
+                    liveness_warning_emitted_ = true;
+                    transition_(Event::LivenessOutdated);
                 }
             }
             // === Liveness timeout check ===
-            if (is_liveness_stale_()) {
+            if (!liveness_timeout_emitted_ && is_liveness_stale_()) {
                 WK_TRACE("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
-                liveness_.store(Liveness::TimedOut, std::memory_order_relaxed);
-                transition_(Event::LivenessTimeout, Error::Timeout);
+                liveness_timeout_emitted_ = true;
+                transition_(Event::LivenessExpired, Error::Timeout);
             }
         }
     }
@@ -264,16 +251,6 @@ public:
     }
 
     [[nodiscard]]
-    inline Liveness liveness() const noexcept {
-        return liveness_.load(std::memory_order_relaxed);
-    }
-
-    [[nodiscard]]
-    inline std::chrono::milliseconds liveness_remaining() const noexcept {
-        return liveness_remaining_();
-    }
-
-    [[nodiscard]]
     inline std::atomic<uint64_t>& heartbeat_total() noexcept {
         return heartbeat_total_;
     }
@@ -291,6 +268,21 @@ public:
     [[nodiscard]]
     inline const std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts() const noexcept {
         return last_heartbeat_ts_;
+    }
+
+    [[nodiscard]]
+    inline uint64_t rx_messages() const noexcept {
+        return rx_messages_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]]
+    inline uint64_t tx_messages() const noexcept {
+        return tx_messages_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]]
+    inline const std::chrono::steady_clock::time_point& last_message_ts() const noexcept {
+        return last_message_ts_.load(std::memory_order_relaxed);
     }
 
     // Mutators
@@ -341,16 +333,19 @@ private:
     // - Simple liveness detection
     // - Decouples transport health from protocol health
     // - No threads. No timers. Poll-driven.
-    std::atomic<uint64_t> heartbeat_total_;
+    std::atomic<uint64_t> heartbeat_total_{0};
     std::atomic<std::chrono::steady_clock::time_point> last_heartbeat_ts_;
     // TODO: remove atomicity if not needed
+    std::atomic<uint64_t> rx_messages_{0};
+    std::atomic<uint64_t> tx_messages_{0};
     std::atomic<std::chrono::steady_clock::time_point> last_message_ts_;
 
     std::chrono::milliseconds heartbeat_timeout_{10000};
     std::chrono::milliseconds message_timeout_{15000};
     double liveness_warning_ratio_;
     std::chrono::milliseconds liveness_danger_window_;
-    std::atomic<Liveness> liveness_{Liveness::Healthy};
+    bool liveness_warning_emitted_{false};
+    bool liveness_timeout_emitted_{false};
 
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
@@ -440,7 +435,8 @@ private:
                     auto now = std::chrono::steady_clock::now();
                     last_heartbeat_ts_.store(now, std::memory_order_relaxed);
                     last_message_ts_.store(now, std::memory_order_relaxed);
-                    liveness_.store(Liveness::Healthy, std::memory_order_relaxed);
+                    liveness_warning_emitted_ = false;
+                    liveness_timeout_emitted_ = false;
                 }
                 disconnect_reason_.store(DisconnectReason::None, std::memory_order_relaxed);
                 break;
@@ -488,8 +484,11 @@ private:
         // ================================================================
         case State::Connected:
             switch (event) {
-            case Event::LivenessTimeout:
-                WK_TL1( telemetry_.liveness_timeouts_total.inc() ); // the decision is made
+            case Event::LivenessOutdated:
+                emit_(TransitionEvent::LivenessThreatened);
+                break;
+            case Event::LivenessExpired:
+                WK_TL1( telemetry_.liveness_timeouts_total.inc() );
                 last_error_.store(error, std::memory_order_relaxed);
                 disconnect_reason_.store(DisconnectReason::LivenessTimeout, std::memory_order_relaxed);
                 set_state_(State::Disconnecting);
@@ -614,9 +613,6 @@ private:
     inline void on_message_received_(std::string_view msg) {
         // Set last message timestamp
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        if (get_state_() == State::Connected) {
-            liveness_.store(Liveness::Healthy);
-        }
         // Invoke message callback (if any)
         if (hooks_.on_message_cb_) {
             WK_TL1( telemetry_.messages_forwarded_total.inc() ); // This marks handoff, not consumption
@@ -628,8 +624,7 @@ private:
     inline void on_transport_error_(Error error) {
         // Do not override an intentional disconnect decision
         const auto reason = disconnect_reason_.load(std::memory_order_relaxed);
-        if (reason == DisconnectReason::LivenessTimeout ||
-            reason == DisconnectReason::LocalClose) {
+        if (reason == DisconnectReason::LivenessTimeout || reason == DisconnectReason::LocalClose) {
             return;
         }
         WK_WARN("[CONN] Transport error: " << to_string(error));

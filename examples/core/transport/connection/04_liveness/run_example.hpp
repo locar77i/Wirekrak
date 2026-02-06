@@ -145,6 +145,14 @@ inline int run_example(const char* name, const char* url, const char* descriptio
                     std::cout << "[example] Retry schedule observed!\n";
                     break;
         
+                case TransitionEvent::LivenessThreatened:
+                    std::cout << "[example] Liveness warning observed!\n";
+                    if (!ping_enabled.load(std::memory_order_relaxed)) return;
+                    if (!connected.load(std::memory_order_relaxed)) return;
+                    if (!ping_payload) return;
+                    std::cout << "[example] Liveness warning -> sending protocol ping\n";
+                    (void)connection.send(ping_payload);
+                    break;
                 default:
                     break;
             }
@@ -190,24 +198,12 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     std::cout << "\n[example] Phase C - protocol-managed heartbeat\n";
 
     auto on_liveness_warning = [&](std::chrono::milliseconds remaining) {
-        if (!ping_enabled.load(std::memory_order_relaxed)) return;
-        if (!connected.load(std::memory_order_relaxed)) return;
-        if (!ping_payload) return;
-        std::cout << "[example] Liveness warning (" << remaining.count() << " ms remaining) -> sending protocol ping\n";
-        (void)connection.send(ping_payload);
+        
     };
 
-    auto last_liveness = connection.liveness();
     while (running.load(std::memory_order_relaxed)) {
         connection.poll();  // Poll driven progression
         drain_events();     // Drain any pending events
-        if (connection.liveness() != last_liveness) {
-            // Liveness is state-based. We react only to state transitions to preserve determinism.
-            if (last_liveness == Liveness::Healthy && connection.liveness() == Liveness::Warning) {
-                on_liveness_warning(connection.liveness_remaining());
-            }
-            last_liveness = connection.liveness();
-        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

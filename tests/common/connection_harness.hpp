@@ -53,6 +53,7 @@ struct ConnectionHarness {
     std::uint32_t connect_events{0};
     std::uint32_t disconnect_events{0};
     std::uint32_t retry_schedule_events{0};
+    std::uint32_t liveness_warning_events{0};
 
     // Ordered event log (optional inspection)
     std::vector<TransitionEvent> events;
@@ -60,22 +61,33 @@ struct ConnectionHarness {
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
-    ConnectionHarness() {
+    ConnectionHarness(
+        std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT,
+        std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
+        double liveness_warning_ratio = LIVENESS_WARNING_RATIO
+    )
+    {
         test::MockWebSocket::reset();
-        make_connection();
+        make_connection(heartbeat_timeout,  message_timeout, liveness_warning_ratio);
     }
 
     // -------------------------------------------------------------------------
     // Create a fresh Connection instance
     // -------------------------------------------------------------------------
-    inline void make_connection() {
-        connection = std::make_unique<Connection<MockWebSocket>>(telemetry);
+    inline void make_connection(
+        std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT,
+        std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
+        double liveness_warning_ratio = LIVENESS_WARNING_RATIO
+    )
+    {
+        connection = std::make_unique<Connection<MockWebSocket>>(telemetry, heartbeat_timeout, message_timeout, liveness_warning_ratio);
     }
 
     // -------------------------------------------------------------------------
     // Destroy the Connection (forces destructor behavior)
     // -------------------------------------------------------------------------
-    inline void destroy_connection() {
+    inline void destroy_connection()
+    {
         connection.reset(); // ~Connection() runs here
     }
 
@@ -101,6 +113,10 @@ struct ConnectionHarness {
             case TransitionEvent::RetryScheduled:
                 ++retry_schedule_events;
                 break;
+            
+            case TransitionEvent::LivenessThreatened:
+                ++liveness_warning_events;
+                break;
 
             case TransitionEvent::None:
             default:
@@ -118,6 +134,7 @@ struct ConnectionHarness {
         connect_events = 0;
         disconnect_events = 0;
         retry_schedule_events = 0;
+        liveness_warning_events = 0;
         events.clear();
     }
 };

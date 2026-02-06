@@ -1,37 +1,23 @@
 // ============================================================================
-// Core Contracts Example - Liveness Timeout Exposure
+// Core Contracts Example — Liveness Failure Exposure (Edge-Based)
 //
-// This example demonstrates that Wirekrak Core *exposes* liveness failure.
-// It does NOT hide it, smooth it, or auto-correct it.
+// This example demonstrates that Wirekrak Core *exposes* liveness failure
+// deterministically via connection events.
 //
-// The absence of protocol traffic (subscriptions or pings) causes liveness
-// to expire, which deterministically leads to a forced disconnect.
+// No protocol traffic is generated:
+//   - no subscriptions
+//   - no pings or keep-alives
 //
-// HOW TO USE THIS EXAMPLE:
+// Expected observable sequence:
 //
-// 1. Run the program.
-// 2. Do NOT subscribe to any channel.
-// 3. Do NOT send pings or keep-alive messages.
-// 4. Observe the following sequence:
+//   - transport connection established
+//   - initial protocol status message
+//   - LivenessThreatened event
+//   - forced transport disconnect (Disconnected)
 //
-//    - transport connection established
-//    - initial protocol status message
-//    - liveness warning (approaching timeout)
-//    - liveness timeout
-//    - forced transport disconnect
-//
-// IMPORTANT:
-//
-// - This example contains NO protocol-level recovery logic.
-// - No resubscription.
-// - No keep-alive policy.
-// - No masking of failure.
-//
-// Transport retries and reconnection attempts may still occur by design,
-// but this example does not react to them in any way.
-//
-// The program exits after observing liveness timeout and disconnect.
-// ============================================================================ 
+// No protocol-level recovery, masking, or smoothing is performed.
+// Transport reconnection may occur, but this example does not react to it.
+// ============================================================================
 
 
 #include <atomic>
@@ -42,11 +28,6 @@
 #include "wirekrak/core.hpp"
 #include "common/cli/minimal.hpp"
 
-// -----------------------------------------------------------------------------
-// Lifecycle flags (observational only)
-// -----------------------------------------------------------------------------
-static std::atomic<bool> warned{false};
-static std::atomic<bool> timed_out{false};
 
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
@@ -62,6 +43,13 @@ int main(int argc, char** argv) {
         "No subscriptions will be created.\nNo pings will be sent.\n"
     );
     params.dump("=== Runtime Parameters ===", std::cout);
+
+    // -----------------------------------------------------------------------------
+    // Lifecycle flags (observational only)
+    // -----------------------------------------------------------------------------
+    static std::atomic<bool> warned{false};
+    static std::atomic<bool> disconnected{false};
+
 
     // -------------------------------------------------------------------------
     // Session setup
@@ -85,39 +73,50 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     std::cout << "\n[example] Waiting for liveness to expire...\n\n";
 
-    auto last_liveness = session.liveness();
-    while (!timed_out.load()) {
-        session.poll();
-        auto liveness = session.liveness();
-        if (last_liveness != liveness) {
-            std::cout << "[example] liveness state changed: " << to_string(last_liveness) << " -> " << to_string(liveness) << "\n";
-            if (last_liveness == transport::Liveness::Healthy && liveness == transport::Liveness::Warning) {
-                std::cout << "[example] liveness warning: " << session.liveness_remaining().count() << " ms remaining before timeout\n";
-                warned.store(true);
-            }
-            else if (last_liveness == transport::Liveness::Warning && liveness == transport::Liveness::TimedOut) { // once timed out, we can exit
-                std::cout << "[example] liveness timeout: no protocol traffic observed\n";
-                timed_out.store(true);
-            }
-            last_liveness = liveness;
+    auto handle_transition_event = [](transport::TransitionEvent ev) {
+        switch (ev) {
+        case transport::TransitionEvent::Connected:
+            std::cout << "[example] connected\n";
+            break;
+
+        case transport::TransitionEvent::LivenessThreatened:
+            std::cout << "[example] liveness warning: approaching timeout\n";
+            warned.store(true);
+            break;
+
+        case transport::TransitionEvent::Disconnected:
+            std::cout << "[example] liveness timeout: forced disconnect\n";
+            disconnected.store(true);
+            break;
+
+        default:
+            break;
         }
+    };
+
+    //auto last_liveness = session.liveness();
+    while (!disconnected.load()) {
+        session.poll();
+        transport::TransitionEvent ev;
+/*
+        while (session.poll_event(ev)) {
+            handle_transition_event(ev);
+        }
+*/
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // -------------------------------------------------------------------------
-    // Summary
-    // -------------------------------------------------------------------------
     std::cout << "\n[SUMMARY]\n";
     std::cout << "  Subscriptions created : no\n";
     std::cout << "  Pings sent            : no\n";
     std::cout << "  Liveness warning      : " << (warned.load() ? "observed" : "not observed") << "\n";
-    std::cout << "  Liveness timeout      : " << (timed_out.load() ? "observed" : "not observed") << "\n";
-    std::cout << "  Transport disconnect  : exposed\n\n";
+    std::cout << "  Transport disconnect  : observed\n\n";
 
     std::cout << "[CONTRACT]\n";
-    std::cout << "  Wirekrak Core exposes liveness failure deterministically.\n";
-    std::cout << "  Liveness timeout is reported even if transport later reconnects.\n";
-    std::cout << "  No protocol-level recovery, masking, or inference is performed.\n";
+    std::cout << "  Wirekrak Core exposes liveness failure via edge-triggered events.\n";
+    std::cout << "  No level-based liveness or health polling is required.\n";
+    std::cout << "  Liveness timeout deterministically leads to disconnect.\n";
     std::cout << "  Transport reconnection remains orthogonal and observable.\n";
+
     return 0;
 }

@@ -191,14 +191,6 @@ public:
         while (connection_.poll_event(ev)) {
             handle_transition_event_(ev);
         }
-        if (connection_.liveness() != last_liveness_) {
-            if (last_liveness_ == transport::Liveness::Healthy && connection_.liveness() == transport::Liveness::Warning) {
-                if (liveness_policy_ == policy::Liveness::Active) {
-                    send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});
-                }
-            }
-            last_liveness_ = connection_.liveness();
-        }
 
         // ===============================================================================
         // PROCESS PONG MESSAGES
@@ -292,18 +284,6 @@ public:
         liveness_policy_ = p;
     }
 
-    // Accessor to the current liveness state
-    [[nodiscard]]
-    inline transport::Liveness liveness() const noexcept {
-        return connection_.liveness();
-    }
-
-    // Accessor to the remaining liveness time
-    [[nodiscard]]
-    inline std::chrono::milliseconds liveness_remaining() const noexcept {
-        return connection_.liveness_remaining();
-    }
-
     // Accessor to the heartbeat counter
     [[nodiscard]]
     inline uint64_t heartbeat_total() const noexcept {
@@ -345,8 +325,6 @@ private:
 
     // Liveness policy
     policy::Liveness liveness_policy_{policy::Liveness::Passive};
-    // Last observed liveness state
-    transport::Liveness last_liveness_{transport::Liveness::Healthy};
 
     // Session context (owning)
     Context ctx_;
@@ -454,6 +432,12 @@ private:
             break;
         case transport::TransitionEvent::RetryScheduled:
             // Currently no user-defined hook for retry scheduled
+            break;
+        case transport::TransitionEvent::LivenessThreatened:
+            // Currently no user-defined hook for liveness warning
+            if (liveness_policy_ == policy::Liveness::Active) {
+                    send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});
+                }
             break;
         default:
             break;

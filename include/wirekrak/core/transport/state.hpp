@@ -43,13 +43,14 @@ enum class Event : uint8_t {
     CloseRequested,
 
     // --- Transport lifecycle --- 
-    TransportConnected,   // Succeeded (open → connect)
+    TransportConnected,          // Succeeded (open → connect)
     TransportConnectFailed,      // Failed (open → connect)
     TransportReconnectFailed,    // Failed (reconnect → connect)
     TransportClosed,
 
     // --- Liveness ---
-    LivenessTimeout,
+    LivenessOutdated,
+    LivenessExpired,
 
     // --- Retry ---
     RetryTimerExpired
@@ -67,7 +68,8 @@ inline constexpr std::string_view to_string(Event e) noexcept {
         case Event::TransportConnectFailed:    return "TransportConnectFailed";
         case Event::TransportReconnectFailed:  return "TransportReconnectFailed";
         case Event::TransportClosed:           return "TransportClosed";
-        case Event::LivenessTimeout:           return "LivenessTimeout";
+        case Event::LivenessOutdated:          return "LivenessOutdated";
+        case Event::LivenessExpired:           return "LivenessExpired";
         case Event::RetryTimerExpired:         return "RetryTimerExpired";
         default:                               return "UnknownEvent";
     }
