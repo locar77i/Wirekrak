@@ -25,6 +25,7 @@
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
 #include "wirekrak/core/protocol/kraken/response/partitioner.hpp"
 #include "lcr/log/logger.hpp"
+#include "lcr/local/ring_buffer.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/sequence.hpp"
 
@@ -84,7 +85,6 @@ Advanced users may still customize behavior by:
 
 template<transport::WebSocketConcept WS>
 class Session {
-    using rejection_handler_t  = std::function<void(const schema::rejection::Notice&)>;
 
 public:
     Session()
@@ -132,11 +132,6 @@ public:
         return ctx_.pong_slot.try_load(out);
     }
 
-    // Register rejection callback
-    inline void on_rejection(rejection_handler_t cb) noexcept {
-        hooks_.handle_rejection = std::move(cb);
-    }
-
     // -----------------------------------------------------------------------------
     // Status message access (last-value, pull-based)
     //
@@ -161,36 +156,10 @@ public:
         return ctx_.status_slot.try_load(out);
     }
 
-
-
-    // Level-triggered facts
     [[nodiscard]]
-    uint64_t last_pong_ts() const noexcept {
-        return 0;
+    inline bool pop_rejection(schema::rejection::Notice& out) noexcept {
+        return user_rejection_buffer_.pop(out);
     }
-
-    [[nodiscard]]
-    uint64_t pong_count() const noexcept {
-        return 0;
-    }
-
-    [[nodiscard]]
-    const schema::status::Update& last_status() const noexcept {
-        static const schema::status::Update dummy{};
-        return dummy;
-    }
-    [[nodiscard]]
-    uint64_t status_epoch() const noexcept {
-        return 0;
-    }
-
-    // Edge-triggered facts
-    [[nodiscard]]
-    bool pop_rejection(schema::rejection::Notice&) noexcept {
-        return false;
-    }
-
-
 
     // Send ping
     inline void ping() noexcept{
@@ -247,26 +216,29 @@ public:
         while (connection_.poll_signal(sig)) {
             handle_connection_signal_(sig);
         }
-
-        // ===============================================================================
-        // Pong messages must be consumed via the pop_pong() method, which exposes them as a pull-based stream.
-        // This design ensures that pong messages are not delivered via callbacks, which could encourage
-        // event-driven designs and reentrancy hazards. Instead, consumers must explicitly poll for pong messages,
-        // which promotes a pull-based processing model and allows for backpressure handling.
-        // ===============================================================================
-        // Status messages must be consumed via the pop_status() method, which exposes them as a pull-based stream.
-        // This design ensures that status messages are not delivered via callbacks, which could encourage
-        // event-driven designs and reentrancy hazards. Instead, consumers must explicitly poll for status messages,
-        // which promotes a pull-based processing model and allows for backpressure handling.
-        // ===============================================================================
         
         // ===============================================================================
-        // PROCESS REJECTION NOTICES
+        // PROCESS REJECTION NOTICES (lossless, semantic errors)
+        // ===============================================================================
+        // Rejection notices represent protocol-level failures and MUST NOT be dropped.
+        // Failure to drain rejections is a user error and indicates that protocol
+        // correctness can no longer be guaranteed.
+        //
+        // Core processes rejections internally for correctness, then exposes them
+        // losslessly to the user via pop_rejection().
         // ===============================================================================
         { // === Process rejection ring ===
         schema::rejection::Notice notice;
         while (ctx_.rejection_ring.pop(notice)) {
+            // 1) Apply internal protocol correctness handling
             handle_rejection_(notice);
+            // 2) Forward to user-visible rejection buffer (lossless)
+            if (!user_rejection_buffer_.push(notice)) [[unlikely]] { // This is a hard failure: we cannot report semantic errors reliably
+                WK_FATAL("[SESSION] Rejection buffer overflow — protocol correctness compromised (user not draining rejections)");
+                // Defensive action: close the connection to prevent further damage
+                connection_.close();
+                break;
+            }
         }}
         
         // ===============================================================================
@@ -391,14 +363,6 @@ private:
     transport::telemetry::Connection telemetry_;
     transport::Connection<WS> connection_{telemetry_};
 
-    // Hooks structure to store all user-defined callbacks
-    struct Hooks {
-        rejection_handler_t        handle_rejection{};        // Rejection callback
-    };
-
-    // Handlers bundle
-    Hooks hooks_;
-
     // Liveness policy
     policy::Liveness liveness_policy_{policy::Liveness::Passive};
 
@@ -410,6 +374,10 @@ private:
 
     // Protocol parser / router
     parser::Router parser_;
+
+    // User-visible rejection queue.
+    // Decoupled from internal protocol processing to prevent user behavior from affecting Core correctness.
+    lcr::local::ring_buffer<schema::rejection::Notice, config::rejection_ring> user_rejection_buffer_;
 
     // Message dispatcher
     Dispatcher dispatcher_;
@@ -467,17 +435,13 @@ private:
     }
 
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
-        if (hooks_.handle_rejection) {
-            if (notice.req_id.has()) {
-                if (notice.symbol.has()) {
-                    // we cannot infer channel from notice, so we try all managers
-                    trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                    book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                    replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                }
+        if (notice.req_id.has()) {
+            if (notice.symbol.has()) {
+                // we cannot infer channel from notice, so we try all managers
+                trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
             }
-            
-            hooks_.handle_rejection(notice);
         }
     }
 

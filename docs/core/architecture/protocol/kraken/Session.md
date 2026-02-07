@@ -6,11 +6,11 @@ The **Wirekrak Kraken Session** implements the Kraken WebSocket API v2 on top of
 Wirekrak’s generic transport and streaming infrastructure.
 
 It provides a **protocol-oriented, type-safe interface** for interacting with
-Kraken channels while deliberately exposing only **observable facts and protocol
-truth**, not inferred connection health or hidden recovery behavior.
+Kraken channels while deliberately exposing only **observable protocol facts**,
+never inferred health, hidden retries, or implicit recovery behavior.
 
-The session is designed for **deterministic, low-latency (ULL) systems**, making it
-suitable for SDKs, trading engines, and real-time market data pipelines.
+The session is designed for **deterministic, ultra-low-latency (ULL) systems** and
+is suitable for SDKs, trading engines, and real-time market data pipelines.
 
 ---
 
@@ -21,29 +21,31 @@ suitable for SDKs, trading engines, and real-time market data pipelines.
 - **Compile-time safety via C++20 concepts**
 - **Explicit, poll-driven execution model**
 - **Fact-based observability (no inferred state)**
+- **Fail-fast semantics for protocol violations**
 - **Strict separation of transport, session, and protocol concerns**
 
-The Kraken Session exposes **Kraken concepts only** (subscriptions, ACKs,
-rejections, typed messages) and does not leak transport internals.
+The Kraken Session exposes **Kraken protocol truth only** (subscriptions, ACKs,
+rejections, typed messages) and never leaks transport internals or speculative
+state.
 
 ---
 
 ## Architecture
 
-The session is composed of three clearly separated layers:
+The session is composed of three strictly separated layers:
 
 ### Transport Layer
 - WebSocket backend (WinHTTP or mockable)
-- Connection lifecycle
-- Automatic reconnection with backoff
-- Liveness enforcement
-- Transport progress tracking
+- Connection lifecycle and reconnection
+- Heartbeat tracking and liveness enforcement
+- Transport progress accounting
 
 ### Session Layer
 - Composition over `transport::Connection`
 - Deterministic reaction to transport signals
-- Replay of **acknowledged** protocol intent
-- Exposure of **transport progress facts**
+- Replay of **acknowledged protocol intent only**
+- Exposure of **transport and protocol facts**
+- Enforcement of protocol correctness
 
 ### Protocol Layer (Kraken)
 - Request serialization
@@ -52,8 +54,8 @@ The session is composed of three clearly separated layers:
 - Channel-specific subscription management
 - Typed domain models
 
-This design allows the same streaming core to be reused across protocols while
-keeping Kraken logic fully isolated.
+This architecture allows reuse of the streaming core across protocols while
+keeping Kraken-specific logic fully isolated.
 
 ---
 
@@ -62,14 +64,15 @@ keeping Kraken logic fully isolated.
 The Kraken Session is responsible for:
 
 - Establishing and maintaining a Kraken WebSocket session
-- Parsing and routing raw JSON messages into typed protocol events
+- Parsing and routing raw JSON into typed protocol messages
 - Managing subscriptions with explicit ACK tracking
 - Replaying **only acknowledged subscriptions** after reconnect
 - Dispatching channel messages to user callbacks
-- Surfacing protocol-level facts (status, pong, rejection)
-- Reacting to transport signals deterministically
+- Exposing protocol-level facts (pong, status, rejection)
+- Reacting deterministically to transport signals
 
-The session never invents protocol intent and never repairs rejected requests.
+The session **never invents protocol intent**, never retries rejected requests,
+and never hides protocol failures.
 
 ---
 
@@ -86,10 +89,9 @@ uint64_t poll(); // returns current epoch
 
 - Incremented **exactly once per successful WebSocket connection**
 - Monotonic for the lifetime of the Session
-- Never increments on retries, failures, or disconnects
+- Never increments on retries or transient failures
 
-The epoch represents **completed transport lifetimes** and defines replay and
-staleness boundaries.
+The epoch defines **replay and staleness boundaries**.
 
 ### Message Counters
 
@@ -118,11 +120,11 @@ The session observes transport-level events via
 - `RetryScheduled`
 - `LivenessThreatened`
 
-These signals represent **externally observable consequences**, not internal
-state.
+These signals represent **externally observable consequences**, not inferred
+connection state.
 
 The session reacts internally (cleanup, replay, optional ping) but does **not**
-expose connection state flags or callbacks.
+expose connection flags or callbacks.
 
 ---
 
@@ -140,7 +142,7 @@ Subscriptions follow an **ACK-driven intent model**:
 
 - Only **acknowledged subscriptions** are replayed
 - Rejected intent is **final**
-- Replay is triggered **only by epoch change**
+- Replay is triggered **only by transport epoch change**
 - No replay occurs without a successful reconnect
 
 This guarantees protocol correctness across reconnects.
@@ -153,25 +155,48 @@ Protocol rejections are:
 
 - Surfaced verbatim
 - Treated as authoritative
+- Lossless and ordered
 - Never retried
 - Never repaired
 - Never replayed
 
-Rejection handling removes intent from all managers and the replay database.
+Rejections are processed internally for correctness and then exposed to the user
+via a bounded, lossless queue. Failure to drain rejections is considered a user
+error and results in a fail-fast shutdown.
+
+---
+
+## Pong & Status Semantics
+
+Pong and status messages are treated as **state**, not streams:
+
+- Only the **most recent value** is retained
+- Intermediate updates may be overwritten
+- No buffering or backpressure
+- No callbacks or observers
+
+They are exposed via pull-based APIs:
+
+```cpp
+bool try_load_pong(schema::system::Pong&);
+bool try_load_status(schema::status::Update&);
+```
+
+This avoids reentrancy and enforces deterministic processing.
 
 ---
 
 ## Liveness Semantics
 
-Liveness is **enforced internally**, not exposed as state.
+Liveness is enforced internally and never exposed as state.
 
 - Silence is considered unhealthy
-- Enforcement occurs only if **both message and heartbeat signals are stale**
+- Enforcement occurs only if both message and heartbeat signals are stale
 - A `LivenessThreatened` signal may be emitted before enforcement
 - Enforcement results in forced disconnect and normal reconnection
 
-The session may optionally react (e.g. send ping) based on policy, but the
-transport never fabricates traffic.
+The session may optionally send protocol pings based on policy, but the transport
+never fabricates traffic.
 
 ---
 
@@ -187,22 +212,17 @@ Each call advances:
 
 - Transport liveness and reconnection
 - Connection signal handling
-- System messages (pong, status, rejection)
+- Protocol facts (pong, status, rejection)
 - Channel messages and ACKs
 
-There are **no background threads, timers, or callbacks**.
+There are **no background threads, timers, or callbacks** in Core.
 
 ---
 
 ## Usage Example
 
 ```cpp
-using Session = wirekrak::core::protocol::kraken::Session<
-    wirekrak::core::transport::winhttp::WebSocket
->;
-
 Session session;
-
 session.connect("wss://ws.kraken.com/v2");
 
 session.subscribe(
@@ -212,21 +232,18 @@ session.subscribe(
     }
 );
 
-uint64_t last_epoch = session.transport_epoch();
-
-schema::status::Update last_status;
+schema::status::Update status;
+schema::rejection::Notice rejection;
 
 while (running) {
-    uint64_t epoch = session.poll();
+    session.poll();
 
-    if (epoch != last_epoch) {
-        // transport recycled
-        last_epoch = epoch;
+    if (session.try_load_status(status)) {
+        std::cout << "STATUS: " << status << std::endl;
     }
 
-    // --- Observe latest status ---
-    if (session.try_load_status(last_status)) {
-        std::cout << " -> " << last_status << std::endl;
+    while (session.pop_rejection(rejection)) {
+        std::cerr << "REJECTION: " << rejection << std::endl;
     }
 }
 ```
@@ -238,8 +255,9 @@ while (running) {
 The Kraken Session provides:
 
 - Deterministic, poll-driven execution
-- Clear protocol authority (ACKs and rejections)
-- Explicit replay boundaries via epoch
+- Explicit protocol authority (ACKs and rejections)
+- Lossless semantic error reporting
+- Clear replay boundaries via epoch
 - Fact-based observability
 - Strict separation of responsibilities
 

@@ -41,14 +41,7 @@ int main(int argc, char** argv) {
     // Session setup
     // -------------------------------------------------------------------------
     kraken::Session session;
-
-    // Observe rejection notices
-    const auto& mgr = session.trade_subscriptions();
-    session.on_rejection([&](const schema::rejection::Notice& notice) {
-        std::cout << " -> " << notice << std::endl;
-        std::cout << "[example] Trade subscriptions (after rejection): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
-    });
-
+    
     // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
@@ -59,6 +52,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Attempt invalid subscription
     // -------------------------------------------------------------------------
+    const auto& mgr = session.trade_subscriptions();
     std::cout << "[example] Trade subscriptions (before subscribe): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
     session.subscribe(
         schema::trade::Subscribe{ .symbols = { "INVALID/SYMBOL" } },
@@ -75,11 +69,17 @@ int main(int argc, char** argv) {
     // Wait for a few transport lifetimes to prove rejection is not replayed
     auto epoch = session.transport_epoch();
     schema::status::Update last_status;
+    schema::rejection::Notice rejection;
     while (epoch < 3) {
         epoch = session.poll();
         // --- Observe latest status ---
         if (session.try_load_status(last_status)) {
             std::cout << " -> " << last_status << std::endl;
+        }
+        // --- Observe rejections ---
+        while (session.pop_rejection(rejection)) {
+            std::cout << " -> " << rejection << std::endl;
+            std::cout << "[example] Trade subscriptions (after rejection): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }

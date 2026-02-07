@@ -70,13 +70,6 @@ int main(int argc, char** argv) {
     kraken::Session session;
 
     // -------------------------------------------------------------------------
-    // Control-plane observability
-    // -------------------------------------------------------------------------
-    session.on_rejection([](const schema::rejection::Notice& notice) {
-        std::cout << " -> " << notice << std::endl;
-    });
-
-    // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
     if (!session.connect(params.url)) {
@@ -103,6 +96,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     schema::system::Pong last_pong;
     schema::status::Update last_status;
+    schema::rejection::Notice rejection;
     while (running.load()) {
         (void)session.poll();
         // --- Observe latest pong (liveness signal) ---
@@ -112,6 +106,10 @@ int main(int argc, char** argv) {
         // --- Observe latest status ---
         if (session.try_load_status(last_status)) {
             std::cout << " -> " << last_status << std::endl;
+        }
+        // --- Observe rejections ---
+        while (session.pop_rejection(rejection)) {
+            std::cout << " -> " << rejection << std::endl;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }

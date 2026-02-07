@@ -34,23 +34,21 @@ struct Client::Impl {
         : cfg(cfg)
         , session()
     {
-        // --- Wire core status / rejection hooks ---
-        session.on_rejection([this](const auto& notice) {
-        if (error_cb) {
-            error_cb(Error{
-            ErrorCode::Rejected,
-            notice.error
-            });
-        }
-        });
     }
 
     bool connect() {
         return session.connect(cfg.endpoint);
     }
 
+    schema::rejection::Notice rejection; // Reusable temp for pop_rejection()
+
     void poll() {
         (void)session.poll();
+        while (session.pop_rejection(rejection)) {
+            if (error_cb) {
+                error_cb(Error{ErrorCode::Rejected, rejection.error});
+            }
+        }
     }
 };
 
