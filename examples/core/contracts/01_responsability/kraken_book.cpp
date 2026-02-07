@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
     while (running.load()) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
     // Drain a bounded window to process final ACKs
     auto drain_until = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < drain_until) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

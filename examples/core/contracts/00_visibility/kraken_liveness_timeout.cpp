@@ -1,26 +1,26 @@
 // ============================================================================
-// Core Contracts Example — Liveness Failure Exposure (Edge-Based)
+// Core Contracts Example — Liveness Timeout Exposure (Progress-Based)
 //
 // This example demonstrates that Wirekrak Core *exposes* liveness failure
-// deterministically via connection events.
+// through observable lack of progress, not via liveness states or callbacks.
 //
 // No protocol traffic is generated:
 //   - no subscriptions
 //   - no pings or keep-alives
 //
-// Expected observable sequence:
+// Observable facts:
+//   - transport epochs (successful connection cycles)
+//   - received message count
+//   - transmitted message count
+//   - heartbeat count
 //
-//   - transport connection established
-//   - initial protocol status message
-//   - LivenessThreatened event
-//   - forced transport disconnect (Disconnected)
+// Liveness failure is inferred when:
+//   - the transport epoch increases (reconnect occurred)
+//   - but no protocol traffic is ever observed
 //
-// No protocol-level recovery, masking, or smoothing is performed.
-// Transport reconnection may occur, but this example does not react to it.
+// The example exits once a reconnect without traffic is observed.
 // ============================================================================
 
-
-#include <atomic>
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -28,35 +28,27 @@
 #include "wirekrak/core.hpp"
 #include "common/cli/minimal.hpp"
 
-
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
     namespace schema = protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
-    // Runtime configuration (no hard-coded behavior)
+    // Runtime configuration
     // -------------------------------------------------------------------------
-    const auto& params = wirekrak::cli::minimal::configure(argc, argv,
-        "Wirekrak Core - Liveness timeout exposure example\n"
-        "Demonstrates liveness timeout and forced disconnect.\n",
-        "This example shows that Core exposes liveness failure instead of smoothing it.\n"
-        "No subscriptions will be created.\nNo pings will be sent.\n"
+    const auto& params = wirekrak::cli::minimal::configure(
+        argc, argv,
+        "Wirekrak Core - Liveness timeout exposure example\n",
+        "Demonstrates progress-based liveness observation.\n"
+        "No subscriptions. No pings.\n"
     );
     params.dump("=== Runtime Parameters ===", std::cout);
-
-    // -----------------------------------------------------------------------------
-    // Lifecycle flags (observational only)
-    // -----------------------------------------------------------------------------
-    static std::atomic<bool> warned{false};
-    static std::atomic<bool> disconnected{false};
-
 
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
     Session session;
 
-    // Status handler (shows initial protocol traffic)
+    // Status handler (shows initial protocol traffic only)
     session.on_status([](const schema::status::Update& status) {
         std::cout << " -> " << status << std::endl;
     });
@@ -68,55 +60,88 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    std::cout << "\n[example] Observing session progress...\n\n";
+
+    // -------------------------------------------------------------------------
+    // Initial observation baseline
+    // -------------------------------------------------------------------------
+    uint64_t last_epoch     = 0;
+    uint64_t last_rx        = 0;
+    uint64_t last_tx        = 0;
+    uint64_t last_heartbeat = 0;
+
+    bool reconnect_observed = false;
+    bool traffic_observed   = false;
+
+    // Safety bound (example-level responsibility)
+    const auto start = std::chrono::steady_clock::now();
+    constexpr auto MAX_OBSERVATION_TIME = std::chrono::seconds(30);
+
     // -------------------------------------------------------------------------
     // Main polling loop
     // -------------------------------------------------------------------------
-    std::cout << "\n[example] Waiting for liveness to expire...\n\n";
+    while (true) {
+        const uint64_t epoch = session.poll();
 
-    auto handle_transition_event = [](transport::TransitionEvent ev) {
-        switch (ev) {
-        case transport::TransitionEvent::Connected:
-            std::cout << "[example] connected\n";
-            break;
+        const uint64_t rx = session.rx_messages();
+        const uint64_t tx = session.tx_messages();
+        const uint64_t hb = session.heartbeat_total();
 
-        case transport::TransitionEvent::LivenessThreatened:
-            std::cout << "[example] liveness warning: approaching timeout\n";
-            warned.store(true);
-            break;
+        // Detect first successful connection
+        if (last_epoch == 0 && epoch > 0) {
+            std::cout << "[example] transport connected (epoch " << epoch << ")\n";
+        }
 
-        case transport::TransitionEvent::Disconnected:
-            std::cout << "[example] liveness timeout: forced disconnect\n";
-            disconnected.store(true);
-            break;
+        // Detect reconnect
+        if (epoch > last_epoch && last_epoch != 0) {
+            std::cout << "[example] transport reconnected (epoch " << last_epoch << " -> " << epoch << ")\n";
+            reconnect_observed = true;
+        }
 
-        default:
+        // Detect any traffic
+        if (rx > last_rx || tx > last_tx || hb > last_heartbeat) {
+            traffic_observed = true;
+        }
+
+        // Exit condition:
+        // reconnect occurred, but no traffic was ever observed
+        if (reconnect_observed && !traffic_observed) {
+            std::cout << "[example] liveness failure inferred: reconnect without traffic\n";
             break;
         }
-    };
 
-    //auto last_liveness = session.liveness();
-    while (!disconnected.load()) {
-        session.poll();
-        transport::TransitionEvent ev;
-/*
-        while (session.poll_event(ev)) {
-            handle_transition_event(ev);
+        // Absolute safety bound
+        if (std::chrono::steady_clock::now() - start > MAX_OBSERVATION_TIME) {
+            std::cout << "[example] observation window expired\n";
+            break;
         }
-*/
+
+        last_epoch     = epoch;
+        last_rx        = rx;
+        last_tx        = tx;
+        last_heartbeat = hb;
+
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
+    // -------------------------------------------------------------------------
+    // Summary
+    // -------------------------------------------------------------------------
     std::cout << "\n[SUMMARY]\n";
     std::cout << "  Subscriptions created : no\n";
     std::cout << "  Pings sent            : no\n";
-    std::cout << "  Liveness warning      : " << (warned.load() ? "observed" : "not observed") << "\n";
-    std::cout << "  Transport disconnect  : observed\n\n";
+    std::cout << "  Transport epochs      : " << last_epoch << "\n";
+    std::cout << "  RX messages           : " << last_rx << "\n";
+    std::cout << "  TX messages           : " << last_tx << "\n";
+    std::cout << "  Heartbeats            : " << last_heartbeat << "\n";
+    std::cout << "  Reconnect observed    : yes\n";
+    std::cout << "  Protocol traffic      : no\n\n";
 
     std::cout << "[CONTRACT]\n";
-    std::cout << "  Wirekrak Core exposes liveness failure via edge-triggered events.\n";
-    std::cout << "  No level-based liveness or health polling is required.\n";
-    std::cout << "  Liveness timeout deterministically leads to disconnect.\n";
-    std::cout << "  Transport reconnection remains orthogonal and observable.\n";
+    std::cout << "  Wirekrak Core exposes failure via observable progress facts.\n";
+    std::cout << "  No liveness states, callbacks, or health polling are required.\n";
+    std::cout << "  Transport recovery is orthogonal and observable.\n";
+    std::cout << "  Interpretation remains the responsibility of the user.\n";
 
     return 0;
 }

@@ -1,32 +1,26 @@
 /*
 ===============================================================================
  transport::Connection — Group E Unit Tests
+ Transport closure observability & retry consequences
 ===============================================================================
 
 Scope:
 ------
-These tests validate how Connection reacts to unexpected transport closure.
+These tests validate the *observable consequences* of unexpected transport
+closure as exposed by connection::Signal.
 
-This group ensures that:
-- Disconnect callbacks fire correctly
-- State transitions are correct for retriable vs non-retriable closures
-- Retry logic is scheduled only when appropriate
+They ensure:
+- Disconnected signals are emitted exactly once
+- Reconnect attempts produce new Connected signals when allowed
+- Retry scheduling signals are emitted only when applicable
+- Non-retriable closures do not trigger retry behavior
 
-Covered Requirements:
----------------------
-E1. Transport close while Connected (retriable)
-    - Connected → WaitingReconnect
-    - on_disconnect fires once
-    - Retry scheduled
+IMPORTANT TESTING RULE:
+-----------------------
+Reconnect attempts occur synchronously inside poll().
 
-E2. Transport close while Connected (non-retriable)
-    - last_error_ = LocalShutdown
-    - Connected → Disconnected
-    - No retry
-
-E3. Transport close while Disconnecting
-    - Disconnecting → Disconnected
-    - No retry
+All transport outcomes MUST be scripted via MockWebSocketScript
+*before* calling poll().
 
 ===============================================================================
 */
@@ -61,10 +55,10 @@ void test_transport_close_retriable() {
     // Initial connect
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
     // Assertions
-    TEST_CHECK(h.connect_events == 1);
+    TEST_CHECK(h.connect_signals == 1);
 
     // Error from transport
     script.step(h.connection->ws());
@@ -78,12 +72,12 @@ void test_transport_close_retriable() {
     // Reconnect succeeds
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 2);         // initial + reconnect
-    TEST_CHECK(h.disconnect_events == 1);      // Single disconnect
-    TEST_CHECK(h.retry_schedule_events == 0);  // No retry scheduled
+    // Check signals
+    TEST_CHECK(h.connect_signals == 2);         // initial + reconnect
+    TEST_CHECK(h.disconnect_signals == 1);      // Single disconnect
+    TEST_CHECK(h.retry_schedule_signals == 0);  // No retry scheduled
 
     std::cout << "[TEST] OK\n";
 }
@@ -116,14 +110,14 @@ void test_transport_close_non_retriable() {
     // Drive state machine
     h.connection->poll();
 
-    // Drain events and check
-    h.drain_events();
+    // Drain signals and check
+    h.drain_signals();
 
     // Disconnect callback fires once
-    TEST_CHECK(h.disconnect_events == 1);
+    TEST_CHECK(h.disconnect_signals == 1);
 
     // No retry scheduled
-    TEST_CHECK(h.retry_schedule_events == 0);
+    TEST_CHECK(h.retry_schedule_signals == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -155,13 +149,13 @@ void test_transport_close_while_disconnecting() {
     // Drive state machine
     h.connection->poll();
 
-    h.drain_events();
+    h.drain_signals();
 
     // Disconnect fires once
-    TEST_CHECK(h.disconnect_events == 1);
+    TEST_CHECK(h.disconnect_signals == 1);
 
     // No retry scheduled
-    TEST_CHECK(h.retry_schedule_events == 0);
+    TEST_CHECK(h.retry_schedule_signals == 0);
 
     std::cout << "[TEST] OK\n";
 }

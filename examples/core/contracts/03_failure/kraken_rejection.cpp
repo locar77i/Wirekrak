@@ -42,12 +42,6 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     Session session;
 
-    // Observe connection lifecycle
-    std::atomic<int> disconnects{0};
-    session.on_disconnect([&] {
-        int d = ++disconnects;
-    });
-
     // Observe rejection notices
     const auto& mgr = session.trade_subscriptions();
     session.on_rejection([&](const schema::rejection::Notice& notice) {
@@ -83,8 +77,10 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     std::cout << "[example] Trade subscriptions (after subscribe): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
 
-    while (disconnects.load(std::memory_order_relaxed) < 2) {
-        session.poll();
+    // Wait for a few transport lifetimes to prove rejection is not replayed
+    auto epoch = session.transport_epoch();
+    while (epoch < 3) {
+        epoch = session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -94,7 +90,7 @@ int main(int argc, char** argv) {
     session.close();
 
     for (int i = 0; i < 20; ++i) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

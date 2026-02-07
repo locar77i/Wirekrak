@@ -87,8 +87,6 @@ class Session {
     using pong_handler_t       = std::function<void(const schema::system::Pong&)>;
     using rejection_handler_t  = std::function<void(const schema::rejection::Notice&)>;
     using status_handler_t     = std::function<void(const schema::status::Update&)>;
-    using connect_handler_t    = std::function<void()>;
-    using disconnect_handler_t = std::function<void()>;
 
 public:
     Session()
@@ -125,16 +123,6 @@ public:
     // Register status callback
     inline void on_status(status_handler_t cb) noexcept {
         hooks_.handle_status = std::move(cb);
-    }
-
-    // Register observational connect callback
-    inline void on_connect(connect_handler_t cb) noexcept {
-        hooks_.handle_connect = std::move(cb);
-    }
-
-    // Register observational disconnect callback
-    inline void on_disconnect(disconnect_handler_t cb) noexcept {
-        hooks_.handle_disconnect = std::move(cb);
     }
 
     // Send ping
@@ -184,12 +172,13 @@ public:
     // -----------------------------------------------------------------------
 
     // TODO: Refactor poll method for incoming messages and events
-    inline void poll() {
+    [[nodiscard]]
+    inline uint64_t poll() {
         // === Heartbeat liveness & reconnection logic ===
         connection_.poll();
-        transport::TransitionEvent ev;
-        while (connection_.poll_event(ev)) {
-            handle_transition_event_(ev);
+        transport::connection::Signal sig;
+        while (connection_.poll_signal(sig)) {
+            handle_connection_signal_(sig);
         }
 
         // ===============================================================================
@@ -277,6 +266,8 @@ public:
                 book_channel_manager_.process_unsubscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
             }
         }}
+
+        return connection_.epoch();
     }
 
     // Set liveness policy
@@ -302,6 +293,31 @@ public:
         return book_channel_manager_;
     }
 
+    // -----------------------------------------------------------------------------
+    // Transport progress facts
+    // -----------------------------------------------------------------------------
+
+    // Accessor to the current transport epoch
+    // incremented on each successful connect, used for staleness checks
+    [[nodiscard]]
+    inline uint64_t transport_epoch() const noexcept {
+        return connection_.epoch();
+    }
+
+    [[nodiscard]]
+    inline uint64_t rx_messages() const noexcept {
+        return connection_.rx_messages();
+    }
+
+    [[nodiscard]]
+    inline uint64_t tx_messages() const noexcept {
+        return connection_.tx_messages();
+    }
+
+    [[nodiscard]]
+    inline uint64_t hb_messages() const noexcept {
+        return connection_.hb_messages();
+    }
 
 private:
     // Sequence generator for request IDs
@@ -316,8 +332,6 @@ private:
         pong_handler_t             handle_pong{};             // Pong callback
         rejection_handler_t        handle_rejection{};        // Rejection callback
         status_handler_t           handle_status{};           // Status callback
-        connect_handler_t          handle_connect{};          // Connect callback
-        disconnect_handler_t       handle_disconnect{};       // Disconnect callback
     };
 
     // Handlers bundle
@@ -350,45 +364,40 @@ private:
 
 private:
     inline void handle_connect_() {
-        // 1) Clear runtime state
-        dispatcher_.clear();
-        trade_channel_manager_.clear_all();
-        book_channel_manager_.clear_all();
-        // 2) Replay trade subscriptions
-        auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
-        if(!trade_subscriptions.empty()) {
-            WK_DEBUG("[REPLAY] Replaying " << trade_subscriptions.size() << " trade subscription(s)");
-            for (const auto& subscription : trade_subscriptions) {
-                subscribe(subscription.request(), subscription.callback());
+        WK_TRACE("[SESSION] handle connect (transport_epoch = " << transport_epoch() << ")");
+        // Replay subscriptions if this is a reconnect (epoch > 1)
+        if (transport_epoch() > 1) {
+            // 1) Replay trade subscriptions
+            auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
+            if(!trade_subscriptions.empty()) {
+                WK_DEBUG("[REPLAY] Replaying " << trade_subscriptions.size() << " trade subscription(s)");
+                for (const auto& subscription : trade_subscriptions) {
+                    subscribe(subscription.request(), subscription.callback());
+                }
             }
-        }
-        else {
-            WK_DEBUG("[REPLAY] No trade subscriptions to replay");
-        }
-        // 3) Replay book subscriptions
-        auto book_subscriptions = replay_db_.take_subscriptions<schema::book::Subscribe>();
-        if(!book_subscriptions.empty()) {
-            WK_DEBUG("[REPLAY] Replaying " << book_subscriptions.size() << " book subscription(s)");
-            for (const auto& subscription : book_subscriptions) {
-                subscribe(subscription.request(), subscription.callback());
+            else {
+                WK_DEBUG("[REPLAY] No trade subscriptions to replay");
             }
-        }
-        else {
-            WK_DEBUG("[REPLAY] No book subscriptions to replay");
-        }
-        // 4) Invoke user-defined connect callback
-        if (hooks_.handle_connect) {
-            hooks_.handle_connect();
+            // 2) Replay book subscriptions
+            auto book_subscriptions = replay_db_.take_subscriptions<schema::book::Subscribe>();
+            if(!book_subscriptions.empty()) {
+                WK_DEBUG("[REPLAY] Replaying " << book_subscriptions.size() << " book subscription(s)");
+                for (const auto& subscription : book_subscriptions) {
+                    subscribe(subscription.request(), subscription.callback());
+                }
+            }
+            else {
+                WK_DEBUG("[REPLAY] No book subscriptions to replay");
+            }
         }
     }
 
     inline void handle_disconnect_() {
-        // handle disconnect
-        // ...
-        // 1) Invoke user-defined disconnect callback
-        if (hooks_.handle_disconnect) {
-            hooks_.handle_disconnect();
-        }
+        WK_TRACE("[SESSION] handle disconnect (transport_epoch = " << transport_epoch() << ")");
+        // Clear runtime state
+        dispatcher_.clear();
+        trade_channel_manager_.clear_all();
+        book_channel_manager_.clear_all();
     }
 
     inline void handle_message_(std::string_view sv) {
@@ -422,18 +431,18 @@ private:
         }
     }
 
-    inline void handle_transition_event_(transport::TransitionEvent ev) noexcept {
-        switch (ev) {
-        case transport::TransitionEvent::Connected:
+    inline void handle_connection_signal_(transport::connection::Signal sig) noexcept {
+        switch (sig) {
+        case transport::connection::Signal::Connected:
             handle_connect_();
             break;
-        case transport::TransitionEvent::Disconnected:
+        case transport::connection::Signal::Disconnected:
             handle_disconnect_();
             break;
-        case transport::TransitionEvent::RetryScheduled:
+        case transport::connection::Signal::RetryScheduled:
             // Currently no user-defined hook for retry scheduled
             break;
-        case transport::TransitionEvent::LivenessThreatened:
+        case transport::connection::Signal::LivenessThreatened:
             // Currently no user-defined hook for liveness warning
             if (liveness_policy_ == policy::Liveness::Active) {
                     send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});

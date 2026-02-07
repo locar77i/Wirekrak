@@ -43,12 +43,12 @@ void test_close_graceful_shutdown() {
 
     h.connection->poll();
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 1);
-    TEST_CHECK(h.disconnect_events == 1);
-    TEST_CHECK(h.retry_schedule_events == 0);
+    // Check signals
+    TEST_CHECK(h.connect_signals == 1);
+    TEST_CHECK(h.disconnect_signals == 1);
+    TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Transport must be closed exactly once
     TEST_CHECK(h.connection->ws().close_count() == 1);
@@ -67,19 +67,19 @@ void test_destructor_closes_transport() {
 
     TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 1);  // Initial connect
+    // Check signals
+    TEST_CHECK(h.connect_signals == 1);  // Initial connect
 
     h.destroy_connection();  // The connection object is no longer observable
 
-    h.drain_events();    // None to drain
+    h.drain_signals();    // None to drain
 
-    // Check events
-    TEST_CHECK(h.connect_events == 1);        // No new connect events after destruction
-    TEST_CHECK(h.disconnect_events == 0);     // IMPOSSIBLE to observe side effects of an object after its storage has been destroyed.
-    TEST_CHECK(h.retry_schedule_events == 0); // IMPOSSIBLE to observe side effects of an object after its storage has been destroyed.
+    // Check signals
+    TEST_CHECK(h.connect_signals == 1);        // No new connect signals after destruction
+    TEST_CHECK(h.disconnect_signals == 0);     // IMPOSSIBLE to observe side effects of an object after its storage has been destroyed.
+    TEST_CHECK(h.retry_schedule_signals == 0); // IMPOSSIBLE to observe side effects of an object after its storage has been destroyed.
 
     // Destructor must have closed transport
     TEST_CHECK(test::MockWebSocket::close_count() == 1);
@@ -102,12 +102,12 @@ void test_close_idempotent() {
     h.connection->close();
     h.connection->close();
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 1);
-    TEST_CHECK(h.disconnect_events == 1);
-    TEST_CHECK(h.retry_schedule_events == 0);
+    // Check signals
+    TEST_CHECK(h.connect_signals == 1);
+    TEST_CHECK(h.disconnect_signals == 1);
+    TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Transport must be closed exactly once
     TEST_CHECK(h.connection->ws().close_count() == 1);
@@ -126,7 +126,7 @@ void test_close_idempotent() {
 // - Destructor terminates all semantic emission
 //
 // This test verifies that:
-// - No RetryScheduled event is emitted before destruction
+// - No RetryScheduled signal is emitted before destruction
 // - Destructor does not cause retry scheduling
 // -----------------------------------------------------------------------------
 
@@ -143,11 +143,11 @@ void test_destructor_no_reconnect() {
     // Step initial connect
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Exactly one connect event
-    TEST_CHECK(h.connect_events == 1);
-    TEST_CHECK(h.retry_schedule_events == 0);
+    // Exactly one connect signal
+    TEST_CHECK(h.connect_signals == 1);
+    TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Simulate retriable transport failure
     h.connection->ws().emit_error(Error::RemoteClosed);
@@ -160,13 +160,13 @@ void test_destructor_no_reconnect() {
     // Now destroy the connection.
     h.destroy_connection();
 
-    // No further events are observable after destruction
-    h.drain_events();
+    // No further signals are observable after destruction
+    h.drain_signals();
 
     // Assertions
-    TEST_CHECK(h.connect_events == 1);          // initial connect only
-    TEST_CHECK(h.retry_schedule_events == 0);   // no retry scheduled
-    TEST_CHECK(h.disconnect_events == 0);       // destructor is not a semantic transition
+    TEST_CHECK(h.connect_signals == 1);          // initial connect only
+    TEST_CHECK(h.retry_schedule_signals == 0);   // no retry scheduled
+    TEST_CHECK(h.disconnect_signals == 0);       // destructor is not a semantic transition
 
     // Transport must have been closed
     TEST_CHECK(test::MockWebSocket::close_count() == 1);

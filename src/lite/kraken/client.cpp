@@ -54,7 +54,7 @@ struct Client::Impl {
     }
 
     void poll() {
-        core.poll();
+        (void)core.poll();
     }
 };
 

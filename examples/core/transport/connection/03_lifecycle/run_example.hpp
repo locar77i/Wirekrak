@@ -60,9 +60,9 @@ Scenario
 -------------------------------------------------------------------------------
 
   1) Connect to a WebSocket endpoint
-  2) Optionally send a subscription
+  2) Optionally send a raw payload (protocol-agnostic)
   3) Allow a transport error or remote close to occur
-  4) Observe callback ordering
+  4) Observe connection::Signal ordering
   5) Trigger a local close()
   6) Dump connection and transport telemetry
 
@@ -85,7 +85,7 @@ Key invariants validated
 -------------------------------------------------------------------------------
 
   - Error → then Close (never reversed)
-  - Disconnect callback fires exactly once
+  - Disconnected signal is emitted exactly once
   - Transport close events are idempotent
   - Retry logic observes real failure causes
   - Telemetry reflects reality, not assumptions
@@ -150,22 +150,25 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     // Lambda to drain events
     // -------------------------------------------------------------------------
-    auto drain_events = [&]() {
-        TransitionEvent ev;
+    auto drain_signals = [&]() {
+        connection::Signal sig;
 
-        while (connection.poll_event(ev)) {
-            switch (ev) {
-                case TransitionEvent::Connected:
+        while (connection.poll_signal(sig)) {
+            switch (sig) {
+                case connection::Signal::Connected:
                     std::cout << "[example] Connect to " << name << " observed!\n";
                     break;
 
-                case TransitionEvent::Disconnected:
+                case connection::Signal::Disconnected:
                     std::cout << "[example] Disconnect from " << name << " observed! (exactly once)\n";
                     break;
 
-                case TransitionEvent::RetryScheduled:
+                case connection::Signal::RetryScheduled:
                     std::cout << "[example] Retry schedule observed!\n";
                     break;
+
+                // connection::Signal::LivenessThreatened intentionally ignored in this example
+                // This example focuses on error/close ordering, not liveness recovery
         
                 default:
                     break;
@@ -193,7 +196,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     auto start = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - start < runtime) {
         connection.poll();  // Poll driven progression
-        drain_events();     // Drain any pending events
+        drain_signals();     // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -204,7 +207,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
 
     for (int i = 0; i < 20; ++i) {
         connection.poll();  // Poll driven progression
-        drain_events();     // Drain any pending events
+        drain_signals();     // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

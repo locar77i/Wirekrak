@@ -4,8 +4,8 @@ This document defines **what liveness means in Wirekrak**, how it is enforced,
 and how responsibility is intentionally split between the **Connection layer**
 and **Protocol layers**.
 
-If you are investigating reconnects, timeouts, or “unexpected” disconnects,
-this document defines the rules that govern that behavior.
+It reflects the current **epoch + counters + connection::Signal** transport
+model and intentionally avoids any level-based “health state” exposure.
 
 ---
 
@@ -20,10 +20,25 @@ Wirekrak defines liveness **strictly** and **conservatively**:
 > A connection is considered *alive* **only if observable traffic is flowing**.
 
 “Observable” means:
-- A message is received from the server, and
-- That message reaches the Connection layer
+- A message **or heartbeat** is received from the server, and
+- That traffic reaches the **Connection layer**
 
 Silence is never assumed to be healthy.
+
+---
+
+## Liveness is enforced, not exposed as state
+
+Wirekrak does **not** expose a level-based liveness or health state.
+
+Instead, it exposes **facts**:
+
+- Transport progress via `epoch()`
+- Activity via monotonic `rx_messages()` / `tx_messages()`
+- Enforcement consequences via `connection::Signal`
+
+Liveness itself is an **internal invariant**, enforced deterministically by the
+Connection and surfaced only through observable consequences.
 
 ---
 
@@ -55,16 +70,16 @@ This guarantees:
 
 ## Liveness signals
 
-Wirekrak tracks two independent timestamps:
+Wirekrak tracks **two independent activity timestamps**:
 
 | Signal | Meaning |
 |------|--------|
 | **Last message timestamp** | When any message was received |
 | **Last heartbeat timestamp** | When a protocol heartbeat was observed |
 
-A liveness timeout occurs **only if both signals are stale**.
+A liveness failure occurs **only if both signals are stale**.
 
-This allows:
+This supports:
 - Heartbeat-only protocols
 - Data-only protocols
 - Mixed traffic
@@ -73,24 +88,27 @@ But it never allows *silence*.
 
 ---
 
-## Liveness warning (pre-timeout signal)
+## Liveness warning (pre-enforcement signal)
 
-Before liveness enforcement occurs, the Connection can optionally emit a
-**liveness warning**.
+Before enforcement occurs, the Connection may emit:
 
-This warning indicates:
+```
+connection::Signal::LivenessThreatened
+```
 
-> *The connection is approaching a liveness timeout.*
+This indicates:
 
-Characteristics of the liveness warning:
+> *The connection is approaching enforced liveness timeout.*
 
-- It is emitted **once per liveness window**
-- It occurs **before** a forced disconnection
-- It does **not** change connection state
-- It is purely **informational**
+Characteristics:
+
+- Emitted **once per silence window**
+- Does **not** change connection state
+- Is purely **informational**
+- Represents imminent enforcement
 
 The warning provides protocols with a **last opportunity** to emit traffic
-(e.g. send a ping) before enforcement occurs.
+(e.g. send a ping).
 
 Importantly:
 
@@ -99,9 +117,9 @@ Importantly:
 
 ---
 
-## What triggers a liveness timeout?
+## What triggers liveness enforcement?
 
-A timeout occurs when:
+Enforcement occurs when:
 
 ```
 (now - last_message_ts) > message_timeout
@@ -111,17 +129,15 @@ AND
 
 When this happens:
 
-1. The Connection **decides** the connection is unhealthy
-2. A liveness timeout is recorded
+1. The Connection enforces liveness failure
+2. A timeout is recorded in telemetry
 3. The WebSocket is **force-closed**
-4. Normal reconnection logic takes over
+4. A `connection::Signal::Disconnected` edge is emitted
+5. Normal reconnection logic takes over
+6. A new `epoch` will be established on successful reconnect
 
 This is **not an error**.  
 It is a **health enforcement action**.
-
-If a liveness warning was emitted earlier, it means:
-
-> The protocol chose not to (or could not) satisfy liveness in time.
 
 ---
 
@@ -136,12 +152,7 @@ This is deliberate:
 - It reuses the existing retry state machine
 - It produces consistent telemetry
 
-There is no “special case” reconnect.
-
-This keeps the system:
-- Testable
-- Observable
-- Predictable
+There is no special-case reconnect.
 
 ---
 
@@ -153,8 +164,9 @@ The Connection layer:
 
 - Enforces liveness invariants
 - Detects silence deterministically
-- Emits **liveness warnings** before enforcement
-- Forces reconnects when required
+- Emits **edge-triggered warning and disconnect signals**
+- Advances the transport `epoch` on successful connections
+- Tracks transport progress via counters
 - Provides retry, backoff, and telemetry
 - Never sends protocol messages on its own
 
@@ -186,22 +198,15 @@ Wirekrak does not fabricate traffic.
 
 ## Passive connections are not safe
 
-Many exchanges allow opening a WebSocket without subscribing.
-
-Observed behaviors include:
-- Emitting a single welcome message
-- Emitting nothing at all
-- Emitting periodic heartbeats
-- Going completely silent
-
-Wirekrak treats *all of these equally*.
+Opening a WebSocket without traffic is **never considered safe**.
 
 If traffic stops:
 - A liveness warning may be emitted
-- Liveness expires
-- The connection is recycled
+- Liveness enforcement occurs
+- The transport is recycled
+- A new `epoch` is established on reconnection
 
-This is correct.
+This is correct and intentional.
 
 ---
 
@@ -252,12 +257,3 @@ If something disconnects, you can always answer:
 Wirekrak does not keep connections alive.
 
 **Protocols do.**
-
----
-
-Wirekrak enforces correctness —  
-it does not hide responsibility.
-
----
-
-⬅️ [Back to README](./Overview.md#liveness)

@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
     while (running.load(std::memory_order_relaxed) && messages_received < 10) {
-        session.poll();   // REQUIRED: drives all Core behavior
+        (void)session.poll();   // REQUIRED: drives all Core behavior
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

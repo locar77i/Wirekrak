@@ -11,7 +11,7 @@
 #include "wirekrak/core/transport/telemetry/connection.hpp"
 #include "wirekrak/core/transport/parse_url.hpp"
 #include "wirekrak/core/transport/state.hpp"
-#include "wirekrak/core/transport/connection/transition_event.hpp"
+#include "wirekrak/core/transport/connection/signal.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/optional.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
@@ -32,7 +32,7 @@ transport implementation conforming to transport::WebSocketConcept.
 A Connection represents a *logical* connection whose identity remains stable
 across transient transport failures and automatic reconnections.
 
-This component encapsulates all *connection-level* concerns and is designed
+This component encapsulates all *transport-level* concerns and is designed
 to be reused across protocols (Kraken, future exchanges, custom feeds).
 
 It is intentionally decoupled from any exchange schema or message format.
@@ -40,11 +40,41 @@ It is intentionally decoupled from any exchange schema or message format.
 -------------------------------------------------------------------------------
  Responsibilities
 -------------------------------------------------------------------------------
-- Establish and manage a logical connection over a WebSocket transport
-- Dispatch raw text frames to higher-level protocol clients
-- Detect connection liveness using heartbeat and message activity
-- Automatically reconnect with exponential backoff on failures
-- Provide deterministic, poll-driven behavior (no threads, no timers)
+- Establish and manage a logical WebSocket connection
+- Own the transport lifecycle (connect, disconnect, retry)
+- Track transport progress and activity signals
+- Detect liveness failure deterministically
+- Expose only observable consequences via edge-triggered events
+
+-------------------------------------------------------------------------------
+ Progress & Observability Model
+-------------------------------------------------------------------------------
+The Connection exposes *facts*, not inferred health states:
+
+- transport_epoch
+    Incremented once per successful WebSocket connection.
+    Represents completed transport lifetimes.
+
+- rx_messages / tx_messages
+    Monotonic counters tracking successfully received and sent messages.
+
+- connection::Signal
+    Edge-triggered, single-shot events for externally observable transitions
+    (Connected, Disconnected, RetryScheduled, LivenessThreatened).
+
+No level-based liveness or health state is exposed.
+
+-------------------------------------------------------------------------------
+ Liveness & Reconnection Semantics
+-------------------------------------------------------------------------------
+- Two independent activity signals are tracked:
+    * Last received message timestamp
+    * Last received heartbeat timestamp
+- Liveness failure occurs only if BOTH signals are stale
+- On liveness timeout:
+    * The transport is force-closed
+    * Normal reconnection logic applies
+- Warning and timeout are edge-triggered and emitted at most once per silence window
 
 -------------------------------------------------------------------------------
  Design Guarantees
@@ -54,33 +84,25 @@ It is intentionally decoupled from any exchange schema or message format.
 - Header-only, zero-cost abstractions
 - Transport-agnostic via transport::WebSocketConcept
 - Fully testable using mock transports
-- No background threads; all logic is driven via poll()
-
--------------------------------------------------------------------------------
- Liveness & Reconnection Model
--------------------------------------------------------------------------------
-- Two independent signals are tracked:
-    * Last message timestamp
-    * Last heartbeat timestamp
-- A reconnect is triggered only if BOTH signals are stale
-- Transport is force-closed to reuse the same reconnection state machine
-- Reconnection uses bounded exponential backoff
-- Subscriptions are replayed by higher-level protocol sessions
+- No background threads; all logic is poll-driven
 
 -------------------------------------------------------------------------------
  Usage Model
 -------------------------------------------------------------------------------
 - Call open(url) once to activate the connection
-- Register callbacks (on_message, on_disconnect, on_liveness_timeout)
-- Drive progress by calling poll() regularly
-- Compose this Connection inside protocol-specific sessions (e.g. Kraken)
+- Drive all progress by calling poll() regularly
+- Observe progress via:
+    * transport_epoch
+    * rx/tx counters
+    * connection::Signal edges
+- Compose this Connection inside protocol-level sessions (e.g. Kraken)
 
 -------------------------------------------------------------------------------
  Notes
 -------------------------------------------------------------------------------
 - URL parsing is intentionally minimal (ws:// and wss:// only)
-- TLS is delegated to the underlying transport (e.g. WinHTTP + SChannel)
-- This class is safe to unit-test without any real network access
+- TLS is delegated to the underlying transport
+- Designed for ultra-low-latency (ULL) and deterministic environments
 
 ===============================================================================
 */
@@ -194,6 +216,8 @@ public:
             return false;
         }
         if (ws_->send(std::string(text))) {
+            // Update tx message count and timestamp
+            tx_messages_.fetch_add(1, std::memory_order_relaxed);
             last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
             return true;
         }
@@ -212,13 +236,17 @@ public:
         // Once a timeout forces disconnection, reconnection logic takes over.
         if (get_state_() == State::Connected) {
             // === Liveness warning check ===
-            if (!liveness_warning_emitted_) {
-                auto remaining = liveness_remaining_();
-                // Check if we are within the liveness danger window
+            auto remaining = liveness_remaining_();
+            if (!liveness_warning_emitted_) [[likely]] {
                 if (remaining <= liveness_danger_window_) {
                     WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
                     liveness_warning_emitted_ = true;
                     transition_(Event::LivenessOutdated);
+                }
+            } else { // If liveness warning was previously emitted,
+                // reset it once observable activity restores liveness above the danger window.
+                if (remaining > liveness_danger_window_) {
+                    liveness_warning_emitted_ = false;
                 }
             }
             // === Liveness timeout check ===
@@ -231,7 +259,7 @@ public:
     }
 
     [[nodiscard]]
-    inline bool poll_event(TransitionEvent& out) noexcept {
+    inline bool poll_signal(connection::Signal& out) noexcept {
         return events_.pop(out);
     }
 
@@ -251,6 +279,11 @@ public:
     }
 
     [[nodiscard]]
+    inline uint64_t epoch() const noexcept {
+        return epoch_;
+    }
+
+    [[nodiscard]]
     inline std::atomic<uint64_t>& heartbeat_total() noexcept {
         return heartbeat_total_;
     }
@@ -258,6 +291,11 @@ public:
     [[nodiscard]]
     inline const std::atomic<uint64_t>& heartbeat_total() const noexcept {
         return heartbeat_total_;
+    }
+
+    [[nodiscard]]
+    inline uint64_t hb_messages() const noexcept {
+        return heartbeat_total_.load(std::memory_order_relaxed);
     }
 
     [[nodiscard]]
@@ -281,7 +319,7 @@ public:
     }
 
     [[nodiscard]]
-    inline const std::chrono::steady_clock::time_point& last_message_ts() const noexcept {
+    inline const std::chrono::steady_clock::time_point last_message_ts() const noexcept {
         return last_message_ts_.load(std::memory_order_relaxed);
     }
 
@@ -321,6 +359,9 @@ private:
 
     transport::telemetry::Connection& telemetry_;
     std::unique_ptr<WS> ws_;
+
+    // Current transport epoch (incremented on each websocket connection: exposed progress signal.)
+    uint64_t epoch_{0};
 
     // Heartbeat messages are used as a deterministic liveness signal that drives reconnection.
     // If no heartbeat is received for N seconds:
@@ -367,24 +408,24 @@ private:
     int retry_attempts_{0}; // It is 1-based and represents the ordinal number of the next retry attempt (not completed attempts).
 
     // The pending transition events
-    lcr::lockfree::spsc_ring<TransitionEvent, 16> events_;
+    lcr::lockfree::spsc_ring<connection::Signal, 16> events_;
 
-    inline void emit_(TransitionEvent ev) noexcept {
+    inline void emit_(connection::Signal sig) noexcept {
         // Fast path: try to push
-        if (events_.push(ev)) [[likely]] {
+        if (events_.push(sig)) [[likely]] {
             return;
         }
 
         // Buffer full: drop oldest event
-        TransitionEvent dropped;
+        connection::Signal dropped;
         (void)events_.pop(dropped); // guaranteed to succeed if full
 
         // Retry push (must succeed now)
-        if (!events_.push(ev)) {
+        if (!events_.push(sig)) {
             // This should be impossible in SPSC; log defensively
-            WK_ERROR("[CONN] TransitionEvent buffer corrupted; event lost: " << to_string(ev));
+            WK_ERROR("[CONN] connection::Signal buffer corrupted; signal lost: " << to_string(sig));
         } else {
-            WK_WARN("[CONN] TransitionEvent buffer full; dropped oldest event: " << to_string(dropped));
+            WK_WARN("[CONN] connection::Signal buffer full; dropped oldest signal: " << to_string(dropped));
         }
     }
 
@@ -427,7 +468,7 @@ private:
             case Event::TransportConnected:
                 // Transport connection established -> enter fully connected state
                 set_state_(State::Connected);
-                emit_(TransitionEvent::Connected);
+                emit_(connection::Signal::Connected);
                 // Reset retry state
                 retry_attempts_ = 0;
                 retry_root_error_.store(Error::None, std::memory_order_relaxed);
@@ -439,6 +480,8 @@ private:
                     liveness_timeout_emitted_ = false;
                 }
                 disconnect_reason_.store(DisconnectReason::None, std::memory_order_relaxed);
+                // Only increment on Connected (Never on retries, attempts, or disconnections)
+                ++epoch_;
                 break;
 
             case Event::TransportConnectFailed:
@@ -460,7 +503,7 @@ private:
                 disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
                 if (should_retry_(error)) {
                     set_state_(State::WaitingReconnect);
-                    emit_(TransitionEvent::RetryScheduled);
+                    emit_(connection::Signal::RetryScheduled);
                     schedule_next_retry_();  // Schedule next retry with backoff
                 } else {
                     set_state_(State::Disconnected);
@@ -485,7 +528,7 @@ private:
         case State::Connected:
             switch (event) {
             case Event::LivenessOutdated:
-                emit_(TransitionEvent::LivenessThreatened);
+                emit_(connection::Signal::LivenessThreatened);
                 break;
             case Event::LivenessExpired:
                 WK_TL1( telemetry_.liveness_timeouts_total.inc() );
@@ -610,8 +653,10 @@ private:
     }
                     
     // Placeholder for user-defined behavior on message receipt
+    // (The transport successfully received a message from the peer)
     inline void on_message_received_(std::string_view msg) {
-        // Set last message timestamp
+        // Update rx message count and timestamp
+        rx_messages_.fetch_add(1, std::memory_order_relaxed);
         last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
         // Invoke message callback (if any)
         if (hooks_.on_message_cb_) {
@@ -645,7 +690,7 @@ private:
         }
         WK_TL1( telemetry_.disconnect_events_total.inc() ); // transport closure as observed by Connection
         WK_INFO("[CONN] Disconnected from server: " << last_url_);
-        emit_(TransitionEvent::Disconnected);
+        emit_(connection::Signal::Disconnected);
         // Notify FSM that the transport has closed (resolution is state-dependent)
         const auto error = last_error_.load(std::memory_order_relaxed);
         transition_(Event::TransportClosed, error);

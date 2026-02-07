@@ -121,16 +121,16 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // Lambda to drain events
     // -------------------------------------------------------------------------
     auto drain_events = [&]() {
-        TransitionEvent ev;
+        connection::Signal sig;
 
-        while (connection.poll_event(ev)) {
-            switch (ev) {
-                case TransitionEvent::Connected:
+        while (connection.poll_signal(sig)) {
+            switch (sig) {
+                case connection::Signal::Connected:
                     connected.store(true, std::memory_order_relaxed);
                     std::cout << "[example] Connect to " << name << " observed!\n";
                     break;
 
-                case TransitionEvent::Disconnected:
+                case connection::Signal::Disconnected:
                     connected.store(false, std::memory_order_relaxed);
                     std::cout << "[example] Disconnect from " << name << " observed! (exactly once)\n";
                     {
@@ -141,11 +141,11 @@ inline int run_example(const char* name, const char* url, const char* descriptio
                     }
                     break;
 
-                case TransitionEvent::RetryScheduled:
+                case connection::Signal::RetryScheduled:
                     std::cout << "[example] Retry schedule observed!\n";
                     break;
         
-                case TransitionEvent::LivenessThreatened:
+                case connection::Signal::LivenessThreatened:
                     std::cout << "[example] Liveness warning observed!\n";
                     if (!ping_enabled.load(std::memory_order_relaxed)) return;
                     if (!connected.load(std::memory_order_relaxed)) return;

@@ -6,8 +6,8 @@
 //
 // CONTRACT DEMONSTRATED:
 //
-// - The transport::Connection enforces liveness invariants
-// - The protocol::kraken::Session decides how to satisfy liveness
+// - transport::Connection enforces liveness *by observation*
+// - protocol::kraken::Session decides whether and how to emit traffic
 // - Liveness behavior is policy-driven (Passive vs Active)
 // - Forced reconnects are intentional, observable, and recoverable
 //
@@ -19,9 +19,9 @@
 //     - Connection may force reconnects
 //
 //   Active:
-//     - Session reacts to liveness warnings
-//     - Protocol-level pings are emitted
-//     - Observable traffic maintains liveness
+//     - Session reacts to LivenessThreatened events
+//     - Protocol-level pings are emitted explicitly
+//     - Liveness is preserved only if traffic is observed
 //
 // ============================================================================
 
@@ -70,12 +70,6 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     protocol::kraken::Session<transport::winhttp::WebSocket> session;
 
-    // Observe connection lifecycle
-    std::atomic<int> disconnects{0};
-    session.on_disconnect([&] {
-        int d = ++disconnects;
-    });
-
     // Observe pong messages (only relevant in Active policy)
     session.on_pong([](const schema::system::Pong& pong) {
         std::cout << " -> " << pong << std::endl;
@@ -86,7 +80,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     std::cout << "\n[example] Phase A - Passive liveness policy\n";
     std::cout << "          No protocol heartbeats will be sent.\n";
-    std::cout << "          Forced reconnects may occur.\n\n";
+    std::cout << "          Forced reconnects are expected if the protocol remains silent.\n\n";
 
     session.set_policy(policy::Liveness::Passive);
 
@@ -96,7 +90,7 @@ int main(int argc, char** argv) {
 
     auto phase_a_start = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - phase_a_start < std::chrono::seconds(20)) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -110,7 +104,7 @@ int main(int argc, char** argv) {
     session.set_policy(policy::Liveness::Active);
 
     while (running.load(std::memory_order_relaxed)) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -120,7 +114,7 @@ int main(int argc, char** argv) {
     session.close();
 
     for (int i = 0; i < 20; ++i) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -129,7 +123,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     std::cout << "\n=== Summary ===\n"
               << "- Passive policy allows forced reconnects.\n"
-              << "- Active policy maintains liveness via protocol pings.\n"
+              << "- Active policy attempts to maintain liveness via protocol pings.\n"
               << "- Connection enforces invariants; protocol provides signals.\n"
               << "- Behavior is explicit, observable, and deterministic.\n\n"
               << "Wirekrak enforces correctness.\n"

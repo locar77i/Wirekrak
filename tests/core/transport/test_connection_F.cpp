@@ -90,13 +90,13 @@ void test_liveness_both_stale() {
     // Drive liveness state evaluation
     h.connection->poll();
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 1);
-    TEST_CHECK(h.disconnect_events == 1);        // Disconnection must occur due to liveness timeout
-    TEST_CHECK(h.retry_schedule_events == 0);
-    TEST_CHECK(h.liveness_warning_events == 1);  // One single liveness warning event
+    // Check signals
+    TEST_CHECK(h.connect_signals == 1);
+    TEST_CHECK(h.disconnect_signals == 1);        // Disconnection must occur due to liveness timeout
+    TEST_CHECK(h.retry_schedule_signals == 0);
+    TEST_CHECK(h.liveness_warning_signals == 1);  // One single liveness warning signal
 
     // Transport must be force-closed to enter reconnect path
     TEST_CHECK(test::MockWebSocket::close_count() == 1);
@@ -125,13 +125,13 @@ void test_liveness_only_heartbeat_stale() {
     // Drive liveness state evaluation
     h.connection->poll();
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 1);
-    TEST_CHECK(h.disconnect_events == 0);
-    TEST_CHECK(h.retry_schedule_events == 0);
-    TEST_CHECK(h.liveness_warning_events == 0);  // No liveness warning
+    // Check signals
+    TEST_CHECK(h.connect_signals == 1);
+    TEST_CHECK(h.disconnect_signals == 0);
+    TEST_CHECK(h.retry_schedule_signals == 0);
+    TEST_CHECK(h.liveness_warning_signals == 0);  // No liveness warning
 
     // Transport must not be closed
     TEST_CHECK(test::MockWebSocket::close_count() == 0);
@@ -162,13 +162,13 @@ void test_liveness_only_message_stale() {
     // Drive liveness state evaluation
     h.connection->poll();
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 1);
-    TEST_CHECK(h.disconnect_events == 0);
-    TEST_CHECK(h.retry_schedule_events == 0);
-    TEST_CHECK(h.liveness_warning_events == 0); // No liveness warning
+    // Check signals
+    TEST_CHECK(h.connect_signals == 1);
+    TEST_CHECK(h.disconnect_signals == 0);
+    TEST_CHECK(h.retry_schedule_signals == 0);
+    TEST_CHECK(h.liveness_warning_signals == 0); // No liveness warning
 
     // Transport must not be closed
     TEST_CHECK(test::MockWebSocket::close_count() == 0);
@@ -189,7 +189,7 @@ void test_liveness_only_message_stale() {
 // - Timeout forces disconnect (Disconnected)
 // - Reconnection resets liveness tracking
 //
-// Only externally observable events are asserted.
+// Only externally observable signals are asserted.
 // -----------------------------------------------------------------------------
 void test_connection_liveness_edges()
 {
@@ -205,11 +205,11 @@ void test_connection_liveness_edges()
     // Connect
     // -------------------------------------------------------------------------
     TEST_CHECK(h.connection->open("wss://test") == Error::None);
-    h.drain_events();
+    h.drain_signals();
 
-    TEST_CHECK(h.connect_events == 1);
-    TEST_CHECK(h.liveness_warning_events == 0);
-    TEST_CHECK(h.disconnect_events == 0);
+    TEST_CHECK(h.connect_signals == 1);
+    TEST_CHECK(h.liveness_warning_signals == 0);
+    TEST_CHECK(h.disconnect_signals == 0);
 
     const auto now = std::chrono::steady_clock::now();
 
@@ -219,16 +219,16 @@ void test_connection_liveness_edges()
     h.connection->force_last_message(now - std::chrono::seconds(4));
     h.connection->force_last_heartbeat(now - std::chrono::seconds(4));
     h.connection->poll();
-    h.drain_events();
+    h.drain_signals();
 
-    TEST_CHECK(h.disconnect_events == 0);
-    TEST_CHECK(h.liveness_warning_events == 1);
+    TEST_CHECK(h.disconnect_signals == 0);
+    TEST_CHECK(h.liveness_warning_signals == 1);
 
     // Poll again — must NOT refire warning
     h.connection->poll();
-    h.drain_events();
+    h.drain_signals();
 
-    TEST_CHECK(h.liveness_warning_events == 1); // still exactly one
+    TEST_CHECK(h.liveness_warning_signals == 1); // still exactly one
 
     // -------------------------------------------------------------------------
     // Enter timeout
@@ -236,27 +236,27 @@ void test_connection_liveness_edges()
     h.connection->force_last_message(now - std::chrono::seconds(7));
     h.connection->force_last_heartbeat(now - std::chrono::seconds(7));
     h.connection->poll();
-    h.drain_events();
+    h.drain_signals();
 
-    TEST_CHECK(h.disconnect_events == 1);
+    TEST_CHECK(h.disconnect_signals == 1);
     TEST_CHECK(test::MockWebSocket::close_count() == 1);
 
     // -------------------------------------------------------------------------
     // Reconnect resets liveness window
     // -------------------------------------------------------------------------
     h.connection->poll(); // drive reconnect
-    h.drain_events();
+    h.drain_signals();
 
-    TEST_CHECK(h.connect_events == 2);
+    TEST_CHECK(h.connect_signals == 2);
 
     // Silence again → warning must be allowed again
     const auto later = std::chrono::steady_clock::now();
     h.connection->force_last_message(later - std::chrono::seconds(4));
     h.connection->force_last_heartbeat(later - std::chrono::seconds(4));
     h.connection->poll();
-    h.drain_events();
+    h.drain_signals();
 
-    TEST_CHECK(h.liveness_warning_events == 2); // new cycle, new warning
+    TEST_CHECK(h.liveness_warning_signals == 2); // new cycle, new warning
 
     std::cout << "[TEST] OK\n";
 }

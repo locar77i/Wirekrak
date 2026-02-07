@@ -40,20 +40,25 @@ public:
 
     // Register outbound subscribe request (called before sending a subscribe request)
     inline void register_subscription(std::vector<Symbol> symbols, std::uint64_t req_id) noexcept {
+        WK_TRACE("[SUBMGR] Registering subscription request (req_id=" << req_id << ")");
         // Store pending symbols
         auto& vec = pending_subscriptions_[req_id];
         vec.reserve(symbols.size());
         for (auto& s : symbols) {
             vec.push_back(intern_symbol(s));
         }
+        WK_TRACE("[SUBMGR] Active subscriptions = " << active_.size() << " - Pending subscriptions = " << pending_subscriptions_.size());
     }
+
     // Register outbound unsubscribe request (called before sending an unsubscribe request)
     inline void register_unsubscription(std::vector<Symbol> symbols, std::uint64_t req_id) noexcept {
+        WK_TRACE("[SUBMGR] Registering unsubscription request (req_id=" << req_id << ")");
         auto& vec = pending_unsubscriptions_[req_id];
         vec.reserve(symbols.size());
         for (auto& s : symbols) {
             vec.push_back(intern_symbol(s));
         }
+        WK_TRACE("[SUBMGR] Active subscriptions = " << active_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
     }
 
     // ------------------------------------------------------------
@@ -61,6 +66,7 @@ public:
     // ------------------------------------------------------------
 
     inline void process_subscribe_ack(Channel channel, std::uint64_t group_id, Symbol symbol, bool success) noexcept {
+        WK_TRACE("[SUBMGR] Processing subscribe ACK for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ") - success=" << std::boolalpha << success);
         bool done = false;
         if (success) [[likely]] {
             done = confirm_subscription_(symbol, group_id);
@@ -71,9 +77,11 @@ public:
             if (done) WK_WARN("[SUBMGR] Subscription REJECTED for channel '" << to_string(channel) << "'  {" << symbol << "} (req_id=" << group_id << ")");
         }
         if (!done) WK_WARN("[SUBMGR] Subscription OMITTED for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << group_id << ")");
+        WK_TRACE("[SUBMGR] Active subscriptions = " << active_.size() << " - Pending subscriptions = " << pending_subscriptions_.size());
     }
 
     inline void process_unsubscribe_ack(Channel channel, std::uint64_t group_id, Symbol symbol, bool success) noexcept {
+        WK_TRACE("[SUBMGR] Processing unsubscribe ACK for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ") - success=" << std::boolalpha << success);
         bool done = false;
         if (success) [[likely]] {
             done = confirm_unsubscription_(symbol, group_id);
@@ -84,6 +92,7 @@ public:
             if (done) WK_WARN("[SUBMGR] Unsubscription REJECTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ")");
         }
         if (!done) WK_WARN("[SUBMGR] Unsubscription ACK omitted for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << group_id << ")");
+        WK_TRACE("[SUBMGR] Active subscriptions = " << active_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
     }
 
     inline void try_process_rejection(std::uint64_t req_id, Symbol symbol) noexcept {

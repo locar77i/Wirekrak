@@ -6,7 +6,7 @@
 
 #include "wirekrak/core/transport/telemetry/connection.hpp"
 #include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/transport/connection/transition_event.hpp"
+#include "wirekrak/core/transport/connection/signal.hpp"
 #include "common/mock_websocket.hpp"
 
 /*
@@ -23,7 +23,7 @@ Design:
 -------
 - Telemetry outlives Connection
 - Connection lifetime is explicit and controllable
-- Transition events are drained deterministically
+- Connection signals are drained deterministically
 - No callbacks, no threads, no hidden behavior
 
 This enables:
@@ -50,13 +50,13 @@ struct ConnectionHarness {
     // -------------------------------------------------------------------------
     // Event counters
     // -------------------------------------------------------------------------
-    std::uint32_t connect_events{0};
-    std::uint32_t disconnect_events{0};
-    std::uint32_t retry_schedule_events{0};
-    std::uint32_t liveness_warning_events{0};
+    std::uint32_t connect_signals{0};
+    std::uint32_t disconnect_signals{0};
+    std::uint32_t retry_schedule_signals{0};
+    std::uint32_t liveness_warning_signals{0};
 
-    // Ordered event log (optional inspection)
-    std::vector<TransitionEvent> events;
+    // Ordered signal log (optional inspection)
+    std::vector<connection::Signal> signals;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -92,50 +92,50 @@ struct ConnectionHarness {
     }
 
     // -------------------------------------------------------------------------
-    // Drain all pending transition events
+    // Drain all pending connection signals
     // -------------------------------------------------------------------------
-    inline void drain_events() noexcept {
+    inline void drain_signals() noexcept {
         if (!connection) {
             return;
         }
 
-        TransitionEvent ev;
-        while (connection->poll_event(ev)) {
-            switch (ev) {
-            case TransitionEvent::Connected:
-                ++connect_events;
+        connection::Signal sig;
+        while (connection->poll_signal(sig)) {
+            switch (sig) {
+            case connection::Signal::Connected:
+                ++connect_signals;
                 break;
 
-            case TransitionEvent::Disconnected:
-                ++disconnect_events;
+            case connection::Signal::Disconnected:
+                ++disconnect_signals;
                 break;
 
-            case TransitionEvent::RetryScheduled:
-                ++retry_schedule_events;
+            case connection::Signal::RetryScheduled:
+                ++retry_schedule_signals;
                 break;
             
-            case TransitionEvent::LivenessThreatened:
-                ++liveness_warning_events;
+            case connection::Signal::LivenessThreatened:
+                ++liveness_warning_signals;
                 break;
 
-            case TransitionEvent::None:
+            case connection::Signal::None:
             default:
                 break;
             }
 
-            events.push_back(ev);
+            signals.push_back(sig);
         }
     }
 
     // -------------------------------------------------------------------------
-    // Reset counters and event log (does NOT affect connection state)
+    // Reset counters and signal log (does NOT affect connection state)
     // -------------------------------------------------------------------------
     inline void reset_counters() noexcept {
-        connect_events = 0;
-        disconnect_events = 0;
-        retry_schedule_events = 0;
-        liveness_warning_events = 0;
-        events.clear();
+        connect_signals = 0;
+        disconnect_signals = 0;
+        retry_schedule_signals = 0;
+        liveness_warning_signals = 0;
+        signals.clear();
     }
 };
 

@@ -1,80 +1,109 @@
-# Example 3 — Error & Close Lifecycle
+# Example 3 — Failure, Disconnect & Close Ordering
 
-This example demonstrates Wirekrak’s **error and close lifecycle guarantees** and
-how failures propagate *deterministically* through the **transport layer** and
-the **Connection layer**.
+This example demonstrates Wirekrak’s **failure, disconnect, and close ordering guarantees**
+and how faults propagate *deterministically* through the **transport layer** and the
+**Connection layer**.
 
 > **Core truth:**  
 > Errors may vary.  
-> Closures must not.
+> **Disconnect is singular.**  
+> **Closure is exact.**
 
 ---
 
 ## What this example proves
 
-- Errors and close events are **distinct signals**
-- Errors may occur **before** a close
-- A logical disconnect is reported **exactly once**
-- Close events are **never double-counted**
-- Retry decisions are made **after lifecycle resolution**
+This example validates **observable lifecycle correctness**, not recovery heuristics.
 
-This example exists to validate **lifecycle correctness**, not recovery speed.
+Specifically, it proves that:
+
+- Transport errors and disconnects are **distinct observable facts**
+- Errors may occur **before** a disconnect
+- A logical disconnect is emitted **exactly once**
+- Physical transport close events are **idempotent**
+- Retry decisions occur **after disconnect resolution**
+- Lifecycle signals are **ordered, explicit, and non-ambiguous**
 
 ---
 
 ## What this example is NOT
 
-- ❌ It is not testing reconnect backoff tuning
-- ❌ It is not testing protocol semantics
-- ❌ It is not hiding transport failures
-- ❌ It is not smoothing lifecycle events
+This example intentionally does **not**:
 
-If you expect “best effort” or “maybe-close” semantics,
-this example is designed to correct that assumption.
+- ❌ Tune retry backoff or reconnection latency
+- ❌ Test protocol or subscription semantics
+- ❌ Suppress or smooth transport failures
+- ❌ Guess intent or infer health state
+
+If you expect “best-effort”, “eventual”, or “maybe-closed” semantics,
+this example exists to correct that assumption.
 
 ---
 
 ## Scenario overview
 
 1. Open a WebSocket connection  
-2. Optionally send a subscription  
-3. Allow traffic and/or errors to occur  
-4. Observe message, error, and disconnect callbacks  
+2. Optionally send a raw payload (protocol-agnostic)  
+3. Allow traffic, errors, or remote close to occur  
+4. Observe **connection::Signal** ordering  
 5. Force a local `close()`  
-6. Dump telemetry  
+6. Dump transport and connection telemetry  
 
 Nothing is mocked.  
 Nothing is inferred.  
-Only facts are reported.
+Only **observable facts** are reported.
 
 ---
 
-## Callback ordering (this matters)
+## Signal ordering (this matters)
 
 Expected rules:
 
 - Transport errors may occur **zero or more times**
-- Errors are observed **before** closure
-- `on_disconnect` fires **exactly once**
-- Retry scheduling occurs **after** lifecycle resolution
+- Errors are observed **before logical disconnect resolution**
+- `connection::Signal::Disconnected` is emitted **exactly once**
+- Physical close events may occur before or after error reporting
+- Retry scheduling (if any) occurs **after disconnect**
+
+No lifecycle signal is emitted twice.
+No ordering is guessed.
 
 ---
 
 ## Telemetry interpretation
 
-- **Disconnect events** must always equal **1**
-- **Receive errors** reflect transport failures
-- **Close events** are deduplicated
+When reading the output:
+
+- **Disconnect events**
+  - Must always equal **1** per lifecycle
+- **Receive errors**
+  - Explain *why* the connection failed
+- **Close events**
+  - Reflect physical socket teardown
+  - Are deduplicated and idempotent
+
+Telemetry reflects **reality**, not assumptions.
+
+---
+
+## Key invariant
+
+Errors may happen many times.  
+**Disconnect happens once.**  
+Close is exact.
+
+If these ever disagree,
+the system is lying to you.
 
 ---
 
 ## TL;DR
 
-Errors can happen many times.  
-Close happens **once**.
+Wirekrak does not hide failure.  
+It does not merge events.  
+It does not guess.
 
-Wirekrak reports reality.  
-It does not hide lifecycle truth.
+It models failure **precisely**, so you can trust what you observe.
 
 ---
 

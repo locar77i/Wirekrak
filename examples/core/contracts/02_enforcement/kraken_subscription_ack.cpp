@@ -2,16 +2,20 @@
 // Core Contracts Example — Subscription ACK Enforcement
 //
 // This example demonstrates that subscription state in Wirekrak Core
-// is strictly ACK-driven.
+// is **strictly protocol-ACK driven** and independent of transport lifecycle.
 //
 // CONTRACT DEMONSTRATED:
 //
-// - Subscriptions are NOT assumed active until ACKed
-// - Duplicate subscribe requests are not merged optimistically
-// - Unsubscribe before ACK is handled deterministically
-// - Core never infers or fabricates subscription state
+// - Subscriptions are NOT considered active until ACKed by the protocol
+// - Duplicate subscribe intents are surfaced, not merged optimistically
+// - Unsubscribe-before-ACK is handled deterministically
+// - Subscription state is never inferred from transport connectivity
+// - No replay occurs for rejected or unacknowledged intent
+//
+// Transport progress, reconnects, and epochs are orthogonal to this contract.
 //
 // ============================================================================
+
 
 #include <chrono>
 #include <iostream>
@@ -85,12 +89,13 @@ int main(int argc, char** argv) {
     );
 
     // -------------------------------------------------------------------------
-    // Observe ACKs and state transitions
+    // Observe protocol ACKs and subscription state progression
+    // (independent of transport reconnects or epoch changes)
     // -------------------------------------------------------------------------
     const auto& mgr = session.trade_subscriptions();
     auto observe_until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < observe_until) {
-        session.poll();
+        (void)session.poll();
         std::cout << "[example] Trade subscriptions: active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
@@ -103,7 +108,7 @@ int main(int argc, char** argv) {
     // Drain a short window to allow event processing
     auto drain_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
     while (std::chrono::steady_clock::now() < drain_until) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

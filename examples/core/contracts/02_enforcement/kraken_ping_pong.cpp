@@ -8,12 +8,17 @@
 // - Control-plane messages (ping, pong, status) are independent of subscriptions
 // - Pong responses are delivered via a dedicated callback
 // - Engine timestamps and local wall-clock time can be correlated
-// - No market data subscriptions are required
+// - No protocol intent beyond control-plane traffic is required
+// - All progress is driven explicitly via poll()
+// - Pong delivery is an observable fact; no hidden timers or threads exist
 //
 // This functionality is designed for:
 // - Heartbeat verification
 // - Operational monitoring
 // - Connectivity and latency diagnostics
+//
+// Control-plane pings are protocol-owned and do NOT bypass transport liveness rules
+// The Connection never sends traffic on its own
 //
 // ============================================================================
 
@@ -65,15 +70,18 @@ int main(int argc, char** argv) {
         std::cout << " -> " << pong << "\n\n";
 
         // Engine-measured RTT (if provided by Kraken)
+        // Engine RTT reflects Kraken's internal timing.
         if (pong.time_in.has() && pong.time_out.has()) {
             auto engine_rtt = pong.time_out.value() - pong.time_in.value();
             std::cout << "    engine RTT: " << engine_rtt.count() << " ns\n";
         }
 
-        // Local RTT using wall-clock
+        // Local RTT reflects end-to-end wall-clock latency.
         auto now = std::chrono::steady_clock::now();
         auto local_rtt = std::chrono::duration_cast<std::chrono::milliseconds>(now - ping_sent_at);
         std::cout << "    local RTT : " << local_rtt.count() << " ms\n" << std::endl;
+
+        // Comparing both helps diagnose transport vs server-side delays.
 
         // Mark pong as received
         pong_received.store(true, std::memory_order_relaxed);
@@ -96,7 +104,7 @@ int main(int argc, char** argv) {
     // Poll for a short, bounded observation window
     // -------------------------------------------------------------------------
     while (!pong_received.load(std::memory_order_relaxed)) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

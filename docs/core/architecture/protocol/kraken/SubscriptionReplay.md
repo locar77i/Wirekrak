@@ -79,14 +79,21 @@ The `database` is the orchestration layer.
 
 ## Replay Strategy
 
-Replay is usually triggered by the transport layer:
+Replay is triggered by **transport progress**, not callbacks.
+
+On each successful WebSocket connection, the transport advances its
+monotonic `epoch`. When a new epoch is observed, the Session replays
+previously acknowledged subscriptions:
 
 ```text
-on_connect():
+on Connected signal with epoch > 1:
     replay_database.replay_all(send_fn)
 ```
 
 Where `send_fn` is a callable that sends raw messages over the socket.
+
+This keeps the original intent, removes callbacks, and aligns exactly
+with your **epoch-driven, poll-based architecture**.
 
 ## Hackathon Pitch Angle
 

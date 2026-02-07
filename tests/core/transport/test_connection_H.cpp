@@ -65,10 +65,10 @@ void test_retriable_errors_trigger_retry() {
         TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
         script.step(h.connection->ws()); // initial connect
 
-        h.drain_events();
+        h.drain_signals();
 
-        // First connect event
-        TEST_CHECK(h.connect_events == 1);
+        // First connect signal
+        TEST_CHECK(h.connect_signals == 1);
 
         // inject error + close
         script.step(h.connection->ws());
@@ -78,12 +78,12 @@ void test_retriable_errors_trigger_retry() {
         h.connection->poll();
         script.step(h.connection->ws());
 
-        h.drain_events();
+        h.drain_signals();
 
-        // Check events
-        TEST_CHECK(h.connect_events == 2);
-        TEST_CHECK(h.disconnect_events == 1);
-        TEST_CHECK(h.retry_schedule_events == 0); 
+        // Check signals
+        TEST_CHECK(h.connect_signals == 2);
+        TEST_CHECK(h.disconnect_signals == 1);
+        TEST_CHECK(h.retry_schedule_signals == 0); 
 
         std::cout << "  ✓ retriable: " << to_string(error) << "\n";
     }
@@ -118,10 +118,10 @@ void test_non_retriable_errors_never_retry() {
         TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
         script.step(h.connection->ws()); // initial connect
 
-        h.drain_events();
+        h.drain_signals();
 
-        // First connect event
-        TEST_CHECK(h.connect_events == 1);
+        // First connect signal
+        TEST_CHECK(h.connect_signals == 1);
 
         // inject error + close
         script.step(h.connection->ws());
@@ -131,12 +131,12 @@ void test_non_retriable_errors_never_retry() {
         h.connection->poll();
         h.connection->poll();
 
-        h.drain_events();
+        h.drain_signals();
 
-        // Check events
-        TEST_CHECK(h.connect_events == 1);
-        TEST_CHECK(h.disconnect_events == 1);
-        TEST_CHECK(h.retry_schedule_events == 0);
+        // Check signals
+        TEST_CHECK(h.connect_signals == 1);
+        TEST_CHECK(h.disconnect_signals == 1);
+        TEST_CHECK(h.retry_schedule_signals == 0);
 
         std::cout << "  ✓ non-retriable: " << to_string(error) << "\n";
     }

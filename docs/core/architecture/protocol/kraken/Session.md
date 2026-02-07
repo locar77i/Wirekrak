@@ -2,12 +2,15 @@
 
 ## Overview
 
-The **Wirekrak Kraken Session** implements the Kraken WebSocket API v2 on top of Wirekrak’s
-generic streaming infrastructure. It provides a **protocol-oriented, type-safe interface** for
-subscribing to Kraken channels while abstracting away transport, reconnection, and liveness concerns.
+The **Wirekrak Kraken Session** implements the Kraken WebSocket API v2 on top of
+Wirekrak’s generic transport and streaming infrastructure.
 
-The session is designed for low-latency systems and deterministic event processing, making it suitable
-for SDKs, trading engines, and real-time market data pipelines.
+It provides a **protocol-oriented, type-safe interface** for interacting with
+Kraken channels while deliberately exposing only **observable facts and protocol
+truth**, not inferred connection health or hidden recovery behavior.
+
+The session is designed for **deterministic, low-latency (ULL) systems**, making it
+suitable for SDKs, trading engines, and real-time market data pipelines.
 
 ---
 
@@ -17,138 +20,227 @@ for SDKs, trading engines, and real-time market data pipelines.
 - **Zero runtime polymorphism**
 - **Compile-time safety via C++20 concepts**
 - **Explicit, poll-driven execution model**
-- **Strict separation of concerns**
+- **Fact-based observability (no inferred state)**
+- **Strict separation of transport, session, and protocol concerns**
 
-The Kraken session intentionally exposes **protocol-level concepts** only (subscriptions, acks,
-typed messages) and does not leak transport or stream mechanics to the user.
+The Kraken Session exposes **Kraken concepts only** (subscriptions, ACKs,
+rejections, typed messages) and does not leak transport internals.
 
 ---
 
 ## Architecture
 
-The session is composed of several layers:
+The session is composed of three clearly separated layers:
 
-- **Transport layer**
-  - WebSocket backend (e.g. WinHTTP, mockable)
-- **Stream layer**
-  - Connection lifecycle
-  - Heartbeat & liveness tracking
-  - Automatic reconnection
-- **Protocol layer (Kraken)**
-  - Request serialization
-  - Message parsing and routing
-  - Typed domain models
-  - Channel-specific subscription management
+### Transport Layer
+- WebSocket backend (WinHTTP or mockable)
+- Connection lifecycle
+- Automatic reconnection with backoff
+- Liveness enforcement
+- Transport progress tracking
 
-This layered design allows the same streaming core to be reused across protocols while keeping Kraken
-logic fully isolated.
+### Session Layer
+- Composition over `transport::Connection`
+- Deterministic reaction to transport signals
+- Replay of **acknowledged** protocol intent
+- Exposure of **transport progress facts**
+
+### Protocol Layer (Kraken)
+- Request serialization
+- JSON parsing and routing
+- Schema validation
+- Channel-specific subscription management
+- Typed domain models
+
+This design allows the same streaming core to be reused across protocols while
+keeping Kraken logic fully isolated.
 
 ---
 
 ## Core Responsibilities
 
-- Connect and maintain a Kraken WebSocket v2 session
-- Parse and route raw JSON messages into typed protocol events
-- Manage subscriptions with explicit ACK tracking
-- Replay active subscriptions after reconnect
-- Dispatch channel messages to user callbacks
-- Surface protocol-level events (status, pong, rejection)
-- Expose connection state transitions as observational events
+The Kraken Session is responsible for:
+
+- Establishing and maintaining a Kraken WebSocket session
+- Parsing and routing raw JSON messages into typed protocol events
+- Managing subscriptions with explicit ACK tracking
+- Replaying **only acknowledged subscriptions** after reconnect
+- Dispatching channel messages to user callbacks
+- Surfacing protocol-level facts (status, pong, rejection)
+- Reacting to transport signals deterministically
+
+The session never invents protocol intent and never repairs rejected requests.
+
+---
+
+## Progress Contract (Session Facts)
+
+The Kraken Session exposes **progress facts**, not health state.
+
+### Transport Epoch
+
+```cpp
+uint64_t transport_epoch() const;
+uint64_t poll(); // returns current epoch
+```
+
+- Incremented **exactly once per successful WebSocket connection**
+- Monotonic for the lifetime of the Session
+- Never increments on retries, failures, or disconnects
+
+The epoch represents **completed transport lifetimes** and defines replay and
+staleness boundaries.
+
+### Message Counters
+
+```cpp
+uint64_t rx_messages() const;
+uint64_t tx_messages() const;
+uint64_t hb_messages() const;
+```
+
+- Monotonic counters
+- Never reset
+- Updated only on successful observation or transmission
+
+Together with `transport_epoch`, these counters form the **Session progress
+contract**.
+
+---
+
+## Connection Signals
+
+The session observes transport-level events via
+`transport::connection::Signal`:
+
+- `Connected`
+- `Disconnected`
+- `RetryScheduled`
+- `LivenessThreatened`
+
+These signals represent **externally observable consequences**, not internal
+state.
+
+The session reacts internally (cleanup, replay, optional ping) but does **not**
+expose connection state flags or callbacks.
 
 ---
 
 ## Subscription Model
 
-Subscriptions follow an **ACK-based model**:
+Subscriptions follow an **ACK-driven intent model**:
 
 1. User issues a typed subscribe request
-2. Request is assigned a deterministic `req_id`
-3. Subscription manager tracks pending acknowledgements
-4. On reconnect, subscriptions are automatically replayed
-5. Callbacks are reattached transparently
+2. A deterministic `req_id` is assigned
+3. Subscription enters a pending state
+4. On ACK success, it becomes active
+5. On rejection, intent is removed permanently
 
-This guarantees consistent behavior across reconnects and prevents accidental desynchronization.
+### Replay Semantics
+
+- Only **acknowledged subscriptions** are replayed
+- Rejected intent is **final**
+- Replay is triggered **only by epoch change**
+- No replay occurs without a successful reconnect
+
+This guarantees protocol correctness across reconnects.
 
 ---
 
-## Event Processing
+## Rejection Semantics
 
-All events are processed via an explicit `poll()` call:
+Protocol rejections are:
 
-- Stream liveness and reconnection
+- Surfaced verbatim
+- Treated as authoritative
+- Never retried
+- Never repaired
+- Never replayed
+
+Rejection handling removes intent from all managers and the replay database.
+
+---
+
+## Liveness Semantics
+
+Liveness is **enforced internally**, not exposed as state.
+
+- Silence is considered unhealthy
+- Enforcement occurs only if **both message and heartbeat signals are stale**
+- A `LivenessThreatened` signal may be emitted before enforcement
+- Enforcement results in forced disconnect and normal reconnection
+
+The session may optionally react (e.g. send ping) based on policy, but the
+transport never fabricates traffic.
+
+---
+
+## Event Processing Model
+
+All progress is driven explicitly by:
+
+```cpp
+uint64_t poll();
+```
+
+Each call advances:
+
+- Transport liveness and reconnection
+- Connection signal handling
 - System messages (pong, status, rejection)
-- Channel data (trades, book updates)
-- Subscribe / unsubscribe acknowledgements
+- Channel messages and ACKs
 
-No background threads or hidden execution paths are used.
-
----
-
-## Connection State Observation
-
-The Kraken session exposes **connection state transitions** as optional,
-observational callbacks:
-
-- `on_connect()`
-- `on_disconnect()`
-
-These callbacks are **informational only**.
-
-They indicate that the underlying transport has transitioned into or out of a
-connected state, and exist to make lifecycle boundaries observable for logging,
-monitoring, and state correlation.
-
-### Important Semantics
-
-- These callbacks do **not** imply ordering guarantees with respect to message
-  delivery or subscription replay.
-- They do **not** indicate that subscriptions are active or complete.
-- They do **not** require user action.
-- Correctness does **not** depend on handling these callbacks.
-
-Replay, subscription management, and delivery guarantees remain fully enforced
-by the Core session regardless of whether these callbacks are registered.
-
-### Design Rationale
-
-Wirekrak Core does not fabricate failures or reconnects.
-Connection state transitions are surfaced only when they occur naturally at the
-transport layer.
-
-This preserves determinism while allowing advanced users to observe lifecycle
-boundaries without assuming responsibility for recovery or correctness.
+There are **no background threads, timers, or callbacks**.
 
 ---
 
 ## Usage Example
 
 ```cpp
-wirekrak::core::protocol::kraken::Session<wirekrak::transport::winhttp::WebSocket> session;
+using Session = wirekrak::core::protocol::kraken::Session<
+    wirekrak::core::transport::winhttp::WebSocket
+>;
 
-session.on_status([](const status::Update& s) {
-    std::cout << s.str() << std::endl;
+Session session;
+
+session.on_status([](const schema::status::Update& s) {
+    std::cout << s << std::endl;
 });
 
 session.connect("wss://ws.kraken.com/v2");
 
 session.subscribe(
-    book::Subscribe{ .symbols = {"BTC/USD"}, .depth = 10, .snapshot = true },
-    [](const book::Response& book) {
+    schema::book::Subscribe{ .symbols = {"BTC/USD"}, .depth = 10 },
+    [](const schema::book::Response& book) {
         // process book update
     }
 );
 
+uint64_t last_epoch = session.transport_epoch();
+
 while (running) {
-    session.poll();
+    uint64_t epoch = session.poll();
+    if (epoch != last_epoch) {
+        // transport recycled
+        last_epoch = epoch;
+    }
 }
 ```
 
 ---
 
-## Conclusion
+## Summary
 
-This session demonstrates how to build a **robust, reusable protocol SDK** on top of a generic streaming core, while maintaining strong typing,
-deterministic behavior, and clean separation between infrastructure and business logic.
+The Kraken Session provides:
+
+- Deterministic, poll-driven execution
+- Clear protocol authority (ACKs and rejections)
+- Explicit replay boundaries via epoch
+- Fact-based observability
+- Strict separation of responsibilities
+
+Wirekrak does not guess protocol intent.  
+It exposes truth and enforces correctness.
 
 ---
 

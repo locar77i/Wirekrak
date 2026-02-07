@@ -4,39 +4,43 @@ This example demonstrates **strict, ACK-driven subscription enforcement** in
 Wirekrak Core when interacting with the Kraken WebSocket API.
 
 Subscription state is never inferred, assumed, or optimized optimistically.
-All state transitions are driven exclusively by **protocol acknowledgements**.
+All subscription state transitions are driven exclusively by **protocol
+acknowledgements (ACKs)** and explicit protocol rejections.
+
+Transport progress (connections, reconnects, epochs) is **orthogonal** to
+subscription correctness.
 
 ---
 
 ## Contract Demonstrated
 
-- Subscriptions are **not active** until an explicit ACK is received
-- Duplicate subscribe requests are **not merged or deduplicated optimistically**
+- Subscriptions are **not active** until explicitly ACKed by the protocol
+- Duplicate subscribe intents are **surfaced, not merged**
 - Unsubscribe requests issued before ACK resolution are handled deterministically
-- Core never fabricates or infers subscription state
+- Rejected subscriptions are **final and never replayed**
+- Core never fabricates, repairs, or infers subscription state
 
-If a subscription becomes active, it is because **the protocol explicitly
-acknowledged it**.
+If a subscription becomes active, it is because **the protocol said yes**.
 
 ---
 
 ## What the Example Does
 
-1. Connects to Kraken.
-2. Issues **two identical subscribe requests** for the same symbol.
+1. Connects a Kraken session.
+2. Issues **two identical subscribe requests** for the same symbol set.
 3. Immediately issues an **unsubscribe request**.
 4. Observes:
-   - Subscription rejections from the protocol
-   - Deterministic pending/active state transitions
-   - No optimistic activation at any point
+   - Protocol rejection notices
+   - Deterministic pending → resolved transitions
+   - Zero optimistic activation at all times
 
 The example continuously prints the internal subscription manager state:
 
 ```
-[STATE] active=<N> pending=<M>
+[example] Trade subscriptions: active=<N> - pending=<M>
 ```
 
-This makes state evolution explicit and observable.
+This makes subscription state progression explicit and observable.
 
 ---
 
@@ -44,41 +48,44 @@ This makes state evolution explicit and observable.
 
 This example intentionally does **not**:
 
-- Retry or merge duplicate subscriptions
+- Retry rejected subscriptions
+- Merge or deduplicate user intent
 - Assume subscription success before ACK
-- Hide protocol rejections
-- Correct user behavior implicitly
+- Mask or reinterpret protocol rejections
+- Tie subscription correctness to transport connectivity
 
-Wirekrak Core enforces correctness by **reflecting protocol reality exactly**.
+Wirekrak Core enforces correctness by **reflecting protocol reality verbatim**.
 
 ---
 
 ## How to Run the Example
 
-1. Run the example with a valid Kraken symbol:
+1. Run the example with a valid Kraken WebSocket URL.
+2. Provide one or more symbols, for example:
    ```
    --symbol LTC/EUR
    ```
-2. Observe:
+3. Observe:
    - Duplicate subscribe rejection
    - Deterministic unsubscribe resolution
-   - Zero active subscriptions unless ACKed
+   - No active subscriptions unless explicitly ACKed
 
 ---
 
 ## Expected Observations
 
-- One subscribe request is rejected by Kraken
-- The unsubscribe resolves cleanly even if ACK ordering differs
-- `active` remains zero unless explicitly ACKed
-- `pending` drains deterministically
+- One subscribe intent is rejected by the protocol
+- The unsubscribe resolves cleanly regardless of ACK ordering
+- `active` remains zero unless the protocol acknowledges success
+- `pending` drains deterministically to zero
 
 ---
 
 ## Summary
 
-> **Subscription state in Wirekrak Core is strictly ACK-driven.  
-> No optimistic assumptions are made.  
-> Protocol truth is enforced verbatim.**
+> **Subscription state in Wirekrak Core is strictly ACK-driven.**  
+> **No optimistic assumptions are made.**  
+> **Transport progress does not change protocol truth.**
 
-This example exists to make that contract observable, testable, and undeniable.
+This example exists to make subscription correctness **observable, testable,
+and undeniable**.

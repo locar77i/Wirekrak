@@ -57,10 +57,10 @@ void test_immediate_retry_on_retriable_error() {
     // Initial connect
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
     // Assertions
-    TEST_CHECK(h.connect_events == 1);
+    TEST_CHECK(h.connect_signals == 1);
 
     // Transport failure + close
     script.step(h.connection->ws());
@@ -72,12 +72,12 @@ void test_immediate_retry_on_retriable_error() {
     // Reconnect succeeds
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 2);
-    TEST_CHECK(h.disconnect_events == 1);
-    TEST_CHECK(h.retry_schedule_events == 0);
+    // Check signals
+    TEST_CHECK(h.connect_signals == 2);
+    TEST_CHECK(h.disconnect_signals == 1);
+    TEST_CHECK(h.retry_schedule_signals == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -149,10 +149,10 @@ void test_successful_reconnect_resets_retry_state() {
     // Initial connect
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
-    // First connection event
-    TEST_CHECK(h.connect_events == 1);
+    // First connection signal
+    TEST_CHECK(h.connect_signals == 1);
 
     // Transport failure + close
     script.step(h.connection->ws());
@@ -162,12 +162,12 @@ void test_successful_reconnect_resets_retry_state() {
     h.connection->poll();
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 2);      // initial + reconnect
-    TEST_CHECK(h.disconnect_events == 1);   // single disconnect
-    TEST_CHECK(h.retry_schedule_events == 0);        // SUCCESS ⇒ no retry callback
+    // Check signals
+    TEST_CHECK(h.connect_signals == 2);      // initial + reconnect
+    TEST_CHECK(h.disconnect_signals == 1);   // single disconnect
+    TEST_CHECK(h.retry_schedule_signals == 0);        // SUCCESS ⇒ no retry callback
 
     std::cout << "[TEST] OK\n";
 }
@@ -336,12 +336,12 @@ void test_retry_aborts_on_non_retriable_reconnect_failure() {
     script.step(h.connection->ws());
     h.connection->poll();
 
-    h.drain_events();
+    h.drain_signals();
 
     // Assertions
-    TEST_CHECK(h.connect_events == 1);      // only initial connect
-    TEST_CHECK(h.disconnect_events == 1);   // Single disconnect event
-    TEST_CHECK(h.retry_schedule_events == 0);        // MUST NOT retry
+    TEST_CHECK(h.connect_signals == 1);      // only initial connect
+    TEST_CHECK(h.disconnect_signals == 1);   // Single disconnect signal
+    TEST_CHECK(h.retry_schedule_signals == 0);        // MUST NOT retry
 
     TEST_CHECK(h.connection->get_state() == State::Disconnected);
     TEST_CHECK(test::MockWebSocket::is_connected() == false);
@@ -408,10 +408,10 @@ void test_open_cancels_retry_cycle() {
     // Initial connect
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
-    // First connect event
-    TEST_CHECK(h.connect_events == 1);
+    // First connect signal
+    TEST_CHECK(h.connect_signals == 1);
 
     // Transport error + close (retry armed)
     script.step(h.connection->ws());
@@ -424,12 +424,12 @@ void test_open_cancels_retry_cycle() {
     script.step(h.connection->ws());
 
     h.connection->poll();
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events
-    TEST_CHECK(h.connect_events == 2);    // initial + explicit open
-    TEST_CHECK(h.disconnect_events == 1); // single disconnect
-    TEST_CHECK(h.retry_schedule_events == 0);      // retry cycle was cancelled
+    // Check signals
+    TEST_CHECK(h.connect_signals == 2);    // initial + explicit open
+    TEST_CHECK(h.disconnect_signals == 1); // single disconnect
+    TEST_CHECK(h.retry_schedule_signals == 0);      // retry cycle was cancelled
 
     std::cout << "[TEST] OK\n";
 }
@@ -483,22 +483,22 @@ void test_poll_is_noop_while_connected() {
     // Initial connect
     script.step(h.connection->ws());
 
-    h.drain_events();
+    h.drain_signals();
 
-    // First connect event
-    TEST_CHECK(h.connect_events == 1);
+    // First connect signal
+    TEST_CHECK(h.connect_signals == 1);
 
     // Call poll() repeatedly with no transport activity
     for (int i = 0; i < 100; ++i) {
         h.connection->poll();
     }
 
-    h.drain_events();
+    h.drain_signals();
 
-    // Check events: absolutely nothing happens
-    TEST_CHECK(h.connect_events == 1);
-    TEST_CHECK(h.disconnect_events == 0);
-    TEST_CHECK(h.retry_schedule_events == 0);
+    // Check signals: absolutely nothing happens
+    TEST_CHECK(h.connect_signals == 1);
+    TEST_CHECK(h.disconnect_signals == 0);
+    TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Websocket remains connected
     TEST_CHECK(test::MockWebSocket::is_connected());

@@ -49,33 +49,10 @@ int main(int argc, char** argv) {
     );
     params.dump("=== Runtime Parameters ===", std::cout);
 
-    // -----------------------------------------------------------------------------
-    // Lifecycle flags
-    // -----------------------------------------------------------------------------
-    std::atomic<bool> disconnected{false};
-    std::atomic<bool> reconnected{false};
-
     // -------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------
     Session session;
-
-    // Register observational connect callback
-    session.on_connect([&]() {
-        if (disconnected.load()) {
-            std::cout << "\n[RECONNECTED] Replay will occur automatically\n";
-            reconnected.store(true);
-        }
-        else {
-            std::cout << "[CONNECTED]\n";
-        }
-    });
-
-    // Register observational disconnect callback
-    session.on_disconnect([&]() {
-        std::cout << "\n[DISCONNECTED]\n";
-        disconnected.store(true);
-    });
 
     // Register status handler
     session.on_status([](const schema::status::Update& status) {
@@ -86,7 +63,6 @@ int main(int argc, char** argv) {
     // Connect
     // -------------------------------------------------------------------------
     if (!session.connect(params.url)) {
-        std::cerr << "Failed to connect\n";
         return -1;
     }
 
@@ -109,9 +85,10 @@ int main(int argc, char** argv) {
     std::cout << "\n[INFO] Disable your network connection to trigger a disconnect.\n";
     std::cout << "[INFO] Re-enable it to observe reconnect and replay.\n\n";
 
-    // Run until we observe a reconnect
-    while (!reconnected.load()) {
-        session.poll();
+    // Wait for a few transport lifetimes to prove rejection is not replayed
+    auto epoch = session.transport_epoch();
+    while (epoch < 2) {
+        epoch = session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -122,7 +99,7 @@ int main(int argc, char** argv) {
 
     auto verify_until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     while (std::chrono::steady_clock::now() < verify_until) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -134,7 +111,7 @@ int main(int argc, char** argv) {
     // Drain a short window to allow event processing
     auto drain_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
     while (std::chrono::steady_clock::now() < drain_until) {
-        session.poll();
+        (void)session.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
