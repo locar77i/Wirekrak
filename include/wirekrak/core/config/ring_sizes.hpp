@@ -22,8 +22,6 @@ Design principles:
 // -----------------------------------------------------------------------------
 // Control-plane messages (low frequency)
 // -----------------------------------------------------------------------------
-inline constexpr std::size_t pong_ring            = 16;
-inline constexpr std::size_t status_ring          = 16;
 inline constexpr std::size_t rejection_ring       = 16;
 
 // -----------------------------------------------------------------------------

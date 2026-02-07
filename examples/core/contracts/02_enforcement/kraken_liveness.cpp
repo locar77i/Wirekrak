@@ -70,11 +70,6 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     kraken::Session session;
 
-    // Observe pong messages (only relevant in Active policy)
-    session.on_pong([](const schema::system::Pong& pong) {
-        std::cout << " -> " << pong << std::endl;
-    });
-
     // -------------------------------------------------------------------------
     // Phase A - Passive liveness
     // -------------------------------------------------------------------------
@@ -88,9 +83,17 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    // -------------------------------------------------------------------------
+    // Poll-driven execution loop
+    // -------------------------------------------------------------------------
     auto phase_a_start = std::chrono::steady_clock::now();
+    schema::system::Pong last_pong;
     while (std::chrono::steady_clock::now() - phase_a_start < std::chrono::seconds(20)) {
         (void)session.poll();
+        // --- Observe latest pong (liveness signal - not relevant in Passive policy) ---
+        if (session.try_load_pong(last_pong)) {
+            std::cout << " -> " << last_pong << std::endl;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -105,6 +108,10 @@ int main(int argc, char** argv) {
 
     while (running.load(std::memory_order_relaxed)) {
         (void)session.poll();
+        // --- Observe latest pong (liveness signal - only relevant in Active policy) ---
+        if (session.try_load_pong(last_pong)) {
+            std::cout << " -> " << last_pong << std::endl;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

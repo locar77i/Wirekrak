@@ -43,9 +43,6 @@ struct Client::Impl {
             });
         }
         });
-        session.on_status([this](const auto& status) {
-        // optional: expose status later
-        });
     }
 
     bool connect() {

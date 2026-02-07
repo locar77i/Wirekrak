@@ -203,10 +203,6 @@ using Session = wirekrak::core::protocol::kraken::Session<
 
 Session session;
 
-session.on_status([](const schema::status::Update& s) {
-    std::cout << s << std::endl;
-});
-
 session.connect("wss://ws.kraken.com/v2");
 
 session.subscribe(
@@ -218,11 +214,19 @@ session.subscribe(
 
 uint64_t last_epoch = session.transport_epoch();
 
+schema::status::Update last_status;
+
 while (running) {
     uint64_t epoch = session.poll();
+
     if (epoch != last_epoch) {
         // transport recycled
         last_epoch = epoch;
+    }
+
+    // --- Observe latest status ---
+    if (session.try_load_status(last_status)) {
+        std::cout << " -> " << last_status << std::endl;
     }
 }
 ```

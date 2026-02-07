@@ -355,9 +355,8 @@ private:
         using namespace simdjson;
         schema::system::Pong resp;
         if (system::pong::parse(root, resp)) {
-            if (!ctx_view_.pong_ring.push(std::move(resp))) { // TODO: handle backpressure
-                WK_WARN("[PARSER] pong ring full, dropping.");
-            }
+            // We intentionally overwrite the previous value: no backpressure, no queuing, freshness over history
+            ctx_view_.pong_slot.store(std::move(resp));
             return true;
         }
         return false;
@@ -367,9 +366,8 @@ private:
         using namespace simdjson;
         schema::status::Update resp;
         if (status::update::parse(root, resp)) {
-             if (!ctx_view_.status_ring.push(std::move(resp))) { // TODO: handle backpressure
-                WK_WARN("[PARSER] status ring full, dropping.");
-            }
+            // We intentionally overwrite the previous value: no backpressure, no queuing, freshness over history
+            ctx_view_.status_slot.store(std::move(resp));
             return true;
         }
         return false;

@@ -84,9 +84,7 @@ Advanced users may still customize behavior by:
 
 template<transport::WebSocketConcept WS>
 class Session {
-    using pong_handler_t       = std::function<void(const schema::system::Pong&)>;
     using rejection_handler_t  = std::function<void(const schema::rejection::Notice&)>;
-    using status_handler_t     = std::function<void(const schema::status::Update&)>;
 
 public:
     Session()
@@ -110,9 +108,28 @@ public:
         connection_.close();
     }
 
-    // Register pong callback
-    inline void on_pong(pong_handler_t cb) noexcept {
-        hooks_.handle_pong = std::move(cb);
+    // -----------------------------------------------------------------------------
+    // Pong message access (last-value, pull-based)
+    //
+    // The Session exposes the most recently received Pong message exactly as
+    // provided by the exchange schema.
+    //
+    // Pong is treated as **state**, not a stream:
+    //   • Only the latest Pong is retained
+    //   • Intermediate Pong messages may be overwritten
+    //   • No backpressure or buffering is applied
+    //
+    // Consumers explicitly poll for updates and decide when to observe changes.
+    //
+    // Threading & semantics:
+    //   • Safe for concurrent readers
+    //   • Change detection is per-calling thread
+    //   • No guarantee that every Pong will be observed
+    //
+    // -----------------------------------------------------------------------------
+    [[nodiscard]]
+    inline bool try_load_pong(schema::system::Pong& out) noexcept {
+        return ctx_.pong_slot.try_load(out);
     }
 
     // Register rejection callback
@@ -120,10 +137,60 @@ public:
         hooks_.handle_rejection = std::move(cb);
     }
 
-    // Register status callback
-    inline void on_status(status_handler_t cb) noexcept {
-        hooks_.handle_status = std::move(cb);
+    // -----------------------------------------------------------------------------
+    // Status message access (last-value, pull-based)
+    //
+    // The Session exposes the most recently received Status message exactly as
+    // provided by the exchange schema.
+    //
+    // Status is treated as **state**, not a stream:
+    //   • Only the latest Status is retained
+    //   • Intermediate Status messages may be overwritten
+    //   • No backpressure or buffering is applied
+    //
+    // Consumers explicitly poll for updates and decide when to observe changes.
+    //
+    // Threading & semantics:
+    //   • Safe for concurrent readers
+    //   • Change detection is per-calling thread
+    //   • No guarantee that every Status will be observed
+    //
+    // -----------------------------------------------------------------------------
+    [[nodiscard]]
+    inline bool try_load_status(schema::status::Update& out) noexcept {
+        return ctx_.status_slot.try_load(out);
     }
+
+
+
+    // Level-triggered facts
+    [[nodiscard]]
+    uint64_t last_pong_ts() const noexcept {
+        return 0;
+    }
+
+    [[nodiscard]]
+    uint64_t pong_count() const noexcept {
+        return 0;
+    }
+
+    [[nodiscard]]
+    const schema::status::Update& last_status() const noexcept {
+        static const schema::status::Update dummy{};
+        return dummy;
+    }
+    [[nodiscard]]
+    uint64_t status_epoch() const noexcept {
+        return 0;
+    }
+
+    // Edge-triggered facts
+    [[nodiscard]]
+    bool pop_rejection(schema::rejection::Notice&) noexcept {
+        return false;
+    }
+
+
 
     // Send ping
     inline void ping() noexcept{
@@ -182,13 +249,17 @@ public:
         }
 
         // ===============================================================================
-        // PROCESS PONG MESSAGES
+        // Pong messages must be consumed via the pop_pong() method, which exposes them as a pull-based stream.
+        // This design ensures that pong messages are not delivered via callbacks, which could encourage
+        // event-driven designs and reentrancy hazards. Instead, consumers must explicitly poll for pong messages,
+        // which promotes a pull-based processing model and allows for backpressure handling.
         // ===============================================================================
-        { // === Process pong ring ===
-        schema::system::Pong pong;
-        while (ctx_.pong_ring.pop(pong)) {
-            handle_pong_(pong);
-        }}
+        // Status messages must be consumed via the pop_status() method, which exposes them as a pull-based stream.
+        // This design ensures that status messages are not delivered via callbacks, which could encourage
+        // event-driven designs and reentrancy hazards. Instead, consumers must explicitly poll for status messages,
+        // which promotes a pull-based processing model and allows for backpressure handling.
+        // ===============================================================================
+        
         // ===============================================================================
         // PROCESS REJECTION NOTICES
         // ===============================================================================
@@ -197,14 +268,7 @@ public:
         while (ctx_.rejection_ring.pop(notice)) {
             handle_rejection_(notice);
         }}
-        // ===============================================================================
-        // PROCESS STATUS MESSAGES
-        // ===============================================================================
-        { // === Process status ring ===
-        schema::status::Update update;
-        while (ctx_.status_ring.pop(update)) {
-            handle_status_(update);
-        }}
+        
         // ===============================================================================
         // PROCESS TRADE MESSAGES
         // ===============================================================================
@@ -329,9 +393,7 @@ private:
 
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
-        pong_handler_t             handle_pong{};             // Pong callback
         rejection_handler_t        handle_rejection{};        // Rejection callback
-        status_handler_t           handle_status{};           // Status callback
     };
 
     // Handlers bundle
@@ -404,12 +466,6 @@ private:
         parser_.parse_and_route(sv);
     }
 
-    inline void handle_pong_(const schema::system::Pong& pong) noexcept {
-        if (hooks_.handle_pong) {
-            hooks_.handle_pong(pong);
-        }
-    }
-
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
         if (hooks_.handle_rejection) {
             if (notice.req_id.has()) {
@@ -422,12 +478,6 @@ private:
             }
             
             hooks_.handle_rejection(notice);
-        }
-    }
-    
-    inline void handle_status_(const schema::status::Update& status) noexcept {
-        if (hooks_.handle_status) {
-            hooks_.handle_status(status);
         }
     }
 

@@ -54,11 +54,6 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     kraken::Session session;
 
-    // Register status handler
-    session.on_status([](const schema::status::Update& status) {
-        std::cout << " -> " << status << std::endl;
-    });
-
     // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
@@ -87,8 +82,13 @@ int main(int argc, char** argv) {
 
     // Wait for a few transport lifetimes to prove rejection is not replayed
     auto epoch = session.transport_epoch();
+    schema::status::Update last_status;
     while (epoch < 2) {
         epoch = session.poll();
+        // --- Observe latest status ---
+        if (session.try_load_status(last_status)) {
+            std::cout << " -> " << last_status << std::endl;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -100,6 +100,10 @@ int main(int argc, char** argv) {
     auto verify_until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     while (std::chrono::steady_clock::now() < verify_until) {
         (void)session.poll();
+        // --- Observe latest status ---
+        if (session.try_load_status(last_status)) {
+            std::cout << " -> " << last_status << std::endl;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

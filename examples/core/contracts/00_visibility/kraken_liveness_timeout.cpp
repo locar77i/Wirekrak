@@ -48,11 +48,6 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     kraken::Session session;
 
-    // Status handler (shows initial protocol traffic only)
-    session.on_status([](const schema::status::Update& status) {
-        std::cout << " -> " << status << std::endl;
-    });
-
     // -------------------------------------------------------------------------
     // Connect (no subscriptions, no pings)
     // -------------------------------------------------------------------------
@@ -80,9 +75,16 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Main polling loop
     // -------------------------------------------------------------------------
+    schema::status::Update last_status;
     while (true) {
         const uint64_t epoch = session.poll();
 
+        // --- Observe latest status ---
+        if (session.try_load_status(last_status)) {
+            std::cout << " -> " << last_status << std::endl;
+        }
+
+        // --- Observe transport progression ---
         const uint64_t rx = session.rx_messages();
         const uint64_t tx = session.tx_messages();
         const uint64_t hb = session.heartbeat_total();

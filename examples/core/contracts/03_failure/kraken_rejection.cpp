@@ -49,11 +49,6 @@ int main(int argc, char** argv) {
         std::cout << "[example] Trade subscriptions (after rejection): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
     });
 
-    // Observe status updates
-    session.on_status([](const schema::status::Update& status) {
-        std::cout << " -> " << status << std::endl;
-    });
-
     // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
@@ -79,8 +74,13 @@ int main(int argc, char** argv) {
 
     // Wait for a few transport lifetimes to prove rejection is not replayed
     auto epoch = session.transport_epoch();
+    schema::status::Update last_status;
     while (epoch < 3) {
         epoch = session.poll();
+        // --- Observe latest status ---
+        if (session.try_load_status(last_status)) {
+            std::cout << " -> " << last_status << std::endl;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

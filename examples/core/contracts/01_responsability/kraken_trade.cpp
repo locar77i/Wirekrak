@@ -14,6 +14,11 @@
 //
 // This is NOT a convenience wrapper.
 // This example exposes the true Core interaction model.
+//
+// NOTE:
+// Wirekrak Core exposes control-plane signals (status, pong, rejection)
+// as pull-based state. This example demonstrates explicit observation
+// without callbacks or reentrancy.
 // ============================================================================
 
 #include <atomic>
@@ -68,16 +73,8 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Control-plane observability
     // -------------------------------------------------------------------------
-    session.on_status([](const schema::status::Update& status) {
-        std::cout << " -> [STATUS] " << status << std::endl;
-    });
-
-    session.on_pong([](const schema::system::Pong& pong) {
-        std::cout << " -> [PONG] " << pong << std::endl;
-    });
-
     session.on_rejection([](const schema::rejection::Notice& notice) {
-        std::cout << " -> [REJECTION] " << notice << std::endl;
+        std::cout << " -> " << notice << std::endl;
     });
 
     // -------------------------------------------------------------------------
@@ -104,8 +101,18 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
+    schema::system::Pong last_pong;
+    schema::status::Update last_status;
     while (running.load()) {
         (void)session.poll();
+        // --- Observe latest pong (liveness signal) ---
+        if (session.try_load_pong(last_pong)) {
+            std::cout << " -> " << last_pong << std::endl;
+        }
+        // --- Observe latest status ---
+        if (session.try_load_status(last_status)) {
+            std::cout << " -> " << last_status << std::endl;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

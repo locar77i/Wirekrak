@@ -57,16 +57,9 @@ int main(int argc, char** argv) {
     auto ping_sent_at = std::chrono::steady_clock::now();
 
     // -------------------------------------------------------------------------
-    // Observe protocol-level status events
+    // Manage pong responses
     // -------------------------------------------------------------------------
-    session.on_status([](const schema::status::Update& status) {
-        std::cout << " -> " << status << std::endl;
-    });
-
-    // -------------------------------------------------------------------------
-    // Observe pong responses
-    // -------------------------------------------------------------------------
-    session.on_pong([&](const schema::system::Pong& pong) {
+    auto on_pong = [&](const schema::system::Pong& pong) {
         std::cout << " -> " << pong << "\n\n";
 
         // Engine-measured RTT (if provided by Kraken)
@@ -85,7 +78,7 @@ int main(int argc, char** argv) {
 
         // Mark pong as received
         pong_received.store(true, std::memory_order_relaxed);
-    });
+    };
 
     // -------------------------------------------------------------------------
     // Connect
@@ -103,8 +96,18 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Poll for a short, bounded observation window
     // -------------------------------------------------------------------------
+    schema::system::Pong last_pong;
+    schema::status::Update last_status;
     while (!pong_received.load(std::memory_order_relaxed)) {
         (void)session.poll();
+        // --- Observe latest pong (liveness signal) ---
+        if (session.try_load_pong(last_pong)) {
+            on_pong(last_pong);
+        }
+        // --- Observe latest status ---
+        if (session.try_load_status(last_status)) {
+            std::cout << " -> " << last_status << std::endl;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
