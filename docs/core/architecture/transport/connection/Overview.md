@@ -7,15 +7,15 @@ connection abstraction responsible for managing **transport lifecycle, progress,
 liveness enforcement, and automatic reconnection**, independently of any exchange protocol.
 
 A `Connection` represents a **logical transport connection** whose identity remains stable
-across transient transport failures and internal reconnections, while still exposing
-*observable transport facts* to higher layers.
+across transient transport failures and internal reconnections, while exposing only
+**observable transport facts** to higher layers.
 
 It is the foundational component beneath protocol sessions (e.g. Kraken) and is intentionally
-decoupled from message schemas, subscriptions, and business logic.
+decoupled from message schemas, subscriptions, replay logic, and business intent.
 
-Unlike callback-driven designs, Wirekrak exposes **explicit, pull-based facts and edge-triggered
-signals** that make transport behavior observable, deterministic, and suitable for
-ultra-low-latency (ULL) environments.
+Unlike callback-driven designs, Wirekrak exposes **explicit, pull-based facts and
+edge-triggered signals**, making transport behavior deterministic, observable, and
+safe for ultra-low-latency (ULL) environments.
 
 ---
 
@@ -25,7 +25,7 @@ ultra-low-latency (ULL) environments.
 - **Concept-based design** (no inheritance, no virtual functions)
 - **Transport-agnostic** (any WebSocket backend implementing `WebSocketConcept`)
 - **Deterministic, poll-driven execution**
-- **No background threads or timers**
+- **No background threads, timers, or callbacks**
 - **ULL-safe** (no blocking, no allocations on hot paths)
 - **Fully unit-testable with mock transports**
 
@@ -36,9 +36,9 @@ ultra-low-latency (ULL) environments.
 - Establish and manage a **logical WebSocket connection**
 - Own the complete **transport lifecycle** (connect, disconnect, retry)
 - Dispatch raw text frames upward
-- Track **transport progress signals**
+- Track **transport progress facts**
 - Enforce liveness deterministically
-- Automatically reconnect with bounded exponential backoff
+- Automatically reconnect using a **two-phase retry strategy**
 - Emit **explicit, edge-triggered signals**
 - Remain silent about protocol intent (no subscriptions, no replay)
 
@@ -46,7 +46,8 @@ ultra-low-latency (ULL) environments.
 
 ## Transport Progress Contract
 
-The Connection exposes **facts**, not inferred health states.
+The Connection exposes **facts**, not inferred health or readiness states.
+Correctness never depends on observing signals.
 
 ### Transport Epoch
 
@@ -60,6 +61,8 @@ This allows consumers to detect:
 - Fresh connections
 - Transport recycling
 - Stale observations
+
+without relying on callbacks.
 
 ### Message Counters
 
@@ -78,17 +81,18 @@ Together with `epoch()`, these counters form the **transport progress contract**
 
 ## Event Model (`connection::Signal`)
 
-Lifecycle changes are surfaced via a **single-shot signal stream**.
+Externally observable transitions are surfaced via a **single-shot signal stream**.
 
 - Signals are emitted synchronously during `poll()`
 - Signals are buffered in a bounded, lock-free SPSC ring
-- Signal emission never blocks
+- Signal emission never blocks and never allocates
 - Oldest signals may be dropped if the buffer overflows
 
 Typical signals include:
 
 - `Connected`
 - `Disconnected`
+- `RetryImmediate`
 - `RetryScheduled`
 - `LivenessThreatened`
 
@@ -97,11 +101,11 @@ Signals are retrieved explicitly:
 ```cpp
 connection::Signal sig;
 while (conn.poll_signal(sig)) {
-    // handle edge-triggered transition
+    // handle edge-triggered consequence
 }
 ```
 
-Signals represent **observable consequences**, not internal states.
+Signals represent **observable consequences**, not internal state or intent.
 
 ---
 
@@ -114,22 +118,48 @@ The connection tracks **two independent activity signals**:
 
 A liveness failure occurs **only if both signals are stale**.
 
+### Liveness Expiry
+
 When liveness expires:
 
 - The underlying transport is force-closed
-- A `LivenessThreatened` signal may be emitted first
-- A `Disconnected` signal is emitted
-- State transitions toward reconnection
-- Reconnection attempts begin with bounded exponential backoff
-- A fresh transport instance is created on each attempt
+- A `LivenessThreatened` signal may have been emitted earlier
+- A `Disconnected` signal is emitted exactly once
+- Reconnection logic takes over deterministically
 
-Higher-level protocol sessions decide what (if anything) to replay.
+---
+
+## Retry Semantics (ULL-safe)
+
+Reconnection follows a **strict two-phase model**:
+
+### 1. Immediate Retry
+
+- The **first reconnect attempt is always immediate**
+- No delay, no backoff, no signal scheduling
+- Represented by a `RetryImmediate` signal (optional observation)
+- Executed synchronously inside `poll()`
+
+### 2. Scheduled Retry (Backoff)
+
+- Applied **only if the immediate reconnect fails**
+- Exponential backoff is enforced deterministically
+- A `RetryScheduled` signal is emitted
+- Subsequent reconnect attempts occur only after backoff expiry
+
+There are:
+
+- No retry callbacks
+- No user hooks
+- No implicit timers
+
+All retry behavior is observable via signals and progress facts only.
 
 ---
 
 ## State Machine
 
-The transport connection operates using an explicit, deterministic state machine:
+Internally, the Connection uses an explicit, deterministic state machine:
 
 - `Connecting`
 - `Connected`
@@ -137,11 +167,9 @@ The transport connection operates using an explicit, deterministic state machine
 - `Disconnecting`
 - `Disconnected`
 
-State transitions:
+Internal state is **not exposed**.
 
-- Are deterministic and logged
-- Are externally observable via `connection::Signal`
-- Never rely on timers, threads, or callbacks
+Only externally meaningful facts and signals are observable.
 
 ---
 
@@ -165,7 +193,7 @@ while (running) {
 
     connection::Signal sig;
     while (conn.poll_signal(sig)) {
-        // react to edge-triggered transitions
+        // optional observation
     }
 }
 ```
@@ -175,9 +203,9 @@ while (running) {
 ## Destructor Semantics
 
 - The destructor **always closes the underlying transport**
-- No retries are scheduled during destruction
+- No retries are scheduled after destruction
 - No signals are emitted after object lifetime ends
-- Side effects after destruction are intentionally **not observable**
+- Destructor side effects are intentionally **not observable**
 
 This guarantees safety, predictability, and testability.
 
@@ -189,7 +217,7 @@ This guarantees safety, predictability, and testability.
 - TLS handling is delegated to the transport layer
 - Transport instances are **destroyed and recreated** on reconnect
 - All logic is driven explicitly via `poll()`
-- The Connection never invents traffic or protocol intent
+- The Connection never invents traffic, retries, or protocol behavior
 
 ---
 

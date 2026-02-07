@@ -27,7 +27,7 @@ that make transport progress observable, deterministic, and suitable for ultra-l
 - **Deterministic, poll-driven execution**
 - **No background threads or timers**
 - **Fully unit-testable with mock transports**
-- **ULL-safe** (no blocking, no allocations on hot paths)
+- **ULL-safe** (no callbacks, no blocking, no allocations on hot paths)
 
 ---
 
@@ -38,7 +38,7 @@ that make transport progress observable, deterministic, and suitable for ultra-l
 - Dispatch raw text frames to higher-level protocol layers
 - Track **transport progress and activity**
 - Enforce **liveness deterministically**
-- Automatically reconnect with bounded exponential backoff
+- Automatically reconnect using **explicit retry semantics**
 - Emit **edge-triggered transport signals**
 - Remain silent about protocol intent (no subscriptions or message replay)
 
@@ -73,6 +73,7 @@ Edge-triggered, single-shot signals representing externally observable facts:
 
 - `Connected`
 - `Disconnected`
+- `RetryImmediate`
 - `RetryScheduled`
 - `LivenessThreatened`
 
@@ -107,7 +108,8 @@ When liveness expires:
 - The underlying transport is force-closed
 - A `LivenessThreatened` signal may have been emitted earlier
 - A forced disconnect occurs
-- Normal reconnection logic applies
+- An **immediate reconnect attempt** is executed if retryable
+- Exponential backoff applies **only after a failed reconnect**
 - A fresh transport instance is created on each attempt
 
 Higher-level protocol sessions decide **what to replay**, if anything.

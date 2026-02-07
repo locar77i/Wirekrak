@@ -77,10 +77,11 @@ void test_disconnected_signal_precedes_reconnected_signal() {
     TEST_CHECK(h.connect_signals == 2);
     TEST_CHECK(h.disconnect_signals = 1);
     TEST_CHECK(h.retry_schedule_signals == 0);
-    TEST_CHECK(h.signals.size() == 3);
+    TEST_CHECK(h.signals.size() == 4);
     TEST_CHECK(h.signals[0] == connection::Signal::Connected);
     TEST_CHECK(h.signals[1] == connection::Signal::Disconnected);
-    TEST_CHECK(h.signals[2] == connection::Signal::Connected);
+    TEST_CHECK(h.signals[2] == connection::Signal::RetryImmediate);
+    TEST_CHECK(h.signals[3] == connection::Signal::Connected);
 
     std::cout << "[TEST] OK\n";
 }
@@ -116,14 +117,11 @@ void test_connected_signal_not_duplicated_without_disconnect() {
 }
 
 // -----------------------------------------------------------------------------
-// I3. Retry callback fires only when a retry cycle is scheduled
-//     (not on immediate reconnect success)
+// I3. RetryScheduled is emitted only after immediate retry failure
 // -----------------------------------------------------------------------------
 
-void test_on_retry_before_scheduled_retry() {
-    std::cout << "[TEST] Group I3: on_retry invoked before scheduled retry\n";
-
-    test::MockWebSocket::reset();
+void test_retry_scheduled_after_immediate_retry_failure() {
+    std::cout << "[TEST] Group I3: RetryScheduled emitted after immediate retry failure\n";
 
     test::MockWebSocketScript script;
     script
@@ -131,35 +129,35 @@ void test_on_retry_before_scheduled_retry() {
         .error(Error::RemoteClosed)
         .close();
 
-    telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    test::ConnectionHarness h;
 
-    int retry_calls = 0;
-    int observed_attempt = -1;
-
-    connection.on_retry([&](const RetryContext& ctx) {
-        ++retry_calls;
-        observed_attempt = ctx.attempt;
-    });
-
-    TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
+    TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::None);
 
     // Initial connect
-    script.step(connection.ws());
+    script.step(h.connection->ws());
 
     // Transport error + close
-    script.step(connection.ws());
-    script.step(connection.ws());
+    script.step(h.connection->ws());
+    script.step(h.connection->ws());
 
-    // IMPORTANT:
-    // Program reconnect failure *before* poll()
-    connection.ws().set_next_connect_result(Error::ConnectionFailed);
+    // Force immediate reconnect attempt to fail
+    h.connection->ws().set_next_connect_result(Error::ConnectionFailed);
 
-    // poll triggers reconnect attempt → failure → retry scheduling
-    connection.poll();
+    // poll triggers:
+    //  - RetryImmediate
+    //  - reconnect attempt
+    //  - failure
+    //  - RetryScheduled
+    h.connection->poll();
 
-    TEST_CHECK(retry_calls == 1);
-    TEST_CHECK(observed_attempt == 2);
+    h.drain_signals();
+
+    // Expected signal sequence:
+    TEST_CHECK(h.signals.size() == 4);
+    TEST_CHECK(h.signals[0] == connection::Signal::Connected);
+    TEST_CHECK(h.signals[1] == connection::Signal::Disconnected);
+    TEST_CHECK(h.signals[2] == connection::Signal::RetryImmediate);
+    TEST_CHECK(h.signals[3] == connection::Signal::RetryScheduled);
 
     std::cout << "[TEST] OK\n";
 }
@@ -172,6 +170,6 @@ void test_on_retry_before_scheduled_retry() {
 int main() {
     test_disconnected_signal_precedes_reconnected_signal();
     test_connected_signal_not_duplicated_without_disconnect();
-    test_on_retry_before_scheduled_retry();
+    test_retry_scheduled_after_immediate_retry_failure();
     return 0;
 }

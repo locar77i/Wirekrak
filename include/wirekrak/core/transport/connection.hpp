@@ -107,16 +107,6 @@ No level-based liveness or health state is exposed.
 ===============================================================================
 */
 
-
-// Context structure for retry callbacks
-// Provides information about the retry attempt.
-struct RetryContext {
-    std::string_view url;
-    Error error;
-    int attempt;
-    std::chrono::steady_clock::time_point next_retry;
-};
-
 constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15); // default heartbeat timeout
 constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15); // default message timeout
 constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of liveness window is elapsed
@@ -126,7 +116,6 @@ class Connection {
 
 public:
     using message_handler_t          = std::function<void(std::string_view)>;
-    using retry_handler_t            = std::function<void(const RetryContext&)>;
 
 public:
     Connection(telemetry::Connection& telemetry,
@@ -268,10 +257,6 @@ public:
         hooks_.on_message_cb_ = std::move(cb);
     }
 
-    void on_retry(retry_handler_t cb) noexcept {
-        hooks_.on_retry_cb_ = std::move(cb);
-    }
-
     // Accessors
     [[nodiscard]]
     inline State get_state() const noexcept {
@@ -391,7 +376,6 @@ private:
     // Hooks structure to store all user-defined callbacks
     struct Hooks {
         message_handler_t    on_message_cb_{};
-        retry_handler_t      on_retry_cb_{};
     };
 
     // Handlers bundle
@@ -503,7 +487,6 @@ private:
                 disconnect_reason_.store(DisconnectReason::TransportError, std::memory_order_relaxed);
                 if (should_retry_(error)) {
                     set_state_(State::WaitingReconnect);
-                    emit_(connection::Signal::RetryScheduled);
                     schedule_next_retry_();  // Schedule next retry with backoff
                 } else {
                     set_state_(State::Disconnected);
@@ -760,6 +743,7 @@ private:
     // Schedule immediate retry (no backoff)
     void arm_immediate_reconnect_(Error error) noexcept {
         WK_DEBUG("[CONN] Scheduling immediate reconnection attempt.");
+        emit_(connection::Signal::RetryImmediate);
         retry_root_error_.store(error, std::memory_order_relaxed);
         retry_attempts_ = 1;
         // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
@@ -768,19 +752,11 @@ private:
     // Schedule next retry with backoff
     void schedule_next_retry_() noexcept {
         WK_DEBUG("[CONN] Scheduling next reconnection attempt with backoff.");
+        emit_(connection::Signal::RetryScheduled);
         retry_attempts_++;
         auto now = std::chrono::steady_clock::now();
         auto delay = backoff_(retry_root_error_.load(std::memory_order_relaxed), retry_attempts_);
         next_retry_ = now + delay;
-        // Invoke retry callback (if any)
-        if (hooks_.on_retry_cb_) {
-            hooks_.on_retry_cb_(RetryContext{
-                .url         = last_url_,
-                .error       = retry_root_error_.load(std::memory_order_relaxed),
-                .attempt     = retry_attempts_,
-                .next_retry  = next_retry_
-            });
-        }
         // convert to seconds for logging
         auto seconds = std::chrono::duration_cast<std::chrono::seconds>(delay);
         if (seconds.count() == 1) {

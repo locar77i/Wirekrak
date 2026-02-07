@@ -74,6 +74,7 @@ enum class Signal : uint8_t {
     None,               // No externally observable signal
     Connected,          // Logical connection established
     Disconnected,       // Logical connection fully down
+    RetryImmediate,     // Retry will occur immediately
     RetryScheduled,     // Entered automatic retry cycle
     // --- Liveness ---
     LivenessThreatened, // Liveness threatened (healthy → warning)
@@ -85,6 +86,7 @@ inline std::string_view to_string(Signal sig) noexcept {
         case Signal::None:               return "None";
         case Signal::Connected:          return "Connected";
         case Signal::Disconnected:       return "Disconnected";
+        case Signal::RetryImmediate:     return "RetryImmediate";
         case Signal::RetryScheduled:     return "RetryScheduled";
         case Signal::LivenessThreatened: return "LivenessThreatened";
         default:                                  return "Unknown";

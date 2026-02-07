@@ -52,6 +52,7 @@ struct ConnectionHarness {
     // -------------------------------------------------------------------------
     std::uint32_t connect_signals{0};
     std::uint32_t disconnect_signals{0};
+    std::uint32_t retry_immediate_signals{0};
     std::uint32_t retry_schedule_signals{0};
     std::uint32_t liveness_warning_signals{0};
 
@@ -110,6 +111,10 @@ struct ConnectionHarness {
                 ++disconnect_signals;
                 break;
 
+            case connection::Signal::RetryImmediate:
+                ++retry_immediate_signals;
+                break;
+
             case connection::Signal::RetryScheduled:
                 ++retry_schedule_signals;
                 break;
@@ -133,6 +138,7 @@ struct ConnectionHarness {
     inline void reset_counters() noexcept {
         connect_signals = 0;
         disconnect_signals = 0;
+        retry_immediate_signals = 0;
         retry_schedule_signals = 0;
         liveness_warning_signals = 0;
         signals.clear();
