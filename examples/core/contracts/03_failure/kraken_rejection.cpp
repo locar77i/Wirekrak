@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    Session session;
+    kraken::Session session;
 
     // Observe rejection notices
     const auto& mgr = session.trade_subscriptions();

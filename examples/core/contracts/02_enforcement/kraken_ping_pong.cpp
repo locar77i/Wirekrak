@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    Session session;
+    kraken::Session session;
 
     // Capture local wall-clock time at ping send
     auto ping_sent_at = std::chrono::steady_clock::now();

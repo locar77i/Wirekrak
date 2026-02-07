@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    protocol::kraken::Session<transport::winhttp::WebSocket> session;
+    kraken::Session session;
 
     // Observe pong messages (only relevant in Active policy)
     session.on_pong([](const schema::system::Pong& pong) {

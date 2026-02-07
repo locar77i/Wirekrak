@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------
-    Session session;
+    kraken::Session session;
 
     // Register status handler
     session.on_status([](const schema::status::Update& status) {

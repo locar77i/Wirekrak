@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    Session session;
+    kraken::Session session;
 
     if (!session.connect(params.url)) {
         std::cerr << "Failed to connect\n";

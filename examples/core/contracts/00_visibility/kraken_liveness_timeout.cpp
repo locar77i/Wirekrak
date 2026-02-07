@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    Session session;
+    kraken::Session session;
 
     // Status handler (shows initial protocol traffic only)
     session.on_status([](const schema::status::Update& status) {

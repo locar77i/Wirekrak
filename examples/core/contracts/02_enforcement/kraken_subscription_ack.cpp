@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    Session session;
+    kraken::Session session;
 
     session.on_status([](const schema::status::Update& status) {
         std::cout << " -> " << status << std::endl;

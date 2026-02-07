@@ -2,99 +2,167 @@
 
 /*
 ================================================================================
-Wirekrak Architecture Overview
+Wirekrak Core — Kraken Client Architecture
 ================================================================================
 
-This SDK currently implements a **2-thread processing model** designed to be:
-- minimal
-- deterministic
-- extremely fast
-- free of locks and dynamic contention
+This file defines the **primary entry point** for the Wirekrak Kraken client:
 
-The two active threads are:
+    wirekrak::core::Session
+
+It is a thin, explicit composition of:
+  - a transport-level Connection
+  - a protocol-level Kraken Session
+  - a concrete WebSocket backend (WinHTTP)
+
+No additional abstraction, threading, or execution model is hidden here.
 
 -------------------------------------------------------------------------------
-1. Network Thread (WinHTTP Receive Thread)
+Execution Model (Current)
 -------------------------------------------------------------------------------
-Created internally by the WinHTTP WebSocket API and used exclusively for
-asynchronous I/O.
+
+Wirekrak Core operates using a **strict, deterministic 2-thread model**:
+
+    [1] Transport / Network Thread
+    [2] User / Application Thread
+
+This separation is fundamental to correctness, latency guarantees, and safety.
+
+-------------------------------------------------------------------------------
+1. Transport Thread (WinHTTP WebSocket Thread)
+-------------------------------------------------------------------------------
+
+This thread is created and owned entirely by the WinHTTP WebSocket API.
+
+Wirekrak does NOT control its lifetime, scheduling, or execution frequency.
 
 Responsibilities:
-    - Waits for incoming WebSocket frames
-    - Reads raw message bytes into a temporary buffer
-    - Invokes the SDK's receive callback (receive_loop)
-    - Performs lightweight JSON parsing
-    - Routes each parsed message into the appropriate SPSC ring buffer
+  - Waits for incoming WebSocket frames
+  - Receives raw bytes from the network
+  - Performs minimal framing and validation
+  - Executes lightweight JSON parsing
+  - Routes parsed messages into lock-free SPSC rings
 
-This thread NEVER interacts with user code directly.
-It never blocks, does not allocate, and only performs O(1) ring-buffer pushes.
+Hard guarantees:
+  - NEVER invokes user code
+  - NEVER blocks on user-controlled resources
+  - NEVER allocates on hot paths
+  - Performs only bounded, O(1) work per message
+
+This thread exists solely to move data from the network
+into deterministic, bounded queues.
 
 -------------------------------------------------------------------------------
-2. Application Thread (Main Thread)
+2. Application Thread (User-Owned)
 -------------------------------------------------------------------------------
-Owned by the user application, typically the thread running main().
+
+This is the thread that calls:
+
+    Session::poll()
+
+Typically the application's main loop thread.
 
 Responsibilities:
-    - Periodically calls Session::poll()
-    - Pops parsed messages from the SPSC rings
-    - Dispatches them to user-registered callbacks
-    - Executes all user logic safely and synchronously
+  - Drives all forward progress explicitly
+  - Drains SPSC rings populated by the transport thread
+  - Dispatches typed protocol events
+  - Executes all user callbacks synchronously
+  - Owns all protocol-level logic and side effects
 
-This ensures:
-    - User code NEVER runs inside the network thread
-    - No user callback can stall networking
-    - No locks or atomics are required for user-level operations
-
--------------------------------------------------------------------------------
-Why Only Two Threads?
--------------------------------------------------------------------------------
-For the vast majority of real-time exchange-feed workloads, this architecture is
-ideal. Parsing is efficient, routing is O(1), and the network thread remains
-highly deterministic. The system performs extremely well even under sustained
-high message rates (multiple thousands per second).
+Hard guarantees:
+  - User callbacks NEVER run on the transport thread
+  - Network I/O can NEVER be stalled by user code
+  - No locks or blocking are required for user logic
+  - All execution is explicit, ordered, and observable
 
 -------------------------------------------------------------------------------
-Future Extension: Optional Dedicated Parser Thread
+Why Exactly Two Threads?
 -------------------------------------------------------------------------------
-The architecture has been intentionally designed so that adding a **third thread**
-(a dedicated parser thread) is straightforward.
 
-The upgraded model would include:
+For real-time exchange feeds (including Kraken WebSocket v2),
+this model provides the best tradeoff between:
+
+  - Latency
+  - Determinism
+  - CPU efficiency
+  - Debuggability
+  - Testability
+
+JSON parsing cost is amortized efficiently,
+ring-buffer routing is constant-time,
+and callback dispatch is fully controlled by the application.
+
+For typical workloads (thousands to tens of thousands of messages/sec),
+this architecture remains comfortably within budget.
+
+-------------------------------------------------------------------------------
+Future Extension: Optional Parser Thread (Not Enabled)
+-------------------------------------------------------------------------------
+
+The architecture intentionally allows promotion to a **3-thread model**
+without redesigning public APIs:
 
     Network Thread
-        → pushes raw JSON strings into a raw_spsc_ring
+        → receives raw frames
+        → pushes raw JSON into a raw SPSC ring
 
     Parser Thread
         → pops raw JSON
-        → performs parsing and normalization
+        → performs full parsing / normalization
         → pushes typed events into per-channel SPSC rings
 
-    Main Thread
-        → pops typed events
+    Application Thread
+        → polls
         → dispatches callbacks
 
-This 3-thread model is beneficial if:
-    - Message throughput exceeds ~100,000 messages/sec
-    - Parsing becomes a measurable bottleneck
-    - Ultra-low network jitter is required
-    - Multiple message types require heavy parsing
+This extension is appropriate only when:
+  - Parsing becomes a measurable bottleneck
+  - Message rates exceed ~100k/sec
+  - Network jitter must be minimized further
+  - Heavy schema normalization is required
 
-The current 2-thread design remains simpler, cooler on CPU load, and entirely
-sufficient for typical Kraken/WebSocket API usage.
+The current SDK does NOT enable this mode by default.
+Simplicity and determinism are preserved unless proven insufficient.
+
+-------------------------------------------------------------------------------
+What This Entry Point Represents
+-------------------------------------------------------------------------------
+
+This header defines:
+
+    using Session = protocol::kraken::Session<winhttp::WebSocket>;
+
+That is:
+  - A concrete Kraken protocol client
+  - Bound to a specific transport backend
+  - With no hidden execution model
+  - Fully poll-driven
+  - Fully deterministic
+
+There is no global state.
+There are no background worker threads.
+There is no implicit progress.
+
+If progress occurs, it is because `poll()` was called.
 
 -------------------------------------------------------------------------------
 Summary
 -------------------------------------------------------------------------------
-[Thread 1] WinHTTP Network Thread:
-    recv → parse → push_to_ring
 
-[Thread 2] User Application Thread:
-    poll → pop_from_ring → callbacks
+Current model:
 
-[Future Optional] Parser Thread:
-    recv → push_raw → parse_thread → push_typed → callbacks
+    [Transport Thread]
+        recv → parse → push_to_ring
 
-The SDK is built to support this evolution with minimal refactoring.
+    [Application Thread]
+        poll → pop_from_ring → callbacks
+
+Future optional model:
+
+    recv → push_raw
+        → parse_thread → push_typed
+            → poll → callbacks
+
+Wirekrak Core is built to evolve without breaking contracts.
 
 ================================================================================
 */
@@ -102,9 +170,12 @@ The SDK is built to support this evolution with minimal refactoring.
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 
-
 namespace wirekrak::core {
 
-using Session = protocol::kraken::Session<transport::winhttp::WebSocket>;
+namespace kraken {
+
+    using Session = protocol::kraken::Session<transport::winhttp::WebSocket>;
+
+} // namespace kraken
 
 } // namespace wirekrak::core
