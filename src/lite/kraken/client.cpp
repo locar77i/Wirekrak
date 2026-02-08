@@ -1,4 +1,5 @@
 #include "wirekrak/lite/client.hpp"
+#include "wirekrak/lite/channel/dispatcher.hpp"
 
 // ---- Core includes (PRIVATE) ----
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
@@ -9,6 +10,7 @@
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
+
 
 namespace wirekrak::lite {
 
@@ -24,11 +26,20 @@ using WS = wirekrak::core::transport::winhttp::WebSocket;
 struct Client::Impl {
     client_config cfg;
 
-    // Core client
+    // Core session (owning)
     kraken::Session<WS> session;
+
+    // Dispatchers (one per channel)
+    channel::Dispatcher<schema::trade::ResponseView> trade_dispatcher;
+    channel::Dispatcher<schema::book::Response>      book_dispatcher;
 
     // Lite state
     error_handler error_cb;
+
+    // Reusable temp objects to avoid dynamic allocation in hot paths
+    schema::rejection::Notice rejection;
+    schema::trade::ResponseView trade_view;
+    schema::book::Response book_resp;
 
     Impl(client_config cfg)
         : cfg(cfg)
@@ -40,14 +51,34 @@ struct Client::Impl {
         return session.connect(cfg.endpoint);
     }
 
-    schema::rejection::Notice rejection; // Reusable temp for pop_rejection()
-
     void poll() {
         (void)session.poll();
         while (session.pop_rejection(rejection)) {
+            // 1) Remove any callbacks associated with this req_id to prevent future invocations
+            if (rejection.req_id.has()) {
+                trade_dispatcher.remove_by_req_id(rejection.req_id.value());
+                book_dispatcher.remove_by_req_id(rejection.req_id.value());
+            }
+            // 2) Emit error callback if provided
             if (error_cb) {
                 error_cb(Error{ErrorCode::Rejected, rejection.error});
             }
+        }
+
+        // -------------------------------------------------
+        // Trade data-plane
+        // -------------------------------------------------
+        // NOTE: ResponseView is valid only for the duration of this dispatch loop.
+        // Callbacks must not store references to msg beyond the call.
+        while (session.pop_trade(trade_view)) {
+            trade_dispatcher.dispatch(trade_view);
+        }
+
+        // -------------------------------------------------
+        // Book data-plane
+        // -------------------------------------------------
+        while (session.pop_book(book_resp)) {
+            book_dispatcher.dispatch(book_resp);
         }
     }
 };
@@ -85,28 +116,45 @@ void Client::on_error(error_handler cb) {
 // -----------------------------
 
 void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb, bool snapshot) {
-    (void)impl_->session.subscribe(schema::trade::Subscribe{ .symbols  = symbols, .snapshot = snapshot },
-        [cb = std::move(cb)](const schema::trade::ResponseView& msg) {
-            Tag tag = (msg.type == kraken::PayloadType::Snapshot ? Tag::Snapshot : Tag::Update);
-            // Map each trade pointer from the view to a lite domain::Trade
-            for (const auto* trade : msg.trades) {
-              cb(domain::Trade{
-                  .trade_id     = trade->trade_id,
-                  .symbol       = trade->symbol,
-                  .price        = trade->price,
-                  .quantity     = trade->qty,
-                  .taker_side   = (trade->side == kraken::Side::Buy) ? Side::Buy : Side::Sell,
-                  .timestamp_ns = static_cast<std::uint64_t>(trade->timestamp.time_since_epoch().count()),
-                  .order_type   = trade->ord_type.has() ? std::optional<std::string>{to_string(trade->ord_type.value())} : std::nullopt,
-                  .tag          = tag
-              });
-            }
+    // ---------------------------------------------------------------------
+    // Mapping: Kraken trade response → Lite domain::Trade
+    // ---------------------------------------------------------------------
+    auto emit_trades = [cb = std::move(cb)](const schema::trade::ResponseView& msg) {
+        const Tag tag = (msg.type == kraken::PayloadType::Snapshot) ? Tag::Snapshot : Tag::Update;
+        // Map each trade pointer from the view to a lite domain::Trade
+        for (const auto* trade : msg.trades) {
+            cb(domain::Trade{
+                .trade_id     = trade->trade_id,
+                .symbol       = trade->symbol,
+                .price        = trade->price,
+                .quantity     = trade->qty,
+                .taker_side   = (trade->side == kraken::Side::Buy) ? Side::Buy : Side::Sell,
+                .timestamp_ns = static_cast<std::uint64_t>(trade->timestamp.time_since_epoch().count()),
+                .order_type   = trade->ord_type.has() ? std::optional<std::string>{ to_string(trade->ord_type.value())} : std::nullopt,
+                .tag          = tag
+            });
         }
+    };
+
+    // Make a copy ONLY for Core (to remove in the future)
+    // Core consumes by value, Lite owns original
+    auto symbols_for_core = symbols;
+
+    // 1) Submit intent to Core → get req_id
+    auto req_id = impl_->session.subscribe(
+        schema::trade::Subscribe{ .symbols = std::move(symbols_for_core), .snapshot = snapshot },
+        emit_trades // <-- still passed to Core (to remove in the future)
     );
+
+    // 2) Register behavior in Lite dispatcher
+    impl_->trade_dispatcher.add(req_id, std::move(symbols), std::move(emit_trades));
 }
 
 void Client::unsubscribe_trades(std::vector<std::string> symbols) {
-    (void)impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = symbols });
+    auto req_id = impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = std::move(symbols) });
+    // Optional: if Kraken rejects later, rejection handling will clean this anyway
+    // Lite removes behavior immediately on unsubscribe intent, not on ACK.
+    impl_->trade_dispatcher.remove_by_req_id(req_id);
 }
 
 
@@ -115,36 +163,53 @@ void Client::unsubscribe_trades(std::vector<std::string> symbols) {
 // -----------------------------
 
 void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, bool snapshot) {
-    (void)impl_->session.subscribe(schema::book::Subscribe{ .symbols  = std::move(symbols), .snapshot = snapshot },
-        [cb = std::move(cb)](const kraken::schema::book::Response& resp) {
-            const auto tag = (resp.type == kraken::PayloadType::Snapshot) ? Tag::Snapshot : Tag::Update;
-            const std::optional<std::uint64_t> ts_ns =
-                resp.book.timestamp.has() ? std::optional<std::uint64_t>{resp.book.timestamp.value().time_since_epoch().count()} : std::nullopt;
+    // ---------------------------------------------------------------------
+    // Mapping: Kraken book response → Lite domain::BookLevel
+    // ---------------------------------------------------------------------
+    auto emit_book_levels = [cb = std::move(cb)](const kraken::schema::book::Response& resp) {
+        const auto tag = (resp.type == kraken::PayloadType::Snapshot) ? Tag::Snapshot : Tag::Update;
+        const std::optional<std::uint64_t> ts_ns =
+            resp.book.timestamp.has() ? std::optional<std::uint64_t>{resp.book.timestamp.value().time_since_epoch().count()} : std::nullopt;
 
-            const auto emit_levels = [&](const auto& levels, Side book_side) {
-                for (const auto& lvl : levels) {
-                    cb(domain::BookLevel{
-                        .symbol       = resp.book.symbol,
-                        .book_side    = book_side,
-                        .price        = lvl.price,
-                        .quantity     = lvl.qty,
-                        .timestamp_ns = ts_ns,
-                        .tag          = tag
-                    });
-                }
-            };
+        const auto emit_levels = [&](const auto& levels, Side book_side) {
+            for (const auto& lvl : levels) {
+                cb(domain::BookLevel{
+                    .symbol       = resp.book.symbol,
+                    .book_side    = book_side,
+                    .price        = lvl.price,
+                    .quantity     = lvl.qty,
+                    .timestamp_ns = ts_ns,
+                    .tag          = tag
+                });
+            }
+        };
 
-            // Asks → sell
-            emit_levels(resp.book.asks, Side::Sell);
+        // Asks → sell
+        emit_levels(resp.book.asks, Side::Sell);
 
-            // Bids → buy
-            emit_levels(resp.book.bids, Side::Buy);
-        }
+        // Bids → buy
+        emit_levels(resp.book.bids, Side::Buy);
+    };
+
+    // Make a copy ONLY for Core (to remove in the future)
+    // Core consumes by value, Lite owns original
+    auto symbols_for_core = symbols;
+
+    // 1) Submit intent to Core → get req_id
+    auto req_id = impl_->session.subscribe(
+        schema::book::Subscribe{ .symbols  = std::move(symbols_for_core), .snapshot = snapshot },
+        emit_book_levels  // <-- still passed to Core (to remove in the future)
     );
+
+    // 2) Register behavior in Lite dispatcher
+    impl_->book_dispatcher.add(req_id, std::move(symbols), std::move(emit_book_levels));
 }
 
 void Client::unsubscribe_book(std::vector<std::string> symbols) {
-    (void)impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols) });
+    auto req_id = impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols) });
+    // Optional: if Kraken rejects later, rejection handling will clean this anyway
+    // Lite removes behavior immediately on unsubscribe intent, not on ACK.
+    impl_->book_dispatcher.remove_by_req_id(req_id);
 }
 
 } // namespace wirekrak::lite

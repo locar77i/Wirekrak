@@ -161,6 +161,15 @@ public:
         return user_rejection_buffer_.pop(out);
     }
 
+    [[nodiscard]]
+    inline bool pop_trade(schema::trade::ResponseView& out) noexcept {
+        return false; // TODO: implement
+    }
+
+    [[nodiscard]] inline bool pop_book(schema::book::Response& out) noexcept {
+        return false; // TODO: implement
+    }
+
     // Send ping
     inline void ping() noexcept{
         send_raw_request_(schema::system::Ping{.req_id = ctrl::PING_ID});
