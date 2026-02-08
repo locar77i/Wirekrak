@@ -39,7 +39,7 @@ public:
     Manager() = default;
 
     // Register outbound subscribe request (called before sending a subscribe request)
-    inline void register_subscription(std::vector<Symbol> symbols, std::uint64_t req_id) noexcept {
+    inline void register_subscription(std::vector<Symbol> symbols, ctrl::req_id_t req_id) noexcept {
         WK_TRACE("[SUBMGR] Registering subscription request (req_id=" << req_id << ")");
         // Store pending symbols
         auto& vec = pending_subscriptions_[req_id];
@@ -51,7 +51,7 @@ public:
     }
 
     // Register outbound unsubscribe request (called before sending an unsubscribe request)
-    inline void register_unsubscription(std::vector<Symbol> symbols, std::uint64_t req_id) noexcept {
+    inline void register_unsubscription(std::vector<Symbol> symbols, ctrl::req_id_t req_id) noexcept {
         WK_TRACE("[SUBMGR] Registering unsubscription request (req_id=" << req_id << ")");
         auto& vec = pending_unsubscriptions_[req_id];
         vec.reserve(symbols.size());
@@ -65,37 +65,37 @@ public:
     // Process ACK messages
     // ------------------------------------------------------------
 
-    inline void process_subscribe_ack(Channel channel, std::uint64_t group_id, Symbol symbol, bool success) noexcept {
-        WK_TRACE("[SUBMGR] Processing subscribe ACK for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ") - success=" << std::boolalpha << success);
+    inline void process_subscribe_ack(Channel channel, ctrl::req_id_t req_id, Symbol symbol, bool success) noexcept {
+        WK_TRACE("[SUBMGR] Processing subscribe ACK for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
         bool done = false;
         if (success) [[likely]] {
-            done = confirm_subscription_(symbol, group_id);
-            if (done) WK_INFO("[SUBMGR] Subscription ACCEPTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ")");
+            done = confirm_subscription_(symbol, req_id);
+            if (done) WK_INFO("[SUBMGR] Subscription ACCEPTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << req_id << ")");
         }
         else {
-            done = reject_subscription_(symbol, group_id);
-            if (done) WK_WARN("[SUBMGR] Subscription REJECTED for channel '" << to_string(channel) << "'  {" << symbol << "} (req_id=" << group_id << ")");
+            done = reject_subscription_(symbol, req_id);
+            if (done) WK_WARN("[SUBMGR] Subscription REJECTED for channel '" << to_string(channel) << "'  {" << symbol << "} (req_id=" << req_id << ")");
         }
-        if (!done) WK_WARN("[SUBMGR] Subscription OMITTED for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << group_id << ")");
+        if (!done) WK_WARN("[SUBMGR] Subscription OMITTED for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << req_id << ")");
         WK_TRACE("[SUBMGR] Active subscriptions = " << active_.size() << " - Pending subscriptions = " << pending_subscriptions_.size());
     }
 
-    inline void process_unsubscribe_ack(Channel channel, std::uint64_t group_id, Symbol symbol, bool success) noexcept {
-        WK_TRACE("[SUBMGR] Processing unsubscribe ACK for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ") - success=" << std::boolalpha << success);
+    inline void process_unsubscribe_ack(Channel channel, ctrl::req_id_t req_id, Symbol symbol, bool success) noexcept {
+        WK_TRACE("[SUBMGR] Processing unsubscribe ACK for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
         bool done = false;
         if (success) [[likely]] {
-            done = confirm_unsubscription_(symbol, group_id);
-            if (done) WK_INFO("[SUBMGR] Unsubscription ACCEPTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ")");
+            done = confirm_unsubscription_(symbol, req_id);
+            if (done) WK_INFO("[SUBMGR] Unsubscription ACCEPTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << req_id << ")");
         }
         else {
-            done = reject_unsubscription_(symbol, group_id);
-            if (done) WK_WARN("[SUBMGR] Unsubscription REJECTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << group_id << ")");
+            done = reject_unsubscription_(symbol, req_id);
+            if (done) WK_WARN("[SUBMGR] Unsubscription REJECTED for channel '" << to_string(channel) << "' {" << symbol << "} (req_id=" << req_id << ")");
         }
-        if (!done) WK_WARN("[SUBMGR] Unsubscription ACK omitted for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << group_id << ")");
+        if (!done) WK_WARN("[SUBMGR] Unsubscription ACK omitted for channel '" << to_string(channel) << "' {" << symbol << "} (unknown req_id=" << req_id << ")");
         WK_TRACE("[SUBMGR] Active subscriptions = " << active_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
     }
 
-    inline void try_process_rejection(std::uint64_t req_id, Symbol symbol) noexcept {
+    inline void try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         SymbolId symbol_id = intern_symbol(symbol);
         // Try to reject from pending subscriptions
         if (try_process_rejection_on_(pending_subscriptions_, req_id, symbol_id)) {
@@ -170,7 +170,7 @@ private:
     // ------------------------------------------------------------
 
     // Process ACK for subscription. Called when we parse a successful {"method":"subscribe","success":true}
-    [[nodiscard]] inline bool confirm_subscription_(const Symbol& symbol, std::uint64_t req_id) noexcept {
+    [[nodiscard]] inline bool confirm_subscription_(const Symbol& symbol, ctrl::req_id_t req_id) noexcept {
         WK_DEBUG("[SUBMGR] Confirming subscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
@@ -203,7 +203,7 @@ private:
     }
 
     // Process ACK for subscription. Called when a subscribe request returns success=false
-    [[nodiscard]] inline bool reject_subscription_(const Symbol& symbol, std::uint64_t req_id) noexcept {
+    [[nodiscard]] inline bool reject_subscription_(const Symbol& symbol, ctrl::req_id_t req_id) noexcept {
         WK_DEBUG("[SUBMGR] Rejecting subscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
@@ -234,7 +234,7 @@ private:
     // ------------------------------------------------------------
 
     // Process ACK for unsubscription. Called when we parse a successful {"method":"unsubscribe","success":true}
-    [[nodiscard]] inline bool confirm_unsubscription_(const Symbol& symbol, std::uint64_t req_id) noexcept {
+    [[nodiscard]] inline bool confirm_unsubscription_(const Symbol& symbol, ctrl::req_id_t req_id) noexcept {
         WK_DEBUG("[SUBMGR] Confirming unsubscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
@@ -268,7 +268,7 @@ private:
     }
 
     // Process ACK for unsubscription. Called when a subscribe request returns success=false
-    [[nodiscard]] inline bool reject_unsubscription_(const Symbol& symbol, std::uint64_t req_id) noexcept {
+    [[nodiscard]] inline bool reject_unsubscription_(const Symbol& symbol, ctrl::req_id_t req_id) noexcept {
         WK_DEBUG("[SUBMGR] Rejecting unsubscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
@@ -295,7 +295,7 @@ private:
     }
 
     template <typename PendingMap>
-    [[nodiscard]] inline bool try_process_rejection_on_(PendingMap& pending, std::uint64_t req_id, SymbolId symbol_id) noexcept {
+    [[nodiscard]] inline bool try_process_rejection_on_(PendingMap& pending, ctrl::req_id_t req_id, SymbolId symbol_id) noexcept {
         // Find pending subscription by req_id
         auto it = pending.find(req_id);
         if (it == pending.end()) {

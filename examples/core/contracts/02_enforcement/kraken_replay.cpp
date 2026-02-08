@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Subscribe ONCE to LTC/EUR trade updates (no snapshot)
     // -------------------------------------------------------------------------
-    session.subscribe(
+    (void)session.subscribe(
         schema::trade::Subscribe{
             .symbols  = params.symbols,
             .snapshot = false // to avoid burst output and keep replay observable

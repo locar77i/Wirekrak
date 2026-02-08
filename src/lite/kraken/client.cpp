@@ -85,7 +85,7 @@ void Client::on_error(error_handler cb) {
 // -----------------------------
 
 void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb, bool snapshot) {
-    impl_->session.subscribe(schema::trade::Subscribe{ .symbols  = symbols, .snapshot = snapshot },
+    (void)impl_->session.subscribe(schema::trade::Subscribe{ .symbols  = symbols, .snapshot = snapshot },
         [cb = std::move(cb)](const schema::trade::ResponseView& msg) {
             Tag tag = (msg.type == kraken::PayloadType::Snapshot ? Tag::Snapshot : Tag::Update);
             // Map each trade pointer from the view to a lite domain::Trade
@@ -106,7 +106,7 @@ void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb
 }
 
 void Client::unsubscribe_trades(std::vector<std::string> symbols) {
-    impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = symbols });
+    (void)impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = symbols });
 }
 
 
@@ -115,7 +115,7 @@ void Client::unsubscribe_trades(std::vector<std::string> symbols) {
 // -----------------------------
 
 void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, bool snapshot) {
-    impl_->session.subscribe(schema::book::Subscribe{ .symbols  = std::move(symbols), .snapshot = snapshot },
+    (void)impl_->session.subscribe(schema::book::Subscribe{ .symbols  = std::move(symbols), .snapshot = snapshot },
         [cb = std::move(cb)](const kraken::schema::book::Response& resp) {
             const auto tag = (resp.type == kraken::PayloadType::Snapshot) ? Tag::Snapshot : Tag::Update;
             const std::optional<std::uint64_t> ts_ns =
@@ -144,7 +144,7 @@ void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, b
 }
 
 void Client::unsubscribe_book(std::vector<std::string> symbols) {
-    impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols) });
+    (void)impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols) });
 }
 
 } // namespace wirekrak::lite

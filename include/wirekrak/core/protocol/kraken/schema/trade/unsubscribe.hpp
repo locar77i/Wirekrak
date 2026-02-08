@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "wirekrak/core/protocol/kraken/request/validate.hpp"
+#include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/json.hpp"
 #include "lcr/optional.hpp"
@@ -20,7 +21,7 @@ struct Unsubscribe {
     using unsubscribe_tag = void;
 
     std::vector<Symbol> symbols;
-    lcr::optional<std::uint64_t> req_id{};
+    lcr::optional<ctrl::req_id_t> req_id{};
 
     std::string to_json() const {
 #ifndef NDEBUG

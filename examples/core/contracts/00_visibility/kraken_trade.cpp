@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     int messages_received = 0;
 
-    session.subscribe(
+    (void)session.subscribe(
         schema::trade::Subscribe{ .symbols = params.symbols },
         [&](const schema::trade::ResponseView& trade) {
             std::cout << " -> [TRADE] " << trade << std::endl;
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    session.unsubscribe(
+    (void)session.unsubscribe(
         schema::trade::Unsubscribe{ .symbols = params.symbols }
     );
 

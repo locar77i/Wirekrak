@@ -59,14 +59,14 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Issue duplicate subscribe requests
     // -------------------------------------------------------------------------
-    session.subscribe(
+    (void)session.subscribe(
         schema::trade::Subscribe{ .symbols = params.symbols },
         [](const schema::trade::ResponseView& trade) {
             std::cout << " -> " << trade << std::endl;
         }
     );
 
-    session.subscribe(
+    (void)session.subscribe(
         schema::trade::Subscribe{ .symbols = params.symbols },
         [](const schema::trade::ResponseView&) {
             // intentionally unused
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Immediately unsubscribe
     // -------------------------------------------------------------------------
-    session.unsubscribe(
+    (void)session.unsubscribe(
         schema::trade::Unsubscribe{ .symbols = params.symbols }
     );
 

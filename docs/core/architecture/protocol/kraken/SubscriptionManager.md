@@ -61,7 +61,7 @@ public:
     public:
         struct SymbolEntry {
             SymbolId symbol_id;
-            uint64_t group_id;
+            ctrl::req_id_t req_id;
         };
 
         std::vector<SymbolEntry> entries;
@@ -78,11 +78,11 @@ public:
     };
 
 public:
-    void register_subscription(std::vector<Symbol> symbols, uint64_t req_id);
-    void register_unsubscription(std::vector<Symbol> symbols, uint64_t req_id);
+    void register_subscription(std::vector<Symbol> symbols, ctrl::req_id_t req_id);
+    void register_unsubscription(std::vector<Symbol> symbols, ctrl::req_id_t req_id);
 
-    void process_subscribe_ack(Channel channel, uint64_t req_id, Symbol symbol, bool success);
-    void process_unsubscribe_ack(Channel channel, uint64_t req_id, Symbol symbol, bool success);
+    void process_subscribe_ack(Channel channel, ctrl::req_id_t req_id, Symbol symbol, bool success);
+    void process_unsubscribe_ack(Channel channel, ctrl::req_id_t req_id, Symbol symbol, bool success);
 
     bool has_pending() const;
     bool has_active() const;

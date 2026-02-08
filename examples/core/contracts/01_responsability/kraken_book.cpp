@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit protocol subscription (stateful)
     // -------------------------------------------------------------------------
-    session.subscribe(
+    (void)session.subscribe(
         schema::book::Subscribe{
             .symbols  = params.symbols,
             .depth    = params.depth,
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    session.unsubscribe(
+    (void)session.unsubscribe(
         schema::book::Unsubscribe{
             .symbols = params.symbols,
             .depth   = params.depth

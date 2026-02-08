@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     int messages_received = 0;
 
-    session.subscribe(
+    (void)session.subscribe(
         schema::book::Subscribe{ .symbols = params.symbols },
         [&](const schema::book::Response& book) {
             std::cout << " -> [BOOK] " << book << std::endl;
@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    session.unsubscribe(
+    (void)session.unsubscribe(
         schema::book::Unsubscribe{ .symbols = params.symbols }
     );
 

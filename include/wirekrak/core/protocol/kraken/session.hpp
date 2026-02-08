@@ -163,11 +163,12 @@ public:
 
     // Send ping
     inline void ping() noexcept{
-        send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});
+        send_raw_request_(schema::system::Ping{.req_id = ctrl::PING_ID});
     }
 
     template <request::Subscription RequestT, class Callback>
-    inline void subscribe(const RequestT& req, Callback&& cb) {
+    [[nodiscard]]
+    inline ctrl::req_id_t subscribe(const RequestT& req, Callback&& cb) {
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
@@ -181,15 +182,16 @@ public:
             dispatcher_.add_handler<ResponseT>(symbol, cb_copy);
         }
         // TODO: Handle duplicate symbol subscriptions to avoid kraken rejections
-        subscribe_with_ack_(req, cb_copy);
+        return subscribe_with_ack_(req, cb_copy);
     }
 
     template <request::Unsubscription RequestT>
-    inline void unsubscribe(const RequestT& req) {
+    [[nodiscard]]
+    inline ctrl::req_id_t unsubscribe(const RequestT& req) {
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
-        unsubscribe_with_ack_(req);
+        return unsubscribe_with_ack_(req);
     }
 
     // -----------------------------------------------------------------------------
@@ -357,7 +359,7 @@ public:
 
 private:
     // Sequence generator for request IDs
-    lcr::sequence req_id_seq_{control::PROTOCOL_BASE};
+    lcr::sequence req_id_seq_{ctrl::PROTOCOL_BASE};
 
     // Underlying streaming client (and telemetry)
     transport::telemetry::Connection telemetry_;
@@ -402,7 +404,7 @@ private:
             if(!trade_subscriptions.empty()) {
                 WK_DEBUG("[REPLAY] Replaying " << trade_subscriptions.size() << " trade subscription(s)");
                 for (const auto& subscription : trade_subscriptions) {
-                    subscribe(subscription.request(), subscription.callback());
+                    (void)subscribe(subscription.request(), subscription.callback());
                 }
             }
             else {
@@ -413,7 +415,7 @@ private:
             if(!book_subscriptions.empty()) {
                 WK_DEBUG("[REPLAY] Replaying " << book_subscriptions.size() << " book subscription(s)");
                 for (const auto& subscription : book_subscriptions) {
-                    subscribe(subscription.request(), subscription.callback());
+                    (void)subscribe(subscription.request(), subscription.callback());
                 }
             }
             else {
@@ -459,7 +461,7 @@ private:
         case transport::connection::Signal::LivenessThreatened:
             // Currently no user-defined hook for liveness warning
             if (liveness_policy_ == policy::Liveness::Active) {
-                    send_raw_request_(schema::system::Ping{.req_id = control::PING_ID});
+                    send_raw_request_(schema::system::Ping{.req_id = ctrl::PING_ID});
                 }
             break;
         default:
@@ -508,7 +510,8 @@ private:
 
     // Perform subscription with ACK handling
     template<class RequestT, class Callback>
-    inline void subscribe_with_ack_(RequestT req, Callback&& cb) {
+    [[nodiscard]]
+    inline ctrl::req_id_t subscribe_with_ack_(RequestT req, Callback&& cb) {
         WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         using ResponseT = typename channel_traits<RequestT>::response_type;
         using StoredCallback = std::function<void(const ResponseT&)>;
@@ -523,18 +526,20 @@ private:
         WK_DEBUG("Sending subscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
-            return;
+            return ctrl::INVALID_REQ_ID;
         }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         subscription_manager_for_<RequestT>().register_subscription(
             std::move(req.symbols),
             req.req_id.value()
         );
+        return req.req_id.value();
     }
 
     // Perform unsubscription with ACK handling
     template<class RequestT>
-    inline void unsubscribe_with_ack_(RequestT req) {
+    [[nodiscard]]
+    inline ctrl::req_id_t unsubscribe_with_ack_(RequestT req) {
         WK_INFO("Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         // 1) Assign req_id if missing
         if (!req.req_id.has()) {
@@ -546,13 +551,14 @@ private:
         WK_DEBUG("Sending unsubscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
-            return;
+            return ctrl::INVALID_REQ_ID;
         }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         subscription_manager_for_<RequestT>().register_unsubscription(
             std::move(req.symbols),
             req.req_id.value()
         );
+        return req.req_id.value();
     }
 };
 

@@ -43,7 +43,7 @@ public:
         return subscription_table_for_<RequestT>().contains(symbol);
     }
 
-    inline bool try_process_rejection(std::uint64_t req_id, Symbol symbol) noexcept {
+    inline bool try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         bool done = trade_.try_process_rejection(req_id, symbol);
         if (!done) {
             done = book_.try_process_rejection(req_id, symbol);

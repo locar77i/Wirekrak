@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 
+#include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
 #include "lcr/optional.hpp"
@@ -27,7 +28,7 @@ struct SubscribeAck {
     lcr::optional<Timestamp> time_in;
     lcr::optional<Timestamp> time_out;
 
-    lcr::optional<std::uint64_t> req_id;
+    lcr::optional<ctrl::req_id_t> req_id;
 };
 
 } // namespace trade

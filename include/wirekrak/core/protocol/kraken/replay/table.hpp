@@ -23,7 +23,7 @@ namespace replay {
     Key features:
     - Type-safe: one DB per channel type (trade, ticker, book, …)
     - Stores a full request object (including symbols/settings)
-    - Stores exactly one callback per request group_id
+    - Stores exactly one callback per request req_id
     - Supports replay, removal, iteration, etc.
 */
 template<class RequestT>
@@ -40,7 +40,7 @@ public:
     // table_.emplace_back(request, callback)
     // ------------------------------------------------------------
     inline void add(RequestT req, Callback cb) {
-        std::uint64_t req_id = req.req_id.has() ? req.req_id.value() : INVALID_REQ_ID;
+        ctrl::req_id_t req_id = req.req_id.has() ? req.req_id.value() : INVALID_REQ_ID;
         subscriptions_.emplace_back(std::move(req), std::move(cb));
         WK_TRACE("[REPLAY:TABLE] Added subscription with req_id=" << req_id << " and " << subscriptions_.back().request().symbols.size() << " symbol(s) " << " (total subscriptions=" << subscriptions_.size() << ")");
     }
@@ -62,7 +62,7 @@ public:
         return false;
     }
 
-    inline bool try_process_rejection(std::uint64_t req_id, Symbol symbol) noexcept {
+    inline bool try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         bool done = false;
         for (auto it = subscriptions_.begin(); it != subscriptions_.end(); ++it) {
             bool done = it->try_process_rejection(req_id, symbol);

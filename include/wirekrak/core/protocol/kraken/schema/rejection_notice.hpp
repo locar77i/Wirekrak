@@ -6,6 +6,7 @@
 #include <ostream>
 #include <sstream>
 
+#include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
 #include "lcr/optional.hpp"
@@ -25,7 +26,7 @@ namespace rejection {
 // ===============================================
 struct Notice {
     std::string error;
-    lcr::optional<std::uint64_t> req_id;
+    lcr::optional<ctrl::req_id_t> req_id;
     lcr::optional<Symbol> symbol;
     lcr::optional<Timestamp> time_in;
     lcr::optional<Timestamp> time_out;

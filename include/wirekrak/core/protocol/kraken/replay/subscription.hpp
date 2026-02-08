@@ -41,7 +41,7 @@ public:
     }
 
     [[nodiscard]]
-    inline bool try_process_rejection(std::uint64_t req_id, Symbol symbol) noexcept {
+    inline bool try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         bool done = false;
         if (request_.req_id.has() && request_.req_id.value() == req_id) {
             // Match found → erase symbol
@@ -61,7 +61,7 @@ public:
     [[nodiscard]] inline const Callback& callback() const noexcept { return callback_; }
     [[nodiscard]] inline Callback& callback() noexcept { return callback_; }
 
-    [[nodiscard]] inline std::uint64_t req_id() const noexcept {
+    [[nodiscard]] inline ctrl::req_id_t req_id() const noexcept {
         return request_.req_id.has() ? request_.req_id.value() : 0;
     }
 

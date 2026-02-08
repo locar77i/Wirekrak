@@ -7,6 +7,7 @@
 
 #include "wirekrak/core/protocol/kraken/request/validate.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/common.hpp"
+#include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/json.hpp"
 #include "lcr/optional.hpp"
@@ -34,7 +35,7 @@ struct Unsubscribe {
 
     std::vector<Symbol> symbols;
     lcr::optional<std::uint32_t> depth{};
-    lcr::optional<std::uint64_t> req_id{};
+    lcr::optional<ctrl::req_id_t> req_id{};
 
     [[nodiscard]]
     std::string to_json() const {

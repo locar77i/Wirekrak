@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit protocol subscription
     // -------------------------------------------------------------------------
-    session.subscribe(
+    (void)session.subscribe(
         schema::trade::Subscribe{
             .symbols  = params.symbols,
             .snapshot = params.snapshot
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    session.unsubscribe(
+    (void)session.unsubscribe(
         schema::trade::Unsubscribe{ .symbols = params.symbols }
     );
 

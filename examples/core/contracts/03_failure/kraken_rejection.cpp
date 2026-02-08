@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     const auto& mgr = session.trade_subscriptions();
     std::cout << "[example] Trade subscriptions (before subscribe): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
-    session.subscribe(
+    (void)session.subscribe(
         schema::trade::Subscribe{ .symbols = { "INVALID/SYMBOL" } },
         [](const schema::trade::ResponseView&) {
             // Should never be called

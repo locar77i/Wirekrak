@@ -6,6 +6,7 @@
 #include <ostream>
 #include <sstream>
 
+#include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/timestamp.hpp"
 #include "lcr/optional.hpp"
 
@@ -21,7 +22,7 @@ namespace system {
 struct Pong {
     lcr::optional<bool> success;
 
-    lcr::optional<std::uint64_t> req_id;
+    lcr::optional<ctrl::req_id_t> req_id;
 
     // --- success-only fields ---
     std::vector<std::string> warnings;

@@ -48,16 +48,21 @@ This is a structural invariant of Wirekrak Core.
 ===============================================================================
 */
 
-namespace wirekrak::core::protocol::control {
+namespace wirekrak::core::protocol::ctrl {
+
+using req_id_t = std::uint64_t;  // Type alias for request IDs (for clarity and potential future flexibility)
 
 // -----------------------------------------------------------------------------
 // Reserved control-plane request IDs
 // -----------------------------------------------------------------------------
 
+// Invalid request ID (never used)
+static constexpr req_id_t INVALID_REQ_ID = 0;
+
 /// Explicit ping request (liveness / RTT measurement)
-static constexpr std::uint64_t PING_ID = 1;
+static constexpr req_id_t PING_ID = 1;
 
 /// First valid protocol-plane request ID
-static constexpr std::uint64_t PROTOCOL_BASE = 10;
+static constexpr req_id_t PROTOCOL_BASE = 10;
 
-} // namespace wirekrak::core::protocol::control
+} // namespace wirekrak::core::protocol::ctrl
