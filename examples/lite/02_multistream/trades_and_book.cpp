@@ -21,6 +21,8 @@
 // - Snapshot messages (when requested) precede live updates
 #include "wirekrak.hpp"
 
+#include "common/logger.hpp"
+
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
 // -----------------------------------------------------------------------------
@@ -35,6 +37,8 @@ void on_signal(int) {
 // -----------------------------------------------------------------------------
 int main() {
     using namespace wirekrak::lite;
+
+    wirekrak::log::set_level("info");
 
     // -------------------------------------------------------------
     // Signal handling

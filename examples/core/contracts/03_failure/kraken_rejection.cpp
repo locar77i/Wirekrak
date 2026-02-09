@@ -23,9 +23,36 @@
 #include "common/cli/minimal.hpp"
 
 
+// -----------------------------------------------------------------------------
+// Helper to drain all available messages
+// -----------------------------------------------------------------------------
+inline void drain_messages(wirekrak::core::kraken::Session& session) {
+    using namespace wirekrak::core::protocol::kraken::schema;
+
+    // Observe latest status
+    static status::Update last_status;
+    if (session.try_load_status(last_status)) {
+        std::cout << " -> " << last_status << std::endl;
+    }
+
+    // Drain protocol errors (required)
+    session.drain_rejection_messages([](const rejection::Notice& msg) {
+        std::cout << " -> " << msg << std::endl;
+    });
+
+    // Drain data-plane messages (required)
+    session.drain_trade_messages([](const trade::Response& msg) {
+        std::cout << " -> " << msg << std::endl;
+    });
+}
+
+
+// -----------------------------------------------------------------------------
+// Main
+// -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
-    namespace schema = protocol::kraken::schema;
+    using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
     // Runtime configuration
@@ -55,7 +82,7 @@ int main(int argc, char** argv) {
     const auto& mgr = session.trade_subscriptions();
     std::cout << "[example] Trade subscriptions (before subscribe): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
     (void)session.subscribe(
-        schema::trade::Subscribe{ .symbols = { "INVALID/SYMBOL" } }
+        trade::Subscribe{ .symbols = { "INVALID/SYMBOL" } }
     );
 
     // -------------------------------------------------------------------------
@@ -65,38 +92,26 @@ int main(int argc, char** argv) {
 
     // Wait for a few transport lifetimes to prove rejection is not replayed
     auto epoch = session.transport_epoch();
-    schema::status::Update last_status;
-    schema::rejection::Notice rejection;
-    schema::trade::Response trade_msg;
     while (epoch < 3) {
         epoch = session.poll();
-        // --- Observe latest status ---
-        if (session.try_load_status(last_status)) {
-            std::cout << " -> " << last_status << std::endl;
-        }
-        // Drain rejection messages in a loop until empty, to ensure we process all rejections received in this poll
-        session.drain_rejection_messages([&](const schema::rejection::Notice& msg) {
-            std::cout << " -> " << msg << std::endl;
-            std::cout << "[example] Trade subscriptions (after rejection): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
-        });
-        // Drain trade messages in a loop until empty, to ensure we process all messages received in this poll
-        session.drain_trade_messages([&](const schema::trade::Response& msg) {
-            std::cout << " ->" << msg << std::endl;
-        });
+        drain_messages(session);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
-    // Shutdown
+    // Graceful shutdown: drain until protocol is idle and close session
     // -------------------------------------------------------------------------
+    while (!session.is_idle()) {
+        (void)session.poll();
+        drain_messages(session);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
     session.close();
 
-    for (int i = 0; i < 20; ++i) {
-        (void)session.poll();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
     std::cout << "[example] Trade subscriptions (after close): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
+
+    std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
 
     // -------------------------------------------------------------------------
     // Summary

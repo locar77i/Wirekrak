@@ -44,10 +44,13 @@ void on_signal(int) {
 }
 
 
+// -----------------------------------------------------------------------------
+// Main
+// -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
-    namespace schema = protocol::kraken::schema;
-    namespace policy = protocol::policy;
+    using namespace protocol::kraken::schema;
+    using namespace protocol::policy;
 
     // -------------------------------------------------------------------------
     // Runtime configuration
@@ -77,7 +80,7 @@ int main(int argc, char** argv) {
     std::cout << "          No protocol heartbeats will be sent.\n";
     std::cout << "          Forced reconnects are expected if the protocol remains silent.\n\n";
 
-    session.set_policy(policy::Liveness::Passive);
+    session.set_policy(Liveness::Passive);
 
     if (!session.connect(params.url)) {
         return -1;
@@ -87,10 +90,10 @@ int main(int argc, char** argv) {
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
     auto phase_a_start = std::chrono::steady_clock::now();
-    schema::system::Pong last_pong;
+    system::Pong last_pong;
     while (std::chrono::steady_clock::now() - phase_a_start < std::chrono::seconds(20)) {
         (void)session.poll();
-        // --- Observe latest pong (liveness signal - not relevant in Passive policy) ---
+        // Observe latest pong (liveness signal - not relevant in Passive policy)
         if (session.try_load_pong(last_pong)) {
             std::cout << " -> " << last_pong << std::endl;
         }
@@ -104,11 +107,11 @@ int main(int argc, char** argv) {
     std::cout << "          Session will react to liveness warnings\n";
     std::cout << "          by sending protocol-level pings.\n\n";
 
-    session.set_policy(policy::Liveness::Active);
+    session.set_policy(Liveness::Active);
 
     while (running.load(std::memory_order_relaxed)) {
         (void)session.poll();
-        // --- Observe latest pong (liveness signal - only relevant in Active policy) ---
+        // Observe latest pong (liveness signal - only relevant in Active policy)
         if (session.try_load_pong(last_pong)) {
             std::cout << " -> " << last_pong << std::endl;
         }
@@ -116,14 +119,18 @@ int main(int argc, char** argv) {
     }
 
     // -------------------------------------------------------------------------
-    // Shutdown
+    // Graceful shutdown: drain until protocol is idle and close session
     // -------------------------------------------------------------------------
-    session.close();
-
-    for (int i = 0; i < 20; ++i) {
+    while (!session.is_idle()) {
         (void)session.poll();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // Observe latest pong (liveness signal - only relevant in Active policy)
+        if (session.try_load_pong(last_pong)) {
+            std::cout << " -> " << last_pong << std::endl;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+
+    session.close();
 
     // -------------------------------------------------------------------------
     // Summary

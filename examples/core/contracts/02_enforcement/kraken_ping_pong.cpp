@@ -30,11 +30,44 @@
 #include "wirekrak/core.hpp"
 #include "common/cli/minimal.hpp"
 
+
+// -----------------------------------------------------------------------------
+// Lifecycle control
+// -----------------------------------------------------------------------------
+std::atomic<bool> pong_received{false};
+
+
+// -------------------------------------------------------------------------
+// Helper to manage pong responses
+// -------------------------------------------------------------------------
+void on_pong(const wirekrak::core::protocol::kraken::schema::system::Pong& pong, std::chrono::steady_clock::time_point ping_sent_at) {
+    std::cout << " -> " << pong << "\n\n";
+
+    // Engine-measured RTT (if provided by Kraken)
+    // Engine RTT reflects Kraken's internal timing.
+    if (pong.time_in.has() && pong.time_out.has()) {
+        auto engine_rtt = pong.time_out.value() - pong.time_in.value();
+        std::cout << "    engine RTT: " << engine_rtt.count() << " ns\n";
+    }
+
+    // Local RTT reflects end-to-end wall-clock latency.
+    auto now = std::chrono::steady_clock::now();
+    auto local_rtt = std::chrono::duration_cast<std::chrono::milliseconds>(now - ping_sent_at);
+    std::cout << "    local RTT : " << local_rtt.count() << " ms\n" << std::endl;
+
+    // Comparing both helps diagnose transport vs server-side delays.
+
+    // Mark pong as received
+    pong_received.store(true, std::memory_order_relaxed);
+};
+
+
+// -----------------------------------------------------------------------------
+// Main
+// -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
-    namespace schema = protocol::kraken::schema;
-
-    std::atomic<bool> pong_received{false};
+    using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
     // Runtime configuration (no hard-coded behavior)
@@ -53,33 +86,6 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     kraken::Session session;
 
-    // Capture local wall-clock time at ping send
-    auto ping_sent_at = std::chrono::steady_clock::now();
-
-    // -------------------------------------------------------------------------
-    // Manage pong responses
-    // -------------------------------------------------------------------------
-    auto on_pong = [&](const schema::system::Pong& pong) {
-        std::cout << " -> " << pong << "\n\n";
-
-        // Engine-measured RTT (if provided by Kraken)
-        // Engine RTT reflects Kraken's internal timing.
-        if (pong.time_in.has() && pong.time_out.has()) {
-            auto engine_rtt = pong.time_out.value() - pong.time_in.value();
-            std::cout << "    engine RTT: " << engine_rtt.count() << " ns\n";
-        }
-
-        // Local RTT reflects end-to-end wall-clock latency.
-        auto now = std::chrono::steady_clock::now();
-        auto local_rtt = std::chrono::duration_cast<std::chrono::milliseconds>(now - ping_sent_at);
-        std::cout << "    local RTT : " << local_rtt.count() << " ms\n" << std::endl;
-
-        // Comparing both helps diagnose transport vs server-side delays.
-
-        // Mark pong as received
-        pong_received.store(true, std::memory_order_relaxed);
-    };
-
     // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
@@ -91,18 +97,20 @@ int main(int argc, char** argv) {
     // Send control-plane ping
     // -------------------------------------------------------------------------
     std::cout << "[example] Sending ping...\n";
+    // Capture local wall-clock time at ping send
+    auto ping_sent_at = std::chrono::steady_clock::now();
     session.ping(); // req_id is auto-assigned internally (0 is ping-reserved for control-plane)
 
     // -------------------------------------------------------------------------
     // Poll for a short, bounded observation window
     // -------------------------------------------------------------------------
-    schema::system::Pong last_pong;
-    schema::status::Update last_status;
+    system::Pong last_pong;
+    status::Update last_status;
     while (!pong_received.load(std::memory_order_relaxed)) {
         (void)session.poll();
         // --- Observe latest pong (liveness signal) ---
         if (session.try_load_pong(last_pong)) {
-            on_pong(last_pong);
+            on_pong(last_pong, ping_sent_at);
         }
         // --- Observe latest status ---
         if (session.try_load_status(last_status)) {

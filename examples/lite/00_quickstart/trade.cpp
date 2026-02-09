@@ -13,12 +13,13 @@
 #include <csignal>
 #include <atomic>
 
-
-#include "wirekrak.hpp"
 // SDK v1 invariant:
 // - Each callback corresponds to exactly one trade
 // - tag indicates snapshot vs live update
 // - ordering is preserved per symbol
+#include "wirekrak.hpp"
+
+#include "common/logger.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -33,6 +34,8 @@ void on_signal(int) {
 
 int main() {
     using namespace wirekrak::lite;
+
+    wirekrak::log::set_level("info");
 
     std::signal(SIGINT, on_signal);  // Handle Ctrl+C
 

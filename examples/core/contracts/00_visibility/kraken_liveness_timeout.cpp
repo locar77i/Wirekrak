@@ -30,7 +30,7 @@
 
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
-    namespace schema = protocol::kraken::schema;
+    using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
     // Runtime configuration
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Main polling loop
     // -------------------------------------------------------------------------
-    schema::status::Update last_status;
+    status::Update last_status;
     while (true) {
         const uint64_t epoch = session.poll();
 

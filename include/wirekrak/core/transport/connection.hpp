@@ -96,6 +96,8 @@ No level-based liveness or health state is exposed.
     * rx/tx counters
     * connection::Signal edges
 - Compose this Connection inside protocol-level sessions (e.g. Kraken)
+- is_idle() reports current quiescence only; new external I/O may arrive
+  immediately after it returns true.
 
 -------------------------------------------------------------------------------
  Notes
@@ -313,6 +315,42 @@ public:
         heartbeat_timeout_ = heartbeat;
         message_timeout_   = message;
         recompute_liveness_windows_();
+    }
+
+    // -----------------------------------------------------------------------------
+    // Idle observation
+    // -----------------------------------------------------------------------------
+    //
+    // Returns true if the connection is currently quiescent:
+    //
+    // - No pending connection::Signal events
+    // - No reconnect timer ready to fire
+    // - poll() would not advance state unless new I/O arrives
+    //
+    // This method:
+    // - Does NOT call poll()
+    // - Does NOT mutate state
+    // - Does NOT perform I/O
+    //
+    // New external activity may arrive after this returns true.
+    //
+    [[nodiscard]]
+    inline bool is_idle() const noexcept {
+        // 1) Pending observable signals → not idle
+        if (!events_.empty()) {
+            return false;
+        }
+
+        // 2) Reconnect timer ready to fire → not idle
+        if (state_ == State::WaitingReconnect) {
+            auto now = std::chrono::steady_clock::now();
+            if (next_retry_ != std::chrono::steady_clock::time_point{} && now >= next_retry_) {
+                return false;
+            }
+        }
+
+        // Otherwise, no work pending
+        return true;
     }
 
 #ifdef WK_UNIT_TEST

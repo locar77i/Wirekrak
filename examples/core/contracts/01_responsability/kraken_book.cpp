@@ -38,12 +38,43 @@ void on_signal(int) {
     running.store(false);
 }
 
+
+// -----------------------------------------------------------------------------
+// Helper to drain all available messages
+// -----------------------------------------------------------------------------
+inline void drain_messages(wirekrak::core::kraken::Session& session) {
+    using namespace wirekrak::core::protocol::kraken::schema;
+
+    // Observe latest pong (liveness signal)
+    static system::Pong last_pong;
+    if (session.try_load_pong(last_pong)) {
+        std::cout << " -> " << last_pong << std::endl;
+    }
+
+    // Observe latest status
+    static status::Update last_status;
+    if (session.try_load_status(last_status)) {
+        std::cout << " -> " << last_status << std::endl;
+    }
+
+    // Drain protocol errors (required)
+    session.drain_rejection_messages([](const rejection::Notice& msg) {
+        std::cout << " -> " << msg << std::endl;
+    });
+
+    // Drain data-plane messages (required)
+    session.drain_book_messages([](const book::Response& msg) {
+        std::cout << " -> " << msg << std::endl;
+    });
+}
+
+
 // -----------------------------------------------------------------------------
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
-    namespace schema = protocol::kraken::schema;
+    using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
     // Signal handling (explicit lifecycle control)
@@ -73,7 +104,6 @@ int main(int argc, char** argv) {
     // Connect
     // -------------------------------------------------------------------------
     if (!session.connect(params.url)) {
-        std::cerr << "Failed to connect\n";
         return -1;
     }
 
@@ -81,34 +111,15 @@ int main(int argc, char** argv) {
     // Explicit protocol subscription (stateful)
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        schema::book::Subscribe{ .symbols = params.symbols, .depth = params.depth, .snapshot = params.snapshot }
+        book::Subscribe{ .symbols = params.symbols, .depth = params.depth, .snapshot = params.snapshot }
     );
 
     // -------------------------------------------------------------------------
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
-    schema::system::Pong last_pong;
-    schema::status::Update last_status;
-    schema::rejection::Notice rejection;
-    schema::book::Response book_msg;
     while (running.load()) {
         (void)session.poll();
-        // --- Observe latest pong (liveness signal) ---
-        if (session.try_load_pong(last_pong)) {
-            std::cout << " -> " << last_pong << std::endl;
-        }
-        // --- Observe latest status ---
-        if (session.try_load_status(last_status)) {
-            std::cout << " -> " << last_status << std::endl;
-        }
-        // Drain rejection messages in a loop until empty, to ensure we process all rejections received in this poll
-        session.drain_rejection_messages([&](const schema::rejection::Notice& msg) {
-            std::cout << " -> " << msg << std::endl;
-        });
-        // Drain book messages in a loop until empty, to ensure we process all messages received in this poll
-        session.drain_book_messages([&](const schema::book::Response& msg) {
-            std::cout << " ->" << msg << std::endl;
-        });
+        drain_messages(session);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -116,16 +127,19 @@ int main(int argc, char** argv) {
     // Explicit unsubscription
     // -------------------------------------------------------------------------
     (void)session.unsubscribe(
-        schema::book::Unsubscribe{ .symbols = params.symbols, .depth = params.depth
-        }
+        book::Unsubscribe{ .symbols = params.symbols, .depth = params.depth }
     );
 
-    // Drain a bounded window to process final ACKs
-    auto drain_until = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (std::chrono::steady_clock::now() < drain_until) {
+    // -------------------------------------------------------------------------
+    // Graceful shutdown: drain until protocol is idle and close session
+    // -------------------------------------------------------------------------
+    while (!session.is_idle()) {
         (void)session.poll();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        drain_messages(session);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+
+    session.close();
 
     std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
     return 0;

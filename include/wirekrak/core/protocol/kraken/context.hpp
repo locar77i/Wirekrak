@@ -66,6 +66,19 @@ struct Context {
         : heartbeat_total(hb_total)
         , last_heartbeat_ts(last_hb_ts)
     {}
+
+    // Helper to check if all rings are empty
+    [[nodiscard]]
+    inline bool empty() const noexcept {
+        return
+            rejection_ring.empty() &&
+            trade_ring.empty() &&
+            trade_subscribe_ring.empty() &&
+            trade_unsubscribe_ring.empty() &&
+            book_ring.empty() &&
+            book_subscribe_ring.empty() &&
+            book_unsubscribe_ring.empty();
+    }
 };
 
 

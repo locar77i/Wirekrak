@@ -33,9 +33,36 @@
 #include "common/cli/symbol.hpp"
 
 
+// -----------------------------------------------------------------------------
+// Helper to drain all available messages
+// -----------------------------------------------------------------------------
+inline void drain_messages(wirekrak::core::kraken::Session& session) {
+    using namespace wirekrak::core::protocol::kraken::schema;
+
+    // Observe latest status
+    static status::Update last_status;
+    if (session.try_load_status(last_status)) {
+        std::cout << " -> " << last_status << std::endl;
+    }
+
+    // Drain protocol errors (required)
+    session.drain_rejection_messages([](const rejection::Notice& msg) {
+        std::cout << " -> " << msg << std::endl;
+    });
+
+    // Drain data-plane messages (required)
+    session.drain_trade_messages([](const trade::Response& msg) {
+        std::cout << " -> " << msg << std::endl;
+    });
+}
+
+
+// -----------------------------------------------------------------------------
+// Main
+// -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
-    namespace schema = protocol::kraken::schema;
+    using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
     // Runtime configuration (no hard-coded behavior)
@@ -66,7 +93,7 @@ int main(int argc, char** argv) {
     // (no snapshot to avoid burst output and keep replay observable)
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        schema::trade::Subscribe{ .symbols  = params.symbols, .snapshot = false }
+        trade::Subscribe{ .symbols  = params.symbols, .snapshot = false }
     );
 
     // -------------------------------------------------------------------------
@@ -77,18 +104,9 @@ int main(int argc, char** argv) {
 
     // Wait for a few transport lifetimes to prove rejection is not replayed
     auto epoch = session.transport_epoch();
-    schema::status::Update last_status;
-    schema::trade::Response trade_msg;
     while (epoch < 2) {
         epoch = session.poll();
-        // --- Observe latest status ---
-        if (session.try_load_status(last_status)) {
-            std::cout << " -> " << last_status << std::endl;
-        }
-        // Drain trade messages in a loop until empty, to ensure we process all messages received in this poll
-        session.drain_trade_messages([&](const schema::trade::Response& msg) {
-            std::cout << " ->" << msg << std::endl;
-        });
+        drain_messages(session);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -100,30 +118,29 @@ int main(int argc, char** argv) {
     auto verify_until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     while (std::chrono::steady_clock::now() < verify_until) {
         (void)session.poll();
-        // --- Observe latest status ---
-        if (session.try_load_status(last_status)) {
-            std::cout << " -> " << last_status << std::endl;
-        }
-        // Drain trade messages in a loop until empty, to ensure we process all messages received in this poll
-        session.drain_trade_messages([&](const schema::trade::Response& msg) {
-            std::cout << " ->" << msg << std::endl;
-        });
+        drain_messages(session);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
-    // Graceful shutdown
+    // Explicit unsubscription
     // -------------------------------------------------------------------------
+    (void)session.unsubscribe(
+        trade::Unsubscribe{ .symbols = params.symbols }
+    );
+
+    // -------------------------------------------------------------------------
+    // Graceful shutdown: drain until protocol is idle and close session
+    // -------------------------------------------------------------------------
+    while (!session.is_idle()) {
+        (void)session.poll();
+        drain_messages(session);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
     session.close();
 
-    // Drain a short window to allow event processing
-    auto drain_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
-    while (std::chrono::steady_clock::now() < drain_until) {
-        (void)session.poll();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
-    std::cout << "\n[SUCCESS] Exiting cleanly.\n";
+    std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
 
     std::cout << "\n[SUMMARY] disconnect -> reconnect -> replay -> resume confirmed\n";
 

@@ -34,13 +34,13 @@ void on_signal(int) {
 
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
-    namespace schema = protocol::kraken::schema;
+    using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
     // Runtime configuration (no hard-coded behavior)
     // -------------------------------------------------------------------------
     const auto& params = wirekrak::cli::symbol::configure(argc, argv,
-        "Wirekrak Core - Minimal Stateful Stream (Order Book)\n"
+        "Wirekrak Core - Minimal Poll-Driven Session (Order Book)\n"
         "Demonstrates explicit subscription and poll-driven execution.\n",
         "This example shows that stateful streams do not change Core's execution model.\n"
         "Subscriptions are explicit, and message delivery is driven by poll().\n"
@@ -58,7 +58,6 @@ int main(int argc, char** argv) {
     kraken::Session session;
 
     if (!session.connect(params.url)) {
-        std::cerr << "Failed to connect\n";
         return -1;
     }
 
@@ -68,18 +67,18 @@ int main(int argc, char** argv) {
     int messages_received = 0;
 
     (void)session.subscribe(
-        schema::book::Subscribe{ .symbols = params.symbols }
+        book::Subscribe{ .symbols = params.symbols }
     );
 
     // -------------------------------------------------------------------------
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
-    schema::book::Response book_msg;
+    book::Response book_msg;
     while (running.load(std::memory_order_relaxed) && messages_received < 60) {
         (void)session.poll();   // REQUIRED: drives all Core behavior
         // Drain book messages in a loop until empty, to ensure we process all messages received in this poll
-        session.drain_book_messages([&](const schema::book::Response& msg) {
-            std::cout << " ->" << msg << std::endl;
+        session.drain_book_messages([&](const book::Response& msg) {
+            std::cout << " -> " << msg << std::endl;
             ++messages_received;
         });
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -89,14 +88,13 @@ int main(int argc, char** argv) {
     // Explicit unsubscription
     // -------------------------------------------------------------------------
     (void)session.unsubscribe(
-        schema::book::Unsubscribe{ .symbols = params.symbols }
+        book::Unsubscribe{ .symbols = params.symbols }
     );
 
     // -------------------------------------------------------------------------
     // Observability
     // -------------------------------------------------------------------------
-    std::cout << "\n[INFO] Heartbeats observed: "
-              << session.heartbeat_total() << std::endl;
+    std::cout << "\n[INFO] Heartbeats observed: " << session.heartbeat_total() << std::endl;
 
     std::cout << "[SUCCESS] Minimal stateful Core lifecycle completed.\n";
     return 0;

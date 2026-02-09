@@ -447,6 +447,33 @@ public:
         return connection_.hb_messages();
     }
 
+    // -----------------------------------------------------------------------------
+    // Idle observation
+    // -----------------------------------------------------------------------------
+    //
+    // Returns true if the session is currently quiescent:
+    //
+    // - Transport has no pending activity
+    // - No protocol messages are buffered
+    // - No user-visible messages remain to be drained
+    //
+    // This method is observational only:
+    // - Does NOT call poll()
+    // - Does NOT drain buffers
+    // - Does NOT advance protocol state
+    //
+    // New activity may arrive after this returns true.
+    //
+    [[nodiscard]]
+    inline bool is_idle() const noexcept {
+        return
+            connection_.is_idle() &&
+            ctx_.empty() &&
+            user_rejection_buffer_.empty() &&
+            !trade_channel_manager_.has_pending() &&
+            !book_channel_manager_.has_pending();
+    }
+
 private:
     // Sequence generator for request IDs
     lcr::sequence req_id_seq_{ctrl::PROTOCOL_BASE};
