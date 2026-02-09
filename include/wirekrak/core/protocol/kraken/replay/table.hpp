@@ -1,11 +1,93 @@
+/*
+===============================================================================
+Replay Table<RequestT> (Protocol Intent Storage)
+===============================================================================
+
+A Replay Table stores **acknowledged subscription intent** for a single Kraken
+channel type (e.g. trade, book), at **symbol granularity**, so that intent can be
+deterministically replayed after a transport reconnect.
+
+This is a low-level, protocol-facing container used exclusively by the
+Replay Database and the Session. It does NOT contain user behavior or data-plane
+logic.
+
+-------------------------------------------------------------------------------
+Responsibilities
+-------------------------------------------------------------------------------
+• Store fully-typed subscription requests (`RequestT`)
+• Preserve request parameters exactly as acknowledged by the exchange
+• Support symbol-level mutation due to:
+    - explicit unsubscription
+    - protocol rejection
+• Remove subscriptions automatically when they become empty
+• Provide replayable intent on reconnect
+
+-------------------------------------------------------------------------------
+Core invariants
+-------------------------------------------------------------------------------
+• Each entry represents ONE protocol request (identified by req_id)
+• Each request may contain N symbols
+• Symbols are removed individually, never partially replayed
+• Empty subscriptions are erased eagerly
+• Replay order is unspecified and protocol-safe
+
+-------------------------------------------------------------------------------
+What this class deliberately does NOT do
+-------------------------------------------------------------------------------
+• Does NOT store callbacks
+• Does NOT dispatch messages
+• Does NOT infer protocol state
+• Does NOT retry or repair intent
+• Does NOT perform I/O
+
+-------------------------------------------------------------------------------
+Rejection & unsubscribe semantics
+-------------------------------------------------------------------------------
+• `try_process_rejection(req_id, symbol)`
+    Removes a rejected symbol from the matching request
+
+• `erase_symbol(symbol)`
+    Removes a symbol due to explicit unsubscribe, matching Kraken semantics:
+    the symbol is removed from the first subscription that contains it
+
+-------------------------------------------------------------------------------
+Lifecycle
+-------------------------------------------------------------------------------
+• add(req)
+    Store acknowledged subscription intent
+
+• try_process_rejection(req_id, symbol)
+    Apply permanent protocol rejection
+
+• erase_symbol(symbol)
+    Apply explicit unsubscribe
+
+• take_subscriptions()
+    Transfer all stored intent for replay after reconnect
+
+• clear()
+    Drop all stored intent (shutdown / reset)
+
+-------------------------------------------------------------------------------
+Threading & performance
+-------------------------------------------------------------------------------
+• Not thread-safe
+• Owned by the Session event loop
+• No blocking
+• Allocation-stable after warm-up
+• Linear scans are acceptable due to bounded subscription counts
+
+===============================================================================
+*/
+
 #pragma once
 
 #include <unordered_map>
-#include <functional>
 #include <cstdint>
 #include <utility>
 
 #include "wirekrak/core/protocol/kraken/replay/subscription.hpp"
+#include "wirekrak/core/protocol/control/req_id.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -17,13 +99,12 @@ namespace replay {
 /*
     Table<RequestT>
     -----------------------------
-    Stores outbound subscription requests along with their callbacks,
+    Stores outbound subscription requests,
     allowing automatic replay after reconnect.
 
     Key features:
     - Type-safe: one DB per channel type (trade, ticker, book, …)
     - Stores a full request object (including symbols/settings)
-    - Stores exactly one callback per request req_id
     - Supports replay, removal, iteration, etc.
 */
 template<class RequestT>
@@ -33,44 +114,33 @@ public:
 
     // ------------------------------------------------------------
     // Add a new replay subscription
-    // table_.emplace_back(request, callback)
+    // table_.emplace_back(request)
     // ------------------------------------------------------------
     inline void add(RequestT req) {
-        ctrl::req_id_t req_id = req.req_id.has() ? req.req_id.value() : INVALID_REQ_ID;
-        subscriptions_.emplace_back(std::move(req));
-        WK_TRACE("[REPLAY:TABLE] Added subscription with req_id=" << req_id << " and " << subscriptions_.back().request().symbols.size() << " symbol(s) " << " (total subscriptions=" << subscriptions_.size() << ")");
-    }
-
-    // ------------------------------------------------------------
-    // Query
-    // ------------------------------------------------------------
-    [[nodiscard]]
-    inline bool contains(Symbol symbol) const noexcept {
-        for (auto& subscription : subscriptions_) {
-            const auto& symbols = subscription.request().symbols;
-            // Scan all symbol strings in the subscription
-            for (const auto& sym : symbols) {
-                if (symbol == sym) {
-                    return true;
-                }
-            }
+        ctrl::req_id_t req_id = req.req_id.has() ? req.req_id.value() : ctrl::INVALID_REQ_ID;
+        auto [it, inserted] = subscriptions_.emplace(req_id, Subscription<RequestT>{std::move(req)});
+        if (!inserted) [[unlikely]] {
+            WK_FATAL("[REPLAY:TABLE] Duplicate req_id detected: " << req_id);
         }
-        return false;
+        WK_TRACE("[REPLAY:TABLE] Added subscription with req_id=" << req_id << " and " << it->second.request().symbols.size() << " symbol(s) " << " (total subscriptions=" << subscriptions_.size() << ")");
     }
 
     inline bool try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
-        bool done = false;
-        for (auto it = subscriptions_.begin(); it != subscriptions_.end(); ++it) {
-            bool done = it->try_process_rejection(req_id, symbol);
-            if (done) {
-                WK_TRACE("[REPLAY:TABLE] Rejected symbol {" << symbol << "} from subscription (req_id=" << req_id << ")");
-                if (it->empty()) {
-                    WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << req_id << " (total subscriptions=" << subscriptions_.size() - 1 << ")");
-                    it = subscriptions_.erase(it);
-                    break;
-                }
+        // Find the subscription matching the req_id
+        auto it = subscriptions_.find(req_id);
+        if (it == subscriptions_.end()) {
+            return false;
+        }
+        // Apply rejection to the matching subscription
+        bool done = it->second.try_process_rejection(req_id, symbol);
+        if (done) {
+            WK_TRACE("[REPLAY:TABLE] Rejected symbol {" << symbol << "} from subscription (req_id=" << req_id << ")");
+            if (it->second.empty()) {
+                subscriptions_.erase(it);
+                WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << req_id << " (total subscriptions=" << subscriptions_.size() << ")");
             }
         }
+
         return done;
     }
 
@@ -81,16 +151,17 @@ public:
     //   subscription contains it.
     // ------------------------------------------------------------
     inline void erase_symbol(Symbol symbol) noexcept {
-        for (std::size_t i = 0; i < subscriptions_.size(); i++) {
-            auto& subscription = subscriptions_[i];
+        for (auto it = subscriptions_.begin(); it != subscriptions_.end(); ) {
+            auto& subscription = it->second;
             bool removed = subscription.erase_symbol(symbol);
             if (removed) {
                 if (subscription.empty()) {
-                    subscriptions_.erase(subscriptions_.begin() + i);
-                    WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << subscription.req_id() << "  (total subscriptions=" << subscriptions_.size() << ")");
+                    WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << subscription.req_id() << " (total subscriptions=" << subscriptions_.size() - 1 << ")");
+                    it = subscriptions_.erase(it);
                 }
                 return;
             }
+            ++it;
         }
         WK_WARN("[REPLAY:TABLE] Failed to erase symbol {" << symbol << "} from any subscription (not found)");
     }
@@ -113,18 +184,28 @@ public:
         subscriptions_.clear();
     }
 
+    // for diagnostics only, not iteration-based logic, since order is unspecified
     [[nodiscard]]
-    inline const std::vector<Subscription<RequestT>>& subscriptions() const noexcept {
+    inline const auto& subscriptions() const noexcept {
         return subscriptions_;
     }
 
     [[nodiscard]]
-    inline std::vector<Subscription<RequestT>>&& take_subscriptions() noexcept {
-        return std::move(subscriptions_);
+    inline std::vector<Subscription<RequestT>> take_subscriptions() noexcept {
+        // Prepare output vector
+        std::vector<Subscription<RequestT>> out;
+        out.reserve(subscriptions_.size());
+        // Move all subscriptions out of the table for replay
+        for (auto& [_, sub] : subscriptions_) {
+            out.push_back(std::move(sub));
+        }
+        // Clear the table after moving out subscriptions
+        subscriptions_.clear();
+        return out;
     }
 
 private:
-    std::vector<Subscription<RequestT>> subscriptions_;
+    std::unordered_map<ctrl::req_id_t, Subscription<RequestT>> subscriptions_;
 };
 
 } // namespace replay

@@ -1,20 +1,88 @@
+/*
+===============================================================================
+Replay Subscription<RequestT> (Protocol Intent Unit)
+===============================================================================
+
+A Subscription represents **one acknowledged protocol request** together with
+its remaining active symbols.
+
+It is the smallest unit of replayable intent in the Kraken Session and is owned
+exclusively by a replay::Table<RequestT>.
+
+-------------------------------------------------------------------------------
+Role in the system
+-------------------------------------------------------------------------------
+• Encapsulates a single outbound protocol request (`RequestT`)
+• Owns the request's `req_id` and symbol set
+• Supports symbol-level mutation due to:
+    - explicit unsubscribe
+    - protocol rejection
+• Determines when a request becomes empty and must be discarded
+
+-------------------------------------------------------------------------------
+Key semantics
+-------------------------------------------------------------------------------
+• One Subscription == one req_id
+• One Subscription may contain N symbols
+• Symbols are removed individually
+• When no symbols remain, the subscription is considered dead
+• Dead subscriptions are removed eagerly by the owning Table
+
+-------------------------------------------------------------------------------
+Protocol correctness rules
+-------------------------------------------------------------------------------
+• A rejected symbol is removed permanently
+• A rejected subscription is never replayed
+• A subscription with zero symbols MUST NOT be replayed
+• No inference or repair is performed
+
+-------------------------------------------------------------------------------
+What this class deliberately does NOT do
+-------------------------------------------------------------------------------
+• Does NOT store callbacks or user behavior
+• Does NOT dispatch messages
+• Does NOT replay itself
+• Does NOT perform I/O
+• Does NOT infer protocol state
+
+-------------------------------------------------------------------------------
+Threading & lifetime
+-------------------------------------------------------------------------------
+• Not thread-safe
+• Mutated only by the Session event loop
+• Lives inside a replay::Table
+• Moved, never copied
+
+-------------------------------------------------------------------------------
+Usage
+-------------------------------------------------------------------------------
+• erase_symbol(symbol)
+    Removes a symbol from the request
+
+• try_process_rejection(req_id, symbol)
+    Applies a protocol rejection if req_id matches
+
+• empty()
+    Indicates that the subscription should be discarded
+
+===============================================================================
+*/
+
 #pragma once
 
-#include <functional>
 #include <cstdint>
 #include <utility>
 
+#include "wirekrak/core/symbol.hpp"
+#include "wirekrak/core/protocol/control/req_id.hpp"
 
 namespace wirekrak::core {
 namespace protocol {
 namespace kraken {
 namespace replay {
 
-
-constexpr std::uint64_t INVALID_REQ_ID = 0;
-
 // ------------------------------------------------------------
-// Per-entry object: stores request + callback + symbol ops
+// Per-entry object: stores request + symbol ops
 // ------------------------------------------------------------
 template<class RequestT>
 class Subscription {
