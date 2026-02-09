@@ -55,10 +55,7 @@ int main(int argc, char** argv) {
     const auto& mgr = session.trade_subscriptions();
     std::cout << "[example] Trade subscriptions (before subscribe): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
     (void)session.subscribe(
-        schema::trade::Subscribe{ .symbols = { "INVALID/SYMBOL" } },
-        [](const schema::trade::ResponseView&) {
-            // Should never be called
-        }
+        schema::trade::Subscribe{ .symbols = { "INVALID/SYMBOL" } }
     );
 
     // -------------------------------------------------------------------------
@@ -70,17 +67,22 @@ int main(int argc, char** argv) {
     auto epoch = session.transport_epoch();
     schema::status::Update last_status;
     schema::rejection::Notice rejection;
+    schema::trade::Response trade_msg;
     while (epoch < 3) {
         epoch = session.poll();
         // --- Observe latest status ---
         if (session.try_load_status(last_status)) {
             std::cout << " -> " << last_status << std::endl;
         }
-        // --- Observe rejections ---
-        while (session.pop_rejection(rejection)) {
-            std::cout << " -> " << rejection << std::endl;
+        // Drain rejection messages in a loop until empty, to ensure we process all rejections received in this poll
+        session.drain_rejection_messages([&](const schema::rejection::Notice& msg) {
+            std::cout << " -> " << msg << std::endl;
             std::cout << "[example] Trade subscriptions (after rejection): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
-        }
+        });
+        // Drain trade messages in a loop until empty, to ensure we process all messages received in this poll
+        session.drain_trade_messages([&](const schema::trade::Response& msg) {
+            std::cout << " ->" << msg << std::endl;
+        });
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

@@ -68,18 +68,20 @@ int main(int argc, char** argv) {
     int messages_received = 0;
 
     (void)session.subscribe(
-        schema::book::Subscribe{ .symbols = params.symbols },
-        [&](const schema::book::Response& book) {
-            std::cout << " -> [BOOK] " << book << std::endl;
-            ++messages_received;
-        }
+        schema::book::Subscribe{ .symbols = params.symbols }
     );
 
     // -------------------------------------------------------------------------
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
+    schema::book::Response book_msg;
     while (running.load(std::memory_order_relaxed) && messages_received < 60) {
         (void)session.poll();   // REQUIRED: drives all Core behavior
+        // Drain book messages in a loop until empty, to ensure we process all messages received in this poll
+        session.drain_book_messages([&](const schema::book::Response& msg) {
+            std::cout << " ->" << msg << std::endl;
+            ++messages_received;
+        });
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

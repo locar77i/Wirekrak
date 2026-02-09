@@ -69,18 +69,20 @@ int main(int argc, char** argv) {
     int messages_received = 0;
 
     (void)session.subscribe(
-        schema::trade::Subscribe{ .symbols = params.symbols },
-        [&](const schema::trade::ResponseView& trade) {
-            std::cout << " -> [TRADE] " << trade << std::endl;
-            ++messages_received;
-        }
+        schema::trade::Subscribe{ .symbols = params.symbols }
     );
 
     // -------------------------------------------------------------------------
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
-    while (running.load(std::memory_order_relaxed) && messages_received < 10) {
+    schema::trade::Response trade_msg;
+    while (running.load(std::memory_order_relaxed) && messages_received < 60) {
         (void)session.poll();   // REQUIRED: drives all Core behavior
+        // Drain trade messages in a loop until empty, to ensure we process all messages received in this poll
+        session.drain_trade_messages([&](const schema::trade::Response& msg) {
+            std::cout << " ->" << msg << std::endl;
+            ++messages_received;
+        });
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

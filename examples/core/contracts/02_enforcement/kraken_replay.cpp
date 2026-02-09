@@ -63,15 +63,10 @@ int main(int argc, char** argv) {
 
     // -------------------------------------------------------------------------
     // Subscribe ONCE to LTC/EUR trade updates (no snapshot)
+    // (no snapshot to avoid burst output and keep replay observable)
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        schema::trade::Subscribe{
-            .symbols  = params.symbols,
-            .snapshot = false // to avoid burst output and keep replay observable
-        },
-        [](const schema::trade::ResponseView& trade) {
-            std::cout << " -> " << trade << std::endl;
-        }
+        schema::trade::Subscribe{ .symbols  = params.symbols, .snapshot = false }
     );
 
     // -------------------------------------------------------------------------
@@ -83,12 +78,17 @@ int main(int argc, char** argv) {
     // Wait for a few transport lifetimes to prove rejection is not replayed
     auto epoch = session.transport_epoch();
     schema::status::Update last_status;
+    schema::trade::Response trade_msg;
     while (epoch < 2) {
         epoch = session.poll();
         // --- Observe latest status ---
         if (session.try_load_status(last_status)) {
             std::cout << " -> " << last_status << std::endl;
         }
+        // Drain trade messages in a loop until empty, to ensure we process all messages received in this poll
+        session.drain_trade_messages([&](const schema::trade::Response& msg) {
+            std::cout << " ->" << msg << std::endl;
+        });
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -104,6 +104,10 @@ int main(int argc, char** argv) {
         if (session.try_load_status(last_status)) {
             std::cout << " -> " << last_status << std::endl;
         }
+        // Drain trade messages in a loop until empty, to ensure we process all messages received in this poll
+        session.drain_trade_messages([&](const schema::trade::Response& msg) {
+            std::cout << " ->" << msg << std::endl;
+        });
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

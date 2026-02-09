@@ -10,6 +10,8 @@
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
+// TODO:
+#include "wirekrak/core/protocol/kraken/response/partitioner.hpp"
 
 
 namespace wirekrak::lite {
@@ -29,6 +31,9 @@ struct Client::Impl {
     // Core session (owning)
     kraken::Session<WS> session;
 
+    // Partitioner for trade responses: 1 trade::Response -> N trade::ResponseView (one per symbol)
+    kraken::response::Partitioner<schema::trade::Response> trade_partitioner_;
+
     // Dispatchers (one per channel)
     channel::Dispatcher<schema::trade::ResponseView> trade_dispatcher;
     channel::Dispatcher<schema::book::Response>      book_dispatcher;
@@ -38,7 +43,7 @@ struct Client::Impl {
 
     // Reusable temp objects to avoid dynamic allocation in hot paths
     schema::rejection::Notice rejection;
-    schema::trade::ResponseView trade_view;
+    schema::trade::Response trade_resp;
     schema::book::Response book_resp;
 
     Impl(client_config cfg)
@@ -66,20 +71,25 @@ struct Client::Impl {
         }
 
         // -------------------------------------------------
-        // Trade data-plane
+        // Drain trade messages in a loop until empty
+        // to ensure we process all messages received in this poll
         // -------------------------------------------------
-        // NOTE: ResponseView is valid only for the duration of this dispatch loop.
-        // Callbacks must not store references to msg beyond the call.
-        while (session.pop_trade(trade_view)) {
-            trade_dispatcher.dispatch(trade_view);
-        }
+        session.drain_trade_messages([&](const schema::trade::Response& msg) {
+            trade_partitioner_.reset(msg);
+            // NOTE: ResponseView is valid only for the duration of this dispatch loop.
+            // Callbacks must not store references to msg beyond the call.
+            for (const auto& view : trade_partitioner_.views()) {
+                trade_dispatcher.dispatch(view);
+            }
+        });
 
         // -------------------------------------------------
-        // Book data-plane
+        // Drain book messages in a loop until empty
+        // to ensure we process all messages received in this poll
         // -------------------------------------------------
-        while (session.pop_book(book_resp)) {
-            book_dispatcher.dispatch(book_resp);
-        }
+        session.drain_book_messages([&](const schema::book::Response& msg) {
+            book_dispatcher.dispatch(msg);
+        });
     }
 };
 
@@ -142,8 +152,7 @@ void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb
 
     // 1) Submit intent to Core → get req_id
     auto req_id = impl_->session.subscribe(
-        schema::trade::Subscribe{ .symbols = std::move(symbols_for_core), .snapshot = snapshot },
-        emit_trades // <-- still passed to Core (to remove in the future)
+        schema::trade::Subscribe{ .symbols = std::move(symbols_for_core), .snapshot = snapshot }
     );
 
     // 2) Register behavior in Lite dispatcher
@@ -197,8 +206,7 @@ void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, b
 
     // 1) Submit intent to Core → get req_id
     auto req_id = impl_->session.subscribe(
-        schema::book::Subscribe{ .symbols  = std::move(symbols_for_core), .snapshot = snapshot },
-        emit_book_levels  // <-- still passed to Core (to remove in the future)
+        schema::book::Subscribe{ .symbols  = std::move(symbols_for_core), .snapshot = snapshot }
     );
 
     // 2) Register behavior in Lite dispatcher

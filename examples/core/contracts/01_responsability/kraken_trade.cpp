@@ -82,13 +82,7 @@ int main(int argc, char** argv) {
     // Explicit protocol subscription
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        schema::trade::Subscribe{
-            .symbols  = params.symbols,
-            .snapshot = params.snapshot
-        },
-        [](const schema::trade::ResponseView& trade) {
-            std::cout << " -> [TRADE] " << trade << std::endl;
-        }
+        schema::trade::Subscribe{ .symbols = params.symbols, .snapshot = params.snapshot }
     );
 
     // -------------------------------------------------------------------------
@@ -97,6 +91,7 @@ int main(int argc, char** argv) {
     schema::system::Pong last_pong;
     schema::status::Update last_status;
     schema::rejection::Notice rejection;
+    schema::trade::Response trade_msg;
     while (running.load()) {
         (void)session.poll();
         // --- Observe latest pong (liveness signal) ---
@@ -107,10 +102,14 @@ int main(int argc, char** argv) {
         if (session.try_load_status(last_status)) {
             std::cout << " -> " << last_status << std::endl;
         }
-        // --- Observe rejections ---
-        while (session.pop_rejection(rejection)) {
-            std::cout << " -> " << rejection << std::endl;
-        }
+        // Drain rejection messages in a loop until empty, to ensure we process all rejections received in this poll
+        session.drain_rejection_messages([&](const schema::rejection::Notice& msg) {
+            std::cout << " -> " << msg << std::endl;
+        });
+        // Drain trade messages in a loop until empty, to ensure we process all messages received in this poll
+        session.drain_trade_messages([&](const schema::trade::Response& msg) {
+            std::cout << " ->" << msg << std::endl;
+        });
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

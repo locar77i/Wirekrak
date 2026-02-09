@@ -4,8 +4,6 @@
 #include <cstdint>
 #include <utility>
 
-#include "wirekrak/core/protocol/kraken/channel_traits.hpp"
-
 
 namespace wirekrak::core {
 namespace protocol {
@@ -21,12 +19,9 @@ constexpr std::uint64_t INVALID_REQ_ID = 0;
 template<class RequestT>
 class Subscription {
 public:
-    using ResponseT = typename channel_traits<RequestT>::response_type;
-    using Callback = std::function<void(const ResponseT&)>;
-
-public:
-    Subscription(RequestT req, Callback cb)
-        : request_(std::move(req)), callback_(std::move(cb)) {}
+    Subscription(RequestT req)
+        : request_(std::move(req))
+    {}
 
     [[nodiscard]]
     inline bool erase_symbol(Symbol symbol) {
@@ -58,16 +53,12 @@ public:
     [[nodiscard]] inline const RequestT& request() const noexcept { return request_; }
     [[nodiscard]] inline RequestT& request() noexcept { return request_; }
 
-    [[nodiscard]] inline const Callback& callback() const noexcept { return callback_; }
-    [[nodiscard]] inline Callback& callback() noexcept { return callback_; }
-
     [[nodiscard]] inline ctrl::req_id_t req_id() const noexcept {
         return request_.req_id.has() ? request_.req_id.value() : 0;
     }
 
 private:
     RequestT request_;
-    Callback callback_;
 };
 
 } // namespace replay

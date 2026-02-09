@@ -81,14 +81,7 @@ int main(int argc, char** argv) {
     // Explicit protocol subscription (stateful)
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        schema::book::Subscribe{
-            .symbols  = params.symbols,
-            .depth    = params.depth,
-            .snapshot = params.snapshot
-        },
-        [](const schema::book::Response& book) {
-            std::cout << " -> [BOOK] " << book << std::endl;
-        }
+        schema::book::Subscribe{ .symbols = params.symbols, .depth = params.depth, .snapshot = params.snapshot }
     );
 
     // -------------------------------------------------------------------------
@@ -97,6 +90,7 @@ int main(int argc, char** argv) {
     schema::system::Pong last_pong;
     schema::status::Update last_status;
     schema::rejection::Notice rejection;
+    schema::book::Response book_msg;
     while (running.load()) {
         (void)session.poll();
         // --- Observe latest pong (liveness signal) ---
@@ -107,10 +101,14 @@ int main(int argc, char** argv) {
         if (session.try_load_status(last_status)) {
             std::cout << " -> " << last_status << std::endl;
         }
-        // --- Observe rejections ---
-        while (session.pop_rejection(rejection)) {
-            std::cout << " -> " << rejection << std::endl;
-        }
+        // Drain rejection messages in a loop until empty, to ensure we process all rejections received in this poll
+        session.drain_rejection_messages([&](const schema::rejection::Notice& msg) {
+            std::cout << " -> " << msg << std::endl;
+        });
+        // Drain book messages in a loop until empty, to ensure we process all messages received in this poll
+        session.drain_book_messages([&](const schema::book::Response& msg) {
+            std::cout << " ->" << msg << std::endl;
+        });
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -118,9 +116,7 @@ int main(int argc, char** argv) {
     // Explicit unsubscription
     // -------------------------------------------------------------------------
     (void)session.unsubscribe(
-        schema::book::Unsubscribe{
-            .symbols = params.symbols,
-            .depth   = params.depth
+        schema::book::Unsubscribe{ .symbols = params.symbols, .depth = params.depth
         }
     );
 

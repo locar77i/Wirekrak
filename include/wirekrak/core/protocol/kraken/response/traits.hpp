@@ -1,8 +1,3 @@
-#pragma once
-
-
-namespace wirekrak::core::protocol::kraken::response {
-
 /*
 ===============================================================================
 Response Traits (Core Protocol Extension Point)
@@ -43,6 +38,11 @@ Adding a new channel:
 
 ===============================================================================
 */
+
+#pragma once
+
+
+namespace wirekrak::core::protocol::kraken::response {
 
 // Primary template (undefined on purpose)
 template<class ResponseT>

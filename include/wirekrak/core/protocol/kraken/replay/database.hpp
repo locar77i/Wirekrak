@@ -23,9 +23,9 @@ public:
     ~Database() = default;
 
     // INSERT / REPLACE ENTRY
-    template<class RequestT, class Callback>
-    inline void add(RequestT req, Callback&& cb) noexcept {
-        subscription_table_for_<RequestT>().add(std::move(req), std::forward<Callback>(cb));
+    template<class RequestT>
+    inline void add(RequestT req) noexcept {
+        subscription_table_for_<RequestT>().add(std::move(req));
     }
 
     // REMOVE SYMBOLS FROM ENTRY

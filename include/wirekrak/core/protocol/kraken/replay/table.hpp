@@ -29,19 +29,15 @@ namespace replay {
 template<class RequestT>
 class Table {
 public:
-    using ResponseT = typename channel_traits<RequestT>::response_type;
-    using Callback = std::function<void(const ResponseT&)>;
-
-public:
     Table() = default;
 
     // ------------------------------------------------------------
     // Add a new replay subscription
     // table_.emplace_back(request, callback)
     // ------------------------------------------------------------
-    inline void add(RequestT req, Callback cb) {
+    inline void add(RequestT req) {
         ctrl::req_id_t req_id = req.req_id.has() ? req.req_id.value() : INVALID_REQ_ID;
-        subscriptions_.emplace_back(std::move(req), std::move(cb));
+        subscriptions_.emplace_back(std::move(req));
         WK_TRACE("[REPLAY:TABLE] Added subscription with req_id=" << req_id << " and " << subscriptions_.back().request().symbols.size() << " symbol(s) " << " (total subscriptions=" << subscriptions_.size() << ")");
     }
 

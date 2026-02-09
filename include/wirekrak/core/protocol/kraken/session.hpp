@@ -1,39 +1,3 @@
-#pragma once
-
-
-#pragma once
-
-#include <string>
-#include <string_view>
-#include <functional>
-#include <chrono>
-#include <utility>
-
-#include "wirekrak/core/config/ring_sizes.hpp"
-#include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
-#include "wirekrak/core/protocol/control/req_id.hpp"
-#include "wirekrak/core/protocol/policy/liveness.hpp"
-#include "wirekrak/core/protocol/kraken/context.hpp"
-#include "wirekrak/core/protocol/kraken/request/concepts.hpp"
-#include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
-#include "wirekrak/core/protocol/kraken/channel_traits.hpp"
-#include "wirekrak/core/protocol/kraken/request/concepts.hpp"
-#include "wirekrak/core/protocol/kraken/parser/router.hpp"
-#include "wirekrak/core/protocol/kraken/dispatcher.hpp"
-#include "wirekrak/core/protocol/kraken/channel/manager.hpp"
-#include "wirekrak/core/protocol/kraken/replay/database.hpp"
-#include "wirekrak/core/protocol/kraken/response/partitioner.hpp"
-#include "lcr/log/logger.hpp"
-#include "lcr/local/ring_buffer.hpp"
-#include "lcr/lockfree/spsc_ring.hpp"
-#include "lcr/sequence.hpp"
-
-
-namespace wirekrak::core {
-namespace protocol {
-namespace kraken {
-
 /*
 ===============================================================================
 Kraken protocol Session
@@ -79,9 +43,45 @@ Advanced users may still customize behavior by:
   - Extending protocol routing internally
   - Observing higher-level protocol events
 
+Data-plane model:
+  - Core exposes protocol messages exactly as received
+  - Messages are delivered via bounded SPSC rings
+  - No callbacks, observers, or implicit dispatch
+  - Consumers explicitly pull or drain messages after poll()
 ===============================================================================
 */
 
+#pragma once
+
+
+#include <string>
+#include <string_view>
+#include <functional>
+#include <chrono>
+#include <utility>
+
+#include "wirekrak/core/config/ring_sizes.hpp"
+#include "wirekrak/core/transport/connection.hpp"
+#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/protocol/control/req_id.hpp"
+#include "wirekrak/core/protocol/policy/liveness.hpp"
+#include "wirekrak/core/protocol/kraken/context.hpp"
+#include "wirekrak/core/protocol/kraken/request/concepts.hpp"
+#include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
+#include "wirekrak/core/protocol/kraken/channel_traits.hpp"
+#include "wirekrak/core/protocol/kraken/request/concepts.hpp"
+#include "wirekrak/core/protocol/kraken/parser/router.hpp"
+#include "wirekrak/core/protocol/kraken/channel/manager.hpp"
+#include "wirekrak/core/protocol/kraken/replay/database.hpp"
+#include "lcr/log/logger.hpp"
+#include "lcr/local/ring_buffer.hpp"
+#include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/sequence.hpp"
+
+
+namespace wirekrak::core {
+namespace protocol {
+namespace kraken {
 
 template<transport::WebSocketConcept WS>
 class Session {
@@ -114,7 +114,7 @@ public:
     // The Session exposes the most recently received Pong message exactly as
     // provided by the exchange schema.
     //
-    // Pong is treated as **state**, not a stream:
+    // Pong is treated as **state**, not a stream, and is exposed as a last-value fact:
     //   • Only the latest Pong is retained
     //   • Intermediate Pong messages may be overwritten
     //   • No backpressure or buffering is applied
@@ -156,51 +156,135 @@ public:
         return ctx_.status_slot.try_load(out);
     }
 
+    // -----------------------------------------------------------------------------
+    // Rejection message access
+    // -----------------------------------------------------------------------------
+    // NOTE:
+    // Rejection messages MUST be drained by the user.
+    // Failure to do so is considered a protocol-handling error and will
+    // eventually force the session to close defensively.
+
     [[nodiscard]]
     inline bool pop_rejection(schema::rejection::Notice& out) noexcept {
         return user_rejection_buffer_.pop(out);
     }
 
+    // Convenience method to drain all available messages with a user-provided callback
+    template<class F>
+    void drain_rejection_messages(F&& f) noexcept(noexcept(f(std::declval<const schema::rejection::Notice&>()))) {
+        schema::rejection::Notice msg;
+        while (user_rejection_buffer_.pop(msg)) {
+            std::forward<F>(f)(msg);
+        }
+    }
+
+    // -----------------------------------------------------------------------------
+    // Trade message access
+    // -----------------------------------------------------------------------------
+    // NOTE:
+    // Returned Response objects are owned by the Session rings.
+    // They remain valid only until overwritten by subsequent pops.
+    // Users must not retain references beyond the call scope.
+
     [[nodiscard]]
-    inline bool pop_trade(schema::trade::ResponseView& out) noexcept {
-        return false; // TODO: implement
+    inline bool pop_trade_message(schema::trade::Response& out) noexcept {
+        return ctx_.trade_ring.pop(out);
     }
 
-    [[nodiscard]] inline bool pop_book(schema::book::Response& out) noexcept {
-        return false; // TODO: implement
+    // Convenience method to drain all available messages with a user-provided callback
+    template<class F>
+    void drain_trade_messages(F&& f) noexcept(noexcept(f(std::declval<const schema::trade::Response&>()))) {
+        schema::trade::Response msg;
+        while (ctx_.trade_ring.pop(msg)) {
+            std::forward<F>(f)(msg);
+        }
     }
 
-    // Send ping
+    // -----------------------------------------------------------------------------
+    // Book message access
+    // -----------------------------------------------------------------------------
+    // NOTE:
+    // Returned Response objects are owned by the Session rings.
+    // They remain valid only until overwritten by subsequent pops.
+    // Users must not retain references beyond the call scope.
+
+    [[nodiscard]]
+    inline bool pop_book_message(schema::book::Response& out) noexcept {
+        return ctx_.book_ring.pop(out);
+    }
+
+    // Convenience method to drain all available messages with a user-provided callback
+    template<class F>
+    void drain_book_messages(F&& f) noexcept(noexcept(f(std::declval<const schema::book::Response&>()))) {
+        schema::book::Response msg;
+        while (ctx_.book_ring.pop(msg)) {
+            std::forward<F>(f)(msg);
+        }
+    }
+
+    // -----------------------------------------------------------------------------
+    // Control-plane messages
+    // -----------------------------------------------------------------------------
+
     inline void ping() noexcept{
         send_raw_request_(schema::system::Ping{.req_id = ctrl::PING_ID});
     }
 
-    template <request::Subscription RequestT, class Callback>
+    template <request::Subscription RequestT>
     [[nodiscard]]
-    inline ctrl::req_id_t subscribe(const RequestT& req, Callback&& cb) {
+    inline ctrl::req_id_t subscribe(RequestT req) {
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
-        using ResponseT = typename channel_traits<RequestT>::response_type;
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
-        // 1) Store callback safely once
-        using StoredCallback = std::function<void(const ResponseT&)>;
-        StoredCallback cb_copy = std::forward<Callback>(cb);
-        // Register callback for the symbol(s)
-        for (const auto& symbol : req.symbols) {
-            dispatcher_.add_handler<ResponseT>(symbol, cb_copy);
+        WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        // 1) Assign req_id if missing
+        if (!req.req_id.has()) {
+            req.req_id = req_id_seq_.next();
         }
-        // TODO: Handle duplicate symbol subscriptions to avoid kraken rejections
-        return subscribe_with_ack_(req, cb_copy);
+        // 2) Register in replay DB
+        // Store protocol intent for deterministic replay after reconnect.
+        // Only acknowledged subscriptions will be replayed.
+        replay_db_.add(req);
+        // 3) Send JSON BEFORE moving req.symbols
+        WK_DEBUG("Sending subscribe message: " << req.to_json());
+        if (!connection_.send(req.to_json())) {
+            WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
+            return ctrl::INVALID_REQ_ID;
+        }
+        // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
+        subscription_manager_for_<RequestT>().register_subscription(
+            std::move(req.symbols),
+            req.req_id.value()
+        );
+        return req.req_id.value();
     }
 
     template <request::Unsubscription RequestT>
     [[nodiscard]]
-    inline ctrl::req_id_t unsubscribe(const RequestT& req) {
+    inline ctrl::req_id_t unsubscribe(RequestT req) {
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
-        return unsubscribe_with_ack_(req);
+         WK_INFO("Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        // 1) Assign req_id if missing
+        if (!req.req_id.has()) {
+            req.req_id = req_id_seq_.next();
+        }
+        // 2) Register in replay DB (no callback needed for unsubscription)
+        replay_db_.remove(req);
+        // 3) Send JSON BEFORE moving req.symbols
+        WK_DEBUG("Sending unsubscribe message: " << req.to_json());
+        if (!connection_.send(req.to_json())) {
+            WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
+            return ctrl::INVALID_REQ_ID;
+        }
+        // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
+        subscription_manager_for_<RequestT>().register_unsubscription(
+            std::move(req.symbols),
+            req.req_id.value()
+        );
+        return req.req_id.value();
     }
 
     // -----------------------------------------------------------------------------
@@ -217,8 +301,18 @@ public:
     // This refactor was intentionally deferred to prioritize correctness,
     // stability, and timely hackathon submission.
     // -----------------------------------------------------------------------
-
-    // TODO: Refactor poll method for incoming messages and events
+    //
+    // NOTE:
+    // poll() must be called to advance the session and populate message rings.
+    // Calling pop_* or drain_* without polling will not make progress.
+    //
+    // NOTE:
+    // Trade and book message rings are not drained here.
+    // They are exposed verbatim to the user via pop_* / drain_* methods.
+    //
+    // Ordering guarantee:
+    //   - poll() processes control-plane events before data-plane delivery
+    //   - ACKs and rejections are handled before user-visible messages are drained
     [[nodiscard]]
     inline uint64_t poll() {
         // === Heartbeat liveness & reconnection logic ===
@@ -255,14 +349,6 @@ public:
         // ===============================================================================
         // PROCESS TRADE MESSAGES
         // ===============================================================================
-        { // === Process trade ring ===
-        schema::trade::Response resp;
-        while (ctx_.trade_ring.pop(resp)) {
-            trade_partitioner.reset(resp);
-            for (const auto& view : trade_partitioner.views()) {
-                dispatcher_.dispatch(view);
-            }
-        }}
         { // === Process trade subscribe ring ===
         schema::trade::SubscribeAck ack;
         while (ctx_.trade_subscribe_ring.pop(ack)) {
@@ -276,7 +362,7 @@ public:
         { // === Process trade unsubscribe ring ===
         schema::trade::UnsubscribeAck ack;
         while (ctx_.trade_unsubscribe_ring.pop(ack)) {
-            dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
+            //dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
             }
@@ -287,11 +373,6 @@ public:
         // ===============================================================================
         // PROCESS BOOK UPDATES
         // ===============================================================================
-        { // === Process book ring ===
-        schema::book::Response resp;
-        while (ctx_.book_ring.pop(resp)) {
-            dispatcher_.dispatch(resp);
-        }}
         { // === Process book subscribe ring ===
         schema::book::SubscribeAck ack;
         while (ctx_.book_subscribe_ring.pop(ack)) {
@@ -305,7 +386,7 @@ public:
         { // === Process book unsubscribe ring ===
         schema::book::UnsubscribeAck ack;
         while (ctx_.book_unsubscribe_ring.pop(ack)) {
-            dispatcher_.remove_symbol_handlers<schema::book::UnsubscribeAck>(ack.symbol);
+            //dispatcher_.remove_symbol_handlers<schema::book::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
             }
@@ -390,15 +471,9 @@ private:
     // Decoupled from internal protocol processing to prevent user behavior from affecting Core correctness.
     lcr::local::ring_buffer<schema::rejection::Notice, config::rejection_ring> user_rejection_buffer_;
 
-    // Message dispatcher
-    Dispatcher dispatcher_;
-
     // Channel subscription managers
     channel::Manager trade_channel_manager_;
     channel::Manager book_channel_manager_;
-
-    // Response classifiers (reused, allocation-stable)
-    response::Partitioner<schema::trade::Response> trade_partitioner;
 
     // Replay database
     replay::Database replay_db_;
@@ -413,7 +488,7 @@ private:
             if(!trade_subscriptions.empty()) {
                 WK_DEBUG("[REPLAY] Replaying " << trade_subscriptions.size() << " trade subscription(s)");
                 for (const auto& subscription : trade_subscriptions) {
-                    (void)subscribe(subscription.request(), subscription.callback());
+                    (void)subscribe(subscription.request());
                 }
             }
             else {
@@ -424,7 +499,7 @@ private:
             if(!book_subscriptions.empty()) {
                 WK_DEBUG("[REPLAY] Replaying " << book_subscriptions.size() << " book subscription(s)");
                 for (const auto& subscription : book_subscriptions) {
-                    (void)subscribe(subscription.request(), subscription.callback());
+                    (void)subscribe(subscription.request());
                 }
             }
             else {
@@ -436,7 +511,6 @@ private:
     inline void handle_disconnect_() {
         WK_TRACE("[SESSION] handle disconnect (transport_epoch = " << transport_epoch() << ")");
         // Clear runtime state
-        dispatcher_.clear();
         trade_channel_manager_.clear_all();
         book_channel_manager_.clear_all();
     }
@@ -515,59 +589,6 @@ private:
         if (!connection_.send(json)) {
             WK_ERROR("Failed to send raw message: " << json);
         }
-    }
-
-    // Perform subscription with ACK handling
-    template<class RequestT, class Callback>
-    [[nodiscard]]
-    inline ctrl::req_id_t subscribe_with_ack_(RequestT req, Callback&& cb) {
-        WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
-        using ResponseT = typename channel_traits<RequestT>::response_type;
-        using StoredCallback = std::function<void(const ResponseT&)>;
-        // 1) Assign req_id if missing
-        if (!req.req_id.has()) {
-            req.req_id = req_id_seq_.next();
-        }
-        // 2) Store callback safely once and register in replay DB
-        StoredCallback cb_copy = std::forward<Callback>(cb);
-        replay_db_.add(req, cb_copy);
-        // 3) Send JSON BEFORE moving req.symbols
-        WK_DEBUG("Sending subscribe message: " << req.to_json());
-        if (!connection_.send(req.to_json())) {
-            WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
-            return ctrl::INVALID_REQ_ID;
-        }
-        // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        subscription_manager_for_<RequestT>().register_subscription(
-            std::move(req.symbols),
-            req.req_id.value()
-        );
-        return req.req_id.value();
-    }
-
-    // Perform unsubscription with ACK handling
-    template<class RequestT>
-    [[nodiscard]]
-    inline ctrl::req_id_t unsubscribe_with_ack_(RequestT req) {
-        WK_INFO("Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
-        // 1) Assign req_id if missing
-        if (!req.req_id.has()) {
-            req.req_id = req_id_seq_.next();
-        }
-        // 2) Register in replay DB (no callback needed for unsubscription)
-        replay_db_.remove(req);
-        // 3) Send JSON BEFORE moving req.symbols
-        WK_DEBUG("Sending unsubscribe message: " << req.to_json());
-        if (!connection_.send(req.to_json())) {
-            WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
-            return ctrl::INVALID_REQ_ID;
-        }
-        // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        subscription_manager_for_<RequestT>().register_unsubscription(
-            std::move(req.symbols),
-            req.req_id.value()
-        );
-        return req.req_id.value();
     }
 };
 
