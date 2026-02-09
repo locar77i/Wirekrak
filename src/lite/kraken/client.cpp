@@ -42,9 +42,9 @@ struct Client::Impl {
     error_handler error_cb;
 
     // Reusable temp objects to avoid dynamic allocation in hot paths
-    schema::rejection::Notice rejection;
-    schema::trade::Response trade_resp;
-    schema::book::Response book_resp;
+    schema::rejection::Notice rejection_msg;
+    schema::trade::Response trade_msg;
+    schema::book::Response book_msg;
 
     Impl(client_config cfg)
         : cfg(cfg)
@@ -58,15 +58,15 @@ struct Client::Impl {
 
     void poll() {
         (void)session.poll();
-        while (session.pop_rejection(rejection)) {
+        while (session.pop_rejection(rejection_msg)) {
             // 1) Remove any callbacks associated with this req_id to prevent future invocations
-            if (rejection.req_id.has()) {
-                trade_dispatcher.remove_by_req_id(rejection.req_id.value());
-                book_dispatcher.remove_by_req_id(rejection.req_id.value());
+            if (rejection_msg.req_id.has()) {
+                trade_dispatcher.remove_by_req_id(rejection_msg.req_id.value());
+                book_dispatcher.remove_by_req_id(rejection_msg.req_id.value());
             }
             // 2) Emit error callback if provided
             if (error_cb) {
-                error_cb(Error{ErrorCode::Rejected, rejection.error});
+                error_cb(Error{ErrorCode::Rejected, rejection_msg.error});
             }
         }
 
@@ -74,23 +74,53 @@ struct Client::Impl {
         // Drain trade messages in a loop until empty
         // to ensure we process all messages received in this poll
         // -------------------------------------------------
-        session.drain_trade_messages([&](const schema::trade::Response& msg) {
-            trade_partitioner_.reset(msg);
+        while (session.pop_trade_message(trade_msg)) {
+            trade_partitioner_.reset(trade_msg);
             // NOTE: ResponseView is valid only for the duration of this dispatch loop.
             // Callbacks must not store references to msg beyond the call.
             for (const auto& view : trade_partitioner_.views()) {
                 trade_dispatcher.dispatch(view);
             }
-        });
+        }
 
         // -------------------------------------------------
         // Drain book messages in a loop until empty
         // to ensure we process all messages received in this poll
         // -------------------------------------------------
-        session.drain_book_messages([&](const schema::book::Response& msg) {
-            book_dispatcher.dispatch(msg);
-        });
+        while (session.pop_book_message(book_msg)) {
+            book_dispatcher.dispatch(book_msg);
+        }
     }
+
+    // -----------------------------------------------------------------------------
+    // Quiescence
+    // -----------------------------------------------------------------------------
+    //
+    // Returns true if the Lite client is idle.
+    //
+    // Lite-idle means:
+    //   • Core has no pending protocol work (ACKs, rejections, replay)
+    //   • Lite owns no active callbacks or dispatchable behavior
+    //
+    // This is a compositional quiescence signal used for:
+    //   • graceful shutdown
+    //   • drain loops
+    //   • deterministic teardown
+    //
+    // Notes:
+    //   • This does NOT imply the connection is closed
+    //   • This does NOT guarantee the exchange has no subscriptions
+    //   • This does NOT prevent future messages if polling continues
+    //
+    // Complexity: O(1)
+    // -----------------------------------------------------------------------------
+    bool is_idle() const {
+        return // No protocol work remains AND no user-visible behavior remains
+            session.is_idle() &&
+            trade_dispatcher.is_idle() &&
+            book_dispatcher.is_idle();
+    }
+
 };
 
 // -----------------------------
@@ -115,6 +145,10 @@ void Client::disconnect() {
 
 void Client::poll() {
     impl_->poll();
+}
+
+bool Client::is_idle() const {
+    return  impl_->is_idle();
 }
 
 void Client::on_error(error_handler cb) {

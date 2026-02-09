@@ -69,6 +69,57 @@ public:
     void disconnect();
     void poll();
 
+    // -----------------------------------------------------------------------------
+    // Client quiescence indicator
+    // -----------------------------------------------------------------------------
+    //
+    // Returns true if the Lite client is **idle**.
+    //
+    // Client-idle means that, at the current instant:
+    //   • The underlying Core Session is protocol-idle
+    //   • No registered subscribe or unsubscribe behaviors remain
+    //   • No user-visible callbacks are waiting to be dispatched
+    //
+    // In other words:
+    //   If poll() is never called again, no further user callbacks
+    //   will be invoked and no protocol obligations remain outstanding.
+    //
+    // IMPORTANT SEMANTICS:
+    //
+    // • This is a *best-effort, instantaneous observation*.
+    //   New data may arrive after this call returns true if the
+    //   connection remains open.
+    //
+    // • This does NOT imply that there are no active subscriptions.
+    //   Active subscriptions may continue to produce data in the future.
+    //
+    // • This does NOT close the connection or suppress future events.
+    //
+    // • This method is intended for **graceful shutdown and drain loops**,
+    //   not for steady-state flow control.
+    //
+    // Layering guarantee:
+    //
+    // • Lite::Client::is_idle() composes on top of Core semantics.
+    // • It does NOT introduce new protocol behavior.
+    // • It does NOT expose Core internals.
+    //
+    // Threading & usage:
+    //   • Not thread-safe
+    //   • Must be called from the same thread as poll()
+    //   • Typically used after unsubscribe() or before shutdown
+    //
+    // -----------------------------------------------------------------------------
+    // Example usage:
+    //
+    //   // Drain until no more callbacks can fire
+    //   while (!client.is_idle()) {
+    //       client.poll();
+    //   }
+    //
+    // -----------------------------------------------------------------------------
+    bool is_idle() const;
+
     // error handling
     void on_error(error_handler cb);
 

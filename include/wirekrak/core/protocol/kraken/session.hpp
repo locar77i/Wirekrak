@@ -448,22 +448,45 @@ public:
     }
 
     // -----------------------------------------------------------------------------
-    // Idle observation
+    // Protocol quiescence indicator
     // -----------------------------------------------------------------------------
     //
-    // Returns true if the session is currently quiescent:
+    // Returns true if the Session is **protocol-idle**.
     //
-    // - Transport has no pending activity
-    // - No protocol messages are buffered
-    // - No user-visible messages remain to be drained
+    // Protocol-idle means that, at the current instant:
+    //   • No subscribe or unsubscribe requests are awaiting ACKs
+    //   • No protocol replays, reconnect handshakes, or retry cycles are in progress
+    //   • No control-plane work remains that requires further poll() calls
     //
-    // This method is observational only:
-    // - Does NOT call poll()
-    // - Does NOT drain buffers
-    // - Does NOT advance protocol state
+    // In other words:
+    //   If poll() is never called again, the Session will not violate
+    //   protocol correctness or leave the exchange in an inconsistent state.
     //
-    // New activity may arrive after this returns true.
+    // IMPORTANT SEMANTICS:
     //
+    // • This is NOT a data-plane signal.
+    //   Active subscriptions may still exist and produce future data.
+    //
+    // • This does NOT guarantee that all user-visible messages
+    //   (trade, book, rejection, status, pong) have been drained.
+    //
+    // • This does NOT imply that the transport is closed or inactive.
+    //
+    // Threading & usage:
+    //   • Not thread-safe
+    //   • Intended to be queried from the Session event loop
+    //   • Typically used to drive graceful shutdown or drain loops
+    //
+    // -----------------------------------------------------------------------------
+    // Example usage:
+    //
+    //   // Drain until protocol is quiescent
+    //   while (!session.is_idle()) {
+    //       session.poll();
+    //       drain_messages();
+    //   }
+    //
+    // -----------------------------------------------------------------------------
     [[nodiscard]]
     inline bool is_idle() const noexcept {
         return

@@ -196,6 +196,39 @@ public:
     }
 
     // -------------------------------------------------------------------------
+    // Quiescence
+    // -------------------------------------------------------------------------
+
+    /*
+        Returns true if the dispatcher is idle.
+
+        Invariant: by_req_id_.empty() -> by_symbol_.empty()
+
+        Dispatcher-idle means:
+        • No callbacks are registered
+        • No req_id ownership remains
+        • dispatch() would execute no user code
+
+        This is a behavioral quiescence signal only.
+        It does NOT imply anything about:
+        • protocol state
+        • active subscriptions on the exchange
+        • future messages
+
+        Intended use:
+        • graceful shutdown
+        • drain loops
+        • Lite client idleness checks
+
+        Complexity:
+        • O(1)
+    */
+    [[nodiscard]]
+    inline bool is_idle() const noexcept {
+        return by_req_id_.empty();
+    }
+
+    // -------------------------------------------------------------------------
     // Full reset
     // -------------------------------------------------------------------------
 
