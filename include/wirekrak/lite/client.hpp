@@ -295,14 +295,14 @@ public:
     // -----------------------------
     void subscribe_trades(std::vector<std::string> symbols, trade_handler cb, bool snapshot = true);
 
-    void unsubscribe_trades(std::vector<std::string> symbols);
+    void unsubscribe_trades(const std::vector<std::string>& symbols);
 
     // -----------------------------
     // Book subscriptions
     // -----------------------------
     void subscribe_book(std::vector<std::string> symbols, book_handler cb, bool snapshot = true);
 
-    void unsubscribe_book(std::vector<std::string> symbols);
+    void unsubscribe_book(const std::vector<std::string>& symbols);
 
 private:
     struct Impl;

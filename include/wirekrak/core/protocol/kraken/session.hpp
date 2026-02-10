@@ -231,8 +231,7 @@ public:
     }
 
     template <request::Subscription RequestT>
-    [[nodiscard]]
-    inline ctrl::req_id_t subscribe(RequestT req) {
+    inline void subscribe(RequestT req) {
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
@@ -250,19 +249,16 @@ public:
         WK_DEBUG("Sending subscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
-            return ctrl::INVALID_REQ_ID;
         }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         subscription_manager_for_<RequestT>().register_subscription(
             std::move(req.symbols),
             req.req_id.value()
         );
-        return req.req_id.value();
     }
 
     template <request::Unsubscription RequestT>
-    [[nodiscard]]
-    inline ctrl::req_id_t unsubscribe(RequestT req) {
+    inline void unsubscribe(RequestT req) {
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
@@ -277,14 +273,12 @@ public:
         WK_DEBUG("Sending unsubscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
-            return ctrl::INVALID_REQ_ID;
         }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         subscription_manager_for_<RequestT>().register_unsubscription(
             std::move(req.symbols),
             req.req_id.value()
         );
-        return req.req_id.value();
     }
 
     // -----------------------------------------------------------------------------
@@ -362,7 +356,7 @@ public:
         { // === Process trade unsubscribe ring ===
         schema::trade::UnsubscribeAck ack;
         while (ctx_.trade_unsubscribe_ring.pop(ack)) {
-            WK_INFO("[SUBMGR] Processing trade unsubscribe ACK for symbol {" << ack.symbol << "}");
+            WK_TRACE("[SUBMGR] Processing trade unsubscribe ACK for symbol {" << ack.symbol << "}");
             //dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
@@ -387,7 +381,7 @@ public:
         { // === Process book unsubscribe ring ===
         schema::book::UnsubscribeAck ack;
         while (ctx_.book_unsubscribe_ring.pop(ack)) {
-            WK_INFO("[SUBMGR] Processing book unsubscribe ACK for symbol {" << ack.symbol << "}");
+            WK_TRACE("[SUBMGR] Processing book unsubscribe ACK for symbol {" << ack.symbol << "}");
             //dispatcher_.remove_symbol_handlers<schema::book::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
@@ -491,12 +485,6 @@ public:
     // -----------------------------------------------------------------------------
     [[nodiscard]]
     inline bool is_idle() const noexcept {
-        WK_DEBUG("[DISPATCHER] Checking idle state - connection_.is_idle() = " << connection_.is_idle()
-            << ", ctx_.empty() = " << ctx_.empty()
-            << ", user_rejection_buffer_.empty() = " << user_rejection_buffer_.empty()
-            << ", trade_channel_manager_.has_pending() = " << trade_channel_manager_.has_pending()
-            << ", book_channel_manager_.has_pending() = " << book_channel_manager_.has_pending()
-        );
         return
             connection_.is_idle() &&
             ctx_.empty() &&

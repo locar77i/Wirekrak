@@ -61,10 +61,10 @@ struct Client::Impl {
     void poll() {
         (void)session.poll();
         while (session.pop_rejection(rejection_msg)) {
-            // 1) Remove any callbacks associated with this req_id to prevent future invocations
-            if (rejection_msg.req_id.has()) {
-                trade_dispatcher.remove_by_req_id(rejection_msg.req_id.value());
-                book_dispatcher.remove_by_req_id(rejection_msg.req_id.value());
+            // 1) Remove any callbacks associated with this symbol to prevent future invocations
+            if (rejection_msg.symbol.has()) {
+                trade_dispatcher.remove(rejection_msg.symbol.value());
+                book_dispatcher.remove(rejection_msg.symbol.value());
             }
             // 2) Emit error callback if provided
             if (error_cb) {
@@ -205,20 +205,20 @@ void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb
     // Core consumes by value, Lite owns original
     auto symbols_for_core = symbols;
 
-    // 1) Submit intent to Core → get req_id
-    auto req_id = impl_->session.subscribe(
+    // 1) Submit intent to Core
+    impl_->session.subscribe(
         schema::trade::Subscribe{ .symbols = std::move(symbols_for_core), .snapshot = snapshot }
     );
 
     // 2) Register behavior in Lite dispatcher
-    impl_->trade_dispatcher.add(req_id, std::move(symbols), std::move(emit_trades));
+    impl_->trade_dispatcher.add(std::move(symbols), std::move(emit_trades));
 }
 
-void Client::unsubscribe_trades(std::vector<std::string> symbols) {
-    auto req_id = impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = std::move(symbols) });
+void Client::unsubscribe_trades(const std::vector<std::string>& symbols) {
+    impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = std::move(symbols) });
     // Optional: if Kraken rejects later, rejection handling will clean this anyway
     // Lite removes behavior immediately on unsubscribe intent, not on ACK.
-    impl_->trade_dispatcher.remove_by_req_id(req_id);
+    impl_->trade_dispatcher.remove(symbols);
 }
 
 
@@ -259,20 +259,20 @@ void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, b
     // Core consumes by value, Lite owns original
     auto symbols_for_core = symbols;
 
-    // 1) Submit intent to Core → get req_id
-    auto req_id = impl_->session.subscribe(
+    // 1) Submit intent to Core
+    impl_->session.subscribe(
         schema::book::Subscribe{ .symbols  = std::move(symbols_for_core), .snapshot = snapshot }
     );
 
     // 2) Register behavior in Lite dispatcher
-    impl_->book_dispatcher.add(req_id, std::move(symbols), std::move(emit_book_levels));
+    impl_->book_dispatcher.add(std::move(symbols), std::move(emit_book_levels));
 }
 
-void Client::unsubscribe_book(std::vector<std::string> symbols) {
-    auto req_id = impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols) });
+void Client::unsubscribe_book(const std::vector<std::string>& symbols) {
+    impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols) });
     // Optional: if Kraken rejects later, rejection handling will clean this anyway
     // Lite removes behavior immediately on unsubscribe intent, not on ACK.
-    impl_->book_dispatcher.remove_by_req_id(req_id);
+    impl_->book_dispatcher.remove(symbols);
 }
 
 } // namespace wirekrak::lite

@@ -162,22 +162,6 @@ Every parser is fully unit-tested against invalid, edge, and protocol-violating 
 
 ---
 
-## Dispatcher <a name="dispatcher"></a> 
-
-The Dispatcher delivers decoded protocol events to consumers.
-
-**Characteristics:**
-- Compile-time channel traits
-- Symbol interning
-- Zero runtime channel branching
-- Multiple listeners per symbol
-
-The dispatch path is optimized for determinism and low latency.
-
-➡️ **[Dispatcher Overview](./architecture/protocol/kraken/Dispatcher.md)**
-
----
-
 ## Subscription Manager <a name="subscription-manager"></a>
 
 The Subscription Manager tracks the full lifecycle of Kraken subscriptions.

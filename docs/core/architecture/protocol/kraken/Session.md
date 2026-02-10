@@ -7,8 +7,10 @@ Wirekrak’s generic transport and streaming infrastructure.
 
 It provides a **protocol-oriented, type-safe interface** for interacting with
 Kraken channels while deliberately exposing only **observable protocol facts**.
-No inferred health, implicit retries, hidden dispatch, or speculative recovery
-logic is ever exposed.
+
+> **Important:** The Session expresses *protocol intent*, not completion.
+> Callers submit subscribe/unsubscribe requests but never observe protocol
+> identifiers or lifecycle details.
 
 The Session is designed for **deterministic, ultra-low-latency (ULL) systems**
 such as trading engines, SDKs, and real-time market data pipelines.
@@ -25,10 +27,23 @@ such as trading engines, SDKs, and real-time market data pipelines.
 - **Fail-fast semantics for protocol violations**
 - **Strict separation of Core and Lite responsibilities**
 
-The Session exposes **Kraken protocol truth only**: raw typed messages, ACKs,
+The Session exposes **Kraken protocol truth only**: typed messages, ACK effects,
 rejections, and progress facts.
 
-All user-facing behavior (partitioning, dispatch, callbacks) lives outside Core.
+All user-facing behavior (dispatch, callbacks, symbol routing) lives outside Core.
+
+---
+
+## Architectural Position
+
+The Kraken Session is a **Core-level component**.
+
+- It owns protocol correctness
+- It owns request identifiers (`req_id`)
+- It owns replay and ACK tracking
+- It never exposes protocol identifiers to callers
+
+User code must not depend on protocol correlation mechanisms.
 
 ---
 
@@ -66,64 +81,63 @@ The Kraken Session is responsible for:
 
 - Establishing and maintaining a Kraken WebSocket session
 - Parsing and routing raw JSON into typed protocol messages
-- Managing subscriptions with explicit ACK tracking
+- Assigning and managing internal protocol request identifiers
+- Tracking subscription state with explicit ACK handling
 - Replaying **only acknowledged subscriptions** after reconnect
-- Exposing protocol messages via lock-free rings
 - Surfacing authoritative protocol rejections
-- Reacting deterministically to transport signals
+- Exposing protocol messages via lock-free rings
 
 The Session **never dispatches callbacks**, never partitions messages, and never
 assumes user intent.
 
 ---
 
-## Progress Contract (Session Facts)
+## Subscription Model
 
-The Session exposes **progress facts**, not connection state.
+Subscriptions follow an **ACK-driven intent model**.
 
-### Transport Epoch
-
-```cpp
-uint64_t transport_epoch() const;
-uint64_t poll(); // returns current epoch
-```
-
-- Incremented **exactly once per successful WebSocket connection**
-- Monotonic for the lifetime of the Session
-- Never increments on retries or transient failures
-
-Defines replay and staleness boundaries.
-
-### Message Counters
+### Subscribe
 
 ```cpp
-uint64_t rx_messages() const;
-uint64_t tx_messages() const;
-uint64_t hb_messages() const;
+session.subscribe(schema::trade::Subscribe{ .symbols = {"BTC/EUR"} });
 ```
 
-- Monotonic
-- Never reset
-- Updated only on successful observation or transmission
+Semantics:
+
+- A protocol request identifier is assigned internally
+- The request is sent immediately
+- The subscription enters a *pending* state
+- On ACK success, it becomes replay-eligible
+- On rejection, the intent is discarded permanently
+
+> The assigned `req_id` is **never returned** and **never observable**.
+
+### Unsubscribe
+
+```cpp
+session.unsubscribe(schema::trade::Unsubscribe{ .symbols = {"BTC/EUR"} });
+```
+
+Semantics:
+
+- Unsubscribe intent is expressed immediately
+- Replay intent is removed deterministically
+- Protocol ACKs are handled internally
+- The caller must not assume immediate exchange-side effect
+
+Unsubscribe ACK identifiers are **not correlated** with subscribe identifiers.
+This complexity is intentionally hidden inside Core.
 
 ---
 
-## Subscription Model
-
-Subscriptions follow an **ACK-driven intent model**:
-
-1. User submits a typed subscribe request
-2. A deterministic `req_id` is assigned
-3. Subscription enters a pending state
-4. On ACK success, it becomes active
-5. On rejection, intent is removed permanently
-
-### Replay Semantics
+## Replay Semantics
 
 - Only **acknowledged subscriptions** are replayed
 - Rejected intent is **final**
 - Replay occurs **only after transport epoch change**
 - No replay without a successful reconnect
+
+Replay is deterministic and idempotent.
 
 ---
 
@@ -139,8 +153,7 @@ Protocol rejections are:
 Rejections are processed internally for correctness, then exposed via a bounded,
 lossless queue.
 
-Failure to drain rejections is considered a **user error** and results in
-fail-fast shutdown.
+Failure to drain rejections is considered a **user error**.
 
 ---
 
@@ -159,8 +172,6 @@ bool try_load_pong(schema::system::Pong&);
 bool try_load_status(schema::status::Update&);
 ```
 
-Change detection is per-calling thread.
-
 ---
 
 ## Data-Plane Message Access
@@ -170,20 +181,14 @@ Channel messages are exposed as **raw protocol responses** via lock-free rings.
 ```cpp
 bool pop_trade_message(schema::trade::Response&);
 bool pop_book_message(schema::book::Response&);
-
-template<class F>
-void drain_trade_messages(F&&);
-
-template<class F>
-void drain_book_messages(F&&);
 ```
 
 Core does **not** partition or dispatch messages.
-All symbol routing and callback logic belongs to Lite.
+All symbol routing and callbacks belong to Lite.
 
 ---
 
-## Event Processing Model
+## Execution Model
 
 All progress is driven explicitly by:
 
@@ -198,29 +203,7 @@ Each call advances:
 - Protocol message routing into rings
 - ACK and rejection processing
 
-There are **no background threads, timers, or callbacks** in Core.
-
----
-
-## Usage Example
-
-```cpp
-Session session;
-session.connect("wss://ws.kraken.com/v2");
-
-session.subscribe(schema::book::Subscribe{
-    .symbols = {"BTC/USD"},
-    .depth   = 10
-});
-
-while (running) {
-    session.poll();
-
-    session.drain_book_messages([](const schema::book::Response& msg) {
-        // partition & dispatch in Lite
-    });
-}
-```
+There are **no background threads** in Core.
 
 ---
 
@@ -229,13 +212,13 @@ while (running) {
 The Kraken Session provides:
 
 - Deterministic, poll-driven execution
-- Explicit protocol authority (ACKs and rejections)
-- Lossless semantic error reporting
-- Clear replay boundaries via epoch
+- Internal ownership of protocol identifiers
+- Explicit ACK- and rejection-driven correctness
+- Replay bounded by transport epochs
 - Fact-based observability
 - A clean Core / Lite separation
 
-Wirekrak Core never guesses.  
+Wirekrak Core never guesses.
 It exposes protocol truth and enforces correctness.
 
 ---

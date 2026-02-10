@@ -51,6 +51,22 @@ Lite never guesses user intent.
 
 If something happens, it is because the user asked for it.
 
+### 4. Symbol-Authoritative Behavior
+
+Lite manages user-visible behavior strictly in terms of **symbols**.
+
+- Callbacks are registered per symbol
+- Callbacks are removed per symbol
+- Protocol identifiers (e.g. request IDs) never escape Core
+
+Core is responsible for protocol correctness.
+Lite is responsible for routing data to user code.
+
+This ensures:
+- Clear separation of concerns
+- No protocol leakage into the public API
+- Deterministic, user-reasonable lifecycle semantics
+
 ---
 
 ## Execution Model
@@ -107,6 +123,10 @@ unsubscribe_book(symbols);
 
 Lite removes callbacks immediately on unsubscribe intent.
 
+Removal is **symbol-scoped**:
+- All callbacks associated with the unsubscribed symbols are removed
+- No protocol identifiers are tracked or required at the Lite layer
+
 ---
 
 ## Error Handling
@@ -118,6 +138,9 @@ client.on_error([](const Error& err) {
     // user-defined handling
 });
 ```
+
+Protocol rejections are surfaced as errors and cause
+symbol-scoped callback removal when applicable.
 
 Lite does not retry, suppress, or reinterpret errors.
 Errors are facts, not policy.
