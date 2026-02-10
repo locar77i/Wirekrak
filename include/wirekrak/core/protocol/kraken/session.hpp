@@ -362,6 +362,7 @@ public:
         { // === Process trade unsubscribe ring ===
         schema::trade::UnsubscribeAck ack;
         while (ctx_.trade_unsubscribe_ring.pop(ack)) {
+            WK_INFO("[SUBMGR] Processing trade unsubscribe ACK for symbol {" << ack.symbol << "}");
             //dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
@@ -386,6 +387,7 @@ public:
         { // === Process book unsubscribe ring ===
         schema::book::UnsubscribeAck ack;
         while (ctx_.book_unsubscribe_ring.pop(ack)) {
+            WK_INFO("[SUBMGR] Processing book unsubscribe ACK for symbol {" << ack.symbol << "}");
             //dispatcher_.remove_symbol_handlers<schema::book::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
@@ -489,6 +491,12 @@ public:
     // -----------------------------------------------------------------------------
     [[nodiscard]]
     inline bool is_idle() const noexcept {
+        WK_DEBUG("[DISPATCHER] Checking idle state - connection_.is_idle() = " << connection_.is_idle()
+            << ", ctx_.empty() = " << ctx_.empty()
+            << ", user_rejection_buffer_.empty() = " << user_rejection_buffer_.empty()
+            << ", trade_channel_manager_.has_pending() = " << trade_channel_manager_.has_pending()
+            << ", book_channel_manager_.has_pending() = " << book_channel_manager_.has_pending()
+        );
         return
             connection_.is_idle() &&
             ctx_.empty() &&

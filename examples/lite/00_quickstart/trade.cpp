@@ -68,15 +68,16 @@ int main() {
     // Main polling loop 
     // Stop after ~60 trade messages or when the user interrupts (Ctrl+C)
     // -------------------------------------------------------------------------
-    while (running.load(std::memory_order_relaxed) && messages_received < 60) {
-        client.poll();  // Drives the client state machine and dispatches callbacks
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    client.run_while([&]() {
+        return running.load(std::memory_order_relaxed) && messages_received < 60;
+    });
 
     // -------------------------------------------------------------------------
-    // Unsubscribe & exit
+    // Unsubscribe & graceful shutdown
     // -------------------------------------------------------------------------
-    client.unsubscribe_trades({"BTC/EUR"});   // 3) Unsubscribe from BTC/EUR trades
+    client.unsubscribe_trades({"BTC/EUR"});
+    client.run_until_idle();  // Ensure all protocol work and callbacks are complete before exiting
+    client.disconnect();
     
     std::cout << "\n[wirekrak-lite] Done.\n";
     return 0;

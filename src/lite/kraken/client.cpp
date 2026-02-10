@@ -1,3 +1,5 @@
+#include <thread>
+
 #include "wirekrak/lite/client.hpp"
 #include "wirekrak/lite/channel/dispatcher.hpp"
 
@@ -145,6 +147,25 @@ void Client::disconnect() {
 
 void Client::poll() {
     impl_->poll();
+}
+
+// -----------------------------------------------------------------------------
+// Convenience execution loop — run until protocol quiescence
+// -----------------------------------------------------------------------------
+void Client::run_until_idle(std::chrono::milliseconds tick) {
+    const bool cooperative = (tick.count() > 0);
+    while (true) {
+        // Drive client progress
+        poll();
+        // If idle, no work remains: exit
+        if (is_idle()) [[unlikely]] {
+            return;
+        }
+        // If tick > 0, sleep to avoid busy-waiting. Otherwise, immediately poll again to drive progress.
+        if (cooperative) [[likely]] {
+            std::this_thread::sleep_for(tick);
+        }
+    }
 }
 
 bool Client::is_idle() const {

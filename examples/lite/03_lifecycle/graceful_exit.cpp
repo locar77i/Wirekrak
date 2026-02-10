@@ -63,7 +63,10 @@ int main() {
 
     std::cout << "[wirekrak-lite] Shutting down...\n";
 
-    // Optional explicit disconnect (safe to call)
+    // -------------------------------------------------------------------------
+    // Graceful shutdown (optional- safe to call)
+    // -------------------------------------------------------------------------
+    client.run_until_idle();
     client.disconnect();
 
     std::cout << "[wirekrak-lite] Done.\n";

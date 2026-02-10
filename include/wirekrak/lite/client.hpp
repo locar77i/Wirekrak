@@ -69,6 +69,173 @@ public:
     void disconnect();
     void poll();
 
+    // -------------------------------------------------------------------------
+    // About the convenience execution loops
+    // -------------------------------------------------------------------------
+    //
+    // IMPORTANT DISTINCTION — TERMINATION AUTHORITY:
+    //
+    //   - run_until_idle()  → **library-owned termination**
+    //   - run_while()       → **user-owned termination**
+    //   - run_until()       → **user-owned termination (negative condition)**
+    //
+    // Semantics:
+    //
+    //   run_until_idle()
+    //     - Exits when the client reaches protocol quiescence
+    //     - Observes only internal state (no user intent)
+    //     - Intended for drain loops and graceful teardown
+    //
+    //   run_while(cond)
+    //     - Continues while the user condition is true
+    //     - The library never infers stop intent
+    //     - Intended for steady-state execution
+    //
+    //   run_until(stop)
+    //     - Continues until the user condition becomes true
+    //     - No idle checks, no draining, no implicit cleanup
+    //     - Intended for signal-, time-, or event-driven shutdown
+    //
+    // None of these methods introduce:
+    //   - background threads
+    //   - hidden scheduling
+    //   - protocol side effects
+    //   - alternative execution models
+    //
+    // All execution remains explicitly poll-driven.
+    //
+    // Intended use:
+    //
+    //   - Graceful shutdown and drain loops
+    //   - Deterministic teardown after unsubscribe()
+    //   - CLI tools and short-lived programs
+    //   - Tests and examples that need protocol completion
+    //
+    // NOTE:
+    // If tick == 0, these loops will busy-wait by continuously
+    // calling poll() without sleeping.
+    //
+    // These methods are OPTIONAL.
+    // Advanced users may continue to drive poll() manually.
+    //
+    // Threading:
+    //   - Not thread-safe
+    //   - Must be called from the same thread as poll()
+    //
+    // -------------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------------
+    // Convenience execution loop — run until protocol quiescence
+    // -----------------------------------------------------------------------------
+    //
+    // Drives the client by repeatedly calling poll() until the client
+    // reaches quiescence.
+    //
+    // This is a thin convenience wrapper over: poll() + is_idle()
+    //
+    // Semantics:
+    //
+    //   - No background threads
+    //   - No hidden scheduling
+    //   - No protocol inference
+    //   - No user intent inference
+    //
+    // The client remains fully poll-driven.
+    //
+    // Exit condition:
+    //
+    // The loop exits when is_idle() becomes true, meaning that,
+    // at the instant of observation:
+    //
+    // - The underlying Core Session has no pending protocol work
+    //       (ACKs, rejections, replay, control messages)
+    //
+    // - Lite owns no active callbacks or dispatchable behavior
+    //
+    // - If poll() is never called again, no further user callbacks
+    //   will be invoked and no protocol obligations remain outstanding
+    //
+    // Non-goals:
+    //
+    //   - This does NOT represent steady-state execution
+    //   - This does NOT prevent future messages if polling continues
+    //   - This does NOT imply the connection is closed
+    //
+    // -----------------------------------------------------------------------------
+    void run_until_idle(std::chrono::milliseconds tick = std::chrono::milliseconds{10});
+
+    // -----------------------------------------------------------------------------
+    // Run loop with external stop intent
+    // -----------------------------------------------------------------------------
+    //
+    // Executes poll() repeatedly while the user-provided condition returns true.
+    //
+    // Semantics:
+    //
+    // - Exit condition is owned exclusively by the caller
+    // - No protocol quiescence is inferred
+    // - No drain or cleanup is performed
+    // - No background threads
+    //
+    // This method:
+    //   - does NOT infer protocol state
+    //   - does NOT observe is_idle()
+    //   - does NOT perform draining or shutdown logic
+    //
+    // If the stop condition becomes false, the method returns immediately.
+    // Any remaining protocol or callback work must be handled explicitly
+    // by the caller (e.g. via run_until_idle()).
+    //
+    // -----------------------------------------------------------------------------
+    template<class StopFn>
+    void run_while(StopFn&& should_continue, std::chrono::milliseconds tick = std::chrono::milliseconds{10}) {
+        const bool cooperative = (tick.count() > 0);
+        // Loop while the user condition indicates to continue
+        while (should_continue()) [[likely]] {
+            poll();
+            if (cooperative) [[likely]] {
+                std::this_thread::sleep_for(tick);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------------
+    // Run loop until external stop condition becomes true
+    // -----------------------------------------------------------------------------
+    //
+    // Executes poll() repeatedly until the user-provided stop condition
+    // evaluates to true.
+    //
+    // Semantics:
+    //
+    // - Exit condition is owned exclusively by the caller
+    // - No protocol quiescence is inferred
+    // - No drain or cleanup is performed
+    // - No background threads
+    //
+    // This method is intended for:
+    //
+    // - Signal-driven applications (Ctrl+C)
+    // - Time-bounded execution
+    // - Message-count-limited loops
+    // - Applications with explicit lifecycle control
+    //
+    // If protocol cleanup is required, the caller must explicitly invoke
+    // unsubscribe() and/or run_until_idle() after this method returns.
+    //
+    // -----------------------------------------------------------------------------
+    template<class StopFn>
+    void run_until(StopFn&& should_stop, std::chrono::milliseconds tick = std::chrono::milliseconds{10}) {
+        const bool cooperative = (tick.count() > 0);
+        // Loop until either stop intent is observed
+        while (!should_stop()) [[likely]] {
+            poll();
+            if (cooperative) [[likely]] {
+                std::this_thread::sleep_for(tick);
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------------
     // Client quiescence indicator
     // -----------------------------------------------------------------------------
