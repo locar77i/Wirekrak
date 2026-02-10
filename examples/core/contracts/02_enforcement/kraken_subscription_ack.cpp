@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
     while (std::chrono::steady_clock::now() < observe_until) {
         (void)session.poll();
         drain_messages(session);
-        std::cout << "[example] Trade subscriptions: active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
+        std::cout << "[example] Trade subscriptions: active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 

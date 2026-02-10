@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     // Attempt invalid subscription
     // -------------------------------------------------------------------------
     const auto& mgr = session.trade_subscriptions();
-    std::cout << "[example] Trade subscriptions (before subscribe): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
+    std::cout << "[example] Trade subscriptions (before subscribe): active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
     (void)session.subscribe(
         trade::Subscribe{ .symbols = { "INVALID/SYMBOL" } }
     );
@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Observe outcome
     // -------------------------------------------------------------------------
-    std::cout << "[example] Trade subscriptions (after subscribe): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
+    std::cout << "[example] Trade subscriptions (after subscribe): active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
 
     // Wait for a few transport lifetimes to prove rejection is not replayed
     auto epoch = session.transport_epoch();
@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
 
     session.close();
 
-    std::cout << "[example] Trade subscriptions (after close): active=" << mgr.active_total() << " - pending=" << mgr.pending_total() << std::endl;
+    std::cout << "[example] Trade subscriptions (after close): active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
 
     std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
 

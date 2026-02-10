@@ -350,7 +350,7 @@ public:
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
             }
             else {
-                trade_channel_manager_.process_subscribe_ack(Channel::Trade, ack.req_id.value(), ack.symbol, ack.success);
+                trade_channel_manager_.process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
             }
         }}
         { // === Process trade unsubscribe ring ===
@@ -362,7 +362,7 @@ public:
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
             }
             else {
-                trade_channel_manager_.process_unsubscribe_ack(Channel::Trade, ack.req_id.value(), ack.symbol, ack.success);
+                trade_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
             }
         }}
         // ===============================================================================
@@ -375,7 +375,7 @@ public:
                 WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
             }
             else {
-                book_channel_manager_.process_subscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
+                book_channel_manager_.process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
             }
         }}
         { // === Process book unsubscribe ring ===
@@ -387,7 +387,7 @@ public:
                 WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
             }
             else {
-                book_channel_manager_.process_unsubscribe_ack(Channel::Book, ack.req_id.value(), ack.symbol, ack.success);
+                book_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
             }
         }}
 
@@ -489,8 +489,24 @@ public:
             connection_.is_idle() &&
             ctx_.empty() &&
             user_rejection_buffer_.empty() &&
-            !trade_channel_manager_.has_pending() &&
-            !book_channel_manager_.has_pending();
+            !trade_channel_manager_.has_pending_requests() &&
+            !book_channel_manager_.has_pending_requests();
+    }
+
+    [[nodiscard]]
+    inline std::size_t pending_protocol_requests() const noexcept {
+        return
+            trade_channel_manager_.pending_requests() +
+            book_channel_manager_.pending_requests();
+    }
+
+    [[nodiscard]]
+    inline std::size_t pending_protocol_symbols() const noexcept {
+        return
+            trade_channel_manager_.pending_subscribe_symbols() +
+            trade_channel_manager_.pending_unsubscribe_symbols() +
+            book_channel_manager_.pending_subscribe_symbols() +
+            book_channel_manager_.pending_unsubscribe_symbols();
     }
 
 private:
@@ -518,8 +534,8 @@ private:
     lcr::local::ring_buffer<schema::rejection::Notice, config::rejection_ring> user_rejection_buffer_;
 
     // Channel subscription managers
-    channel::Manager trade_channel_manager_;
-    channel::Manager book_channel_manager_;
+    channel::Manager trade_channel_manager_{Channel::Trade};
+    channel::Manager book_channel_manager_{Channel::Book};
 
     // Replay database
     replay::Database replay_db_;

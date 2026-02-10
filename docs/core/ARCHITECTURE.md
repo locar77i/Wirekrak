@@ -162,7 +162,7 @@ Every parser is fully unit-tested against invalid, edge, and protocol-violating 
 
 ---
 
-## Subscription Manager <a name="subscription-manager"></a>
+## Subscription Manager <a name="channel-manager"></a>
 
 The Subscription Manager tracks the full lifecycle of Kraken subscriptions.
 
@@ -175,7 +175,7 @@ Responsibilities:
 Kraken’s multi-symbol subscription model is handled deterministically, including partial
 acknowledgements.
 
-➡️ **[Subscription Manager Overview](./architecture/protocol/kraken/SubscriptionManager.md)**
+➡️ **[Subscription Manager Overview](./architecture/protocol/kraken/ChannelManager.md)**
 
 ---
 
