@@ -59,6 +59,15 @@ struct Session {
     }
 
     // -------------------------------------------------------------------------
+    // Drain rejection messages until idle
+    // -------------------------------------------------------------------------
+    inline void drain_rejections() {
+        session.drain_rejection_messages([](const schema::rejection::Notice& msg) {
+            std::cout << " -> " << msg << std::endl;
+        });
+    }
+
+    // -------------------------------------------------------------------------
     // Subscribe/Unsubscribe helpers
     // -------------------------------------------------------------------------
     ctrl::req_id_t subscribe_trade(const std::string& symbol) {

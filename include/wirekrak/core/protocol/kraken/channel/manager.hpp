@@ -43,25 +43,27 @@ public:
 
     // Register outbound subscribe request (called before sending a subscribe request)
     inline void register_subscription(std::vector<Symbol> symbols, ctrl::req_id_t req_id) noexcept {
-        WK_TRACE("[SUBMGR] Registering subscription request (req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Registering subscription request (req_id=" << req_id << ")");
         // Store pending symbols
         auto& vec = pending_subscriptions_[req_id];
         vec.reserve(symbols.size());
         for (auto& s : symbols) {
             vec.push_back(intern_symbol(s));
         }
-        WK_TRACE("[SUBMGR] Active subscriptions = " << active_symbols_.size() << " - Pending subscriptions = " << pending_subscriptions_.size());
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size()
+            << " - Pending subscriptions = " << pending_subscriptions_.size());
     }
 
     // Register outbound unsubscribe request (called before sending an unsubscribe request)
     inline void register_unsubscription(std::vector<Symbol> symbols, ctrl::req_id_t req_id) noexcept {
-        WK_TRACE("[SUBMGR] Registering unsubscription request (req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Registering unsubscription request (req_id=" << req_id << ")");
         auto& vec = pending_unsubscriptions_[req_id];
         vec.reserve(symbols.size());
         for (auto& s : symbols) {
             vec.push_back(intern_symbol(s));
         }
-        WK_TRACE("[SUBMGR] Active subscriptions = " << active_symbols_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size()
+            << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
     }
 
     // ------------------------------------------------------------
@@ -69,45 +71,45 @@ public:
     // ------------------------------------------------------------
 
     inline void process_subscribe_ack(ctrl::req_id_t req_id, Symbol symbol, bool success) noexcept {
-        WK_TRACE("[SUBMGR] Processing subscribe ACK for channel '" << to_string(channel_) << "' {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Processing subscribe ACK for symbol {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
         bool done = false;
         if (success) [[likely]] {
             done = confirm_subscription_(symbol, req_id);
-            if (done) WK_INFO("[SUBMGR] Subscription ACCEPTED for channel '" << to_string(channel_) << "' {" << symbol << "} (req_id=" << req_id << ")");
+            if (done) WK_INFO("[SUBMGR] <" << to_string(channel_) << "> Subscription ACCEPTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
         }
         else {
             done = reject_subscription_(symbol, req_id);
-            if (done) WK_WARN("[SUBMGR] Subscription REJECTED for channel '" << to_string(channel_) << "'  {" << symbol << "} (req_id=" << req_id << ")");
+            if (done) WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Subscription REJECTED for symbol  {" << symbol << "} (req_id=" << req_id << ")");
         }
-        if (!done) WK_WARN("[SUBMGR] Subscription OMITTED for channel '" << to_string(channel_) << "' {" << symbol << "} (unknown req_id=" << req_id << ")");
-        WK_TRACE("[SUBMGR] Active subscriptions = " << active_symbols_.size() << " - Pending subscriptions = " << pending_subscriptions_.size());
+        if (!done) WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Subscription OMITTED for symbol {" << symbol << "} (unknown req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size() << " - Pending subscriptions = " << pending_subscriptions_.size());
     }
 
     inline void process_unsubscribe_ack(ctrl::req_id_t req_id, Symbol symbol, bool success) noexcept {
-        WK_TRACE("[SUBMGR] Processing unsubscribe ACK for channel '" << to_string(channel_) << "' {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Processing unsubscribe ACK for symbol {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
         bool done = false;
         if (success) [[likely]] {
             done = confirm_unsubscription_(symbol, req_id);
-            if (done) WK_INFO("[SUBMGR] Unsubscription ACCEPTED for channel '" << to_string(channel_) << "' {" << symbol << "} (req_id=" << req_id << ")");
+            if (done) WK_INFO("[SUBMGR] <" << to_string(channel_) << "> Unsubscription ACCEPTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
         }
         else {
             done = reject_unsubscription_(symbol, req_id);
-            if (done) WK_WARN("[SUBMGR] Unsubscription REJECTED for channel '" << to_string(channel_) << "' {" << symbol << "} (req_id=" << req_id << ")");
+            if (done) WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unsubscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
         }
-        if (!done) WK_WARN("[SUBMGR] Unsubscription ACK omitted for channel '" << to_string(channel_) << "' {" << symbol << "} (unknown req_id=" << req_id << ")");
-        WK_TRACE("[SUBMGR] Active subscriptions = " << active_symbols_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
+        if (!done) WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unsubscription ACK omitted for symbol {" << symbol << "} (unknown req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
     }
 
     inline void try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         SymbolId symbol_id = intern_symbol(symbol);
         // Try to reject from pending subscriptions
         if (try_process_rejection_on_(pending_subscriptions_, req_id, symbol_id)) {
-            WK_WARN("[SUBMGR] Subscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Subscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
             return;
         }
         // Try to reject from pending unsubscriptions
         if (try_process_rejection_on_(pending_unsubscriptions_, req_id, symbol_id)) {
-            WK_WARN("[SUBMGR] Unsubscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unsubscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
             return;
         }
     }
@@ -207,31 +209,31 @@ private:
 
     // Process ACK for subscription. Called when we parse a successful {"method":"subscribe","success":true}
     [[nodiscard]] inline bool confirm_subscription_(const Symbol& symbol, ctrl::req_id_t req_id) noexcept {
-        WK_DEBUG("[SUBMGR] Confirming subscription for req_id=" << req_id << " symbol {" << symbol << "}");
+        WK_DEBUG("[SUBMGR] <" << to_string(channel_) << "> Confirming subscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
         auto it = pending_subscriptions_.find(req_id);
         if (it == pending_subscriptions_.end()) {
-            WK_WARN("[SUBMGR] Unable to confirm subscription - unknown req_id=" << req_id);
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unable to confirm subscription - unknown req_id=" << req_id);
             return false;
         }
         auto& vec = it->second;
         // erase symbol_id (O(n) but n<=10 always because Kraken allows up to 10 symbols per request)
         auto pos = std::find(vec.begin(), vec.end(), symbol_id);
         if (pos == vec.end()) {
-            WK_WARN("[SUBMGR] Unable to confirm subscription - symbol not found in pending (req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unable to confirm subscription - symbol not found in pending (req_id=" << req_id << ")");
             return false;
         }
         // create active group now (if not exists)
         auto [active_it, inserted] = active_symbols_.insert(symbol_id);
         if (!inserted) {
-            WK_WARN("[SUBMGR] Symbol {" << symbol << "} already active");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Symbol {" << symbol << "} already active");
         }
         // Erase symbol from pending list
-        WK_TRACE("[SUBMGR] Subscription confirmed for symbol {" << symbol << "} (req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Subscription confirmed for symbol {" << symbol << "} (req_id=" << req_id << ")");
         vec.erase(pos);
         if (vec.empty()) { // If no symbols left → remove req_id entry
-            WK_TRACE("[SUBMGR] All pending subscriptions confirmed for req_id=" << req_id);
+            WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> All pending subscriptions confirmed for req_id=" << req_id);
             pending_subscriptions_.erase(it);
         }
 
@@ -240,26 +242,26 @@ private:
 
     // Process ACK for subscription. Called when a subscribe request returns success=false
     [[nodiscard]] inline bool reject_subscription_(const Symbol& symbol, ctrl::req_id_t req_id) noexcept {
-        WK_DEBUG("[SUBMGR] Rejecting subscription for req_id=" << req_id << " symbol {" << symbol << "}");
+        WK_DEBUG("[SUBMGR] <" << to_string(channel_) << "> Rejecting subscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
         auto it = pending_subscriptions_.find(req_id);
         if (it == pending_subscriptions_.end()) {
-            WK_WARN("[SUBMGR] Unable to reject subscription - no such pending request (req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unable to reject subscription - no such pending request (req_id=" << req_id << ")");
             return false; // no such pending request
         }
         auto& vec = it->second;
         // erase symbol_id (O(n) but n<=10 always because Kraken allows up to 10 symbols per request)
         auto pos = std::find(vec.begin(), vec.end(), symbol_id);
         if (pos == vec.end()) {
-            WK_WARN("[SUBMGR] Unable to reject subscription - symbol not found in pending (req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unable to reject subscription - symbol not found in pending (req_id=" << req_id << ")");
             return false;
         }
         // Erase symbol from pending list
-        WK_TRACE("[SUBMGR] Subscription rejected for symbol {" << symbol << "} (req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Subscription rejected for symbol {" << symbol << "} (req_id=" << req_id << ")");
         vec.erase(pos);
         if (vec.empty()) { // If no symbols left → remove req_id entry
-            WK_TRACE("[SUBMGR] All pending subscriptions rejected for req_id=" << req_id);
+            WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> All pending subscriptions rejected for req_id=" << req_id);
             pending_subscriptions_.erase(it);
         }
         return true;
@@ -271,32 +273,32 @@ private:
 
     // Process ACK for unsubscription. Called when we parse a successful {"method":"unsubscribe","success":true}
     [[nodiscard]] inline bool confirm_unsubscription_(const Symbol& symbol, ctrl::req_id_t req_id) noexcept {
-        WK_DEBUG("[SUBMGR] Confirming unsubscription for req_id=" << req_id << " symbol {" << symbol << "}");
+        WK_DEBUG("[SUBMGR] <" << to_string(channel_) << "> Confirming unsubscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
         auto it = pending_unsubscriptions_.find(req_id);
         if (it == pending_unsubscriptions_.end()) {
-            WK_WARN("[SUBMGR] Unable to confirm unsubscription - unknown req_id=" << req_id);
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unable to confirm unsubscription - unknown req_id=" << req_id);
             return false;
         }
         auto& vec = it->second;
         // erase symbol_id (O(n) but n<=10 always because Kraken allows up to 10 symbols per request)
         auto pos = std::find(vec.begin(), vec.end(), symbol_id);
         if (pos == vec.end()) {
-            WK_WARN("[SUBMGR] Unable to confirm unsubscription - symbol not found in pending (req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unable to confirm unsubscription - symbol not found in pending (req_id=" << req_id << ")");
             return false;
         }
         // Remove from active_symbols_ set
-        WK_TRACE("[SUBMGR] Removing symbol {" << symbol << "} from active subscriptions (req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Removing symbol {" << symbol << "} from active subscriptions (req_id=" << req_id << ")");
         std::size_t erased = active_symbols_.erase(symbol_id);
         if (erased == 0) {
-            WK_WARN("[SUBMGR] Unsubscription ACK for non-active symbol {" << symbol << "}");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unsubscription ACK for non-active symbol {" << symbol << "}");
         }
         // Erase symbol from pending list
-        WK_TRACE("[SUBMGR] Unsubscription confirmed for symbol {" << symbol << "} (req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Unsubscription confirmed for symbol {" << symbol << "} (req_id=" << req_id << ")");
         vec.erase(pos);
         if (vec.empty()) { // If no symbols left → remove req_id entry
-            WK_TRACE("[SUBMGR] All pending unsubscriptions confirmed for req_id=" << req_id);
+            WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> All pending unsubscriptions confirmed for req_id=" << req_id);
             pending_unsubscriptions_.erase(it);
         }
 
@@ -305,26 +307,26 @@ private:
 
     // Process ACK for unsubscription. Called when a subscribe request returns success=false
     [[nodiscard]] inline bool reject_unsubscription_(const Symbol& symbol, ctrl::req_id_t req_id) noexcept {
-        WK_DEBUG("[SUBMGR] Rejecting unsubscription for req_id=" << req_id << " symbol {" << symbol << "}");
+        WK_DEBUG("[SUBMGR] <" << to_string(channel_) << "> Rejecting unsubscription for req_id=" << req_id << " symbol {" << symbol << "}");
         SymbolId symbol_id = intern_symbol(symbol);
         // Find pending subscription by req_id
         auto it = pending_unsubscriptions_.find(req_id);
         if (it == pending_unsubscriptions_.end()) {
-            WK_WARN("[SUBMGR] Unable to reject unsubscription - no such pending request (req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unable to reject unsubscription - no such pending request (req_id=" << req_id << ")");
             return false; // no such pending request
         }
         auto& vec = it->second;
         // erase symbol_id (O(n) but n<=10 always because Kraken allows up to 10 symbols per request)
         auto pos = std::find(vec.begin(), vec.end(), symbol_id);
         if (pos == vec.end()) {
-            WK_WARN("[SUBMGR] Unable to reject unsubscription - symbol not found in pending (req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unable to reject unsubscription - symbol not found in pending (req_id=" << req_id << ")");
             return false;
         }
         // Erase symbol from pending list
-        WK_TRACE("[SUBMGR] Unsubscription rejected for symbol {" << symbol << "} (req_id=" << req_id << ")");
+        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Unsubscription rejected for symbol {" << symbol << "} (req_id=" << req_id << ")");
         vec.erase(pos);
         if (vec.empty()) { // If no symbols left → remove req_id entry
-            WK_TRACE("[SUBMGR] All pending unsubscriptions rejected for req_id=" << req_id);
+            WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> All pending unsubscriptions rejected for req_id=" << req_id);
             pending_unsubscriptions_.erase(it);
         }
         return true;
