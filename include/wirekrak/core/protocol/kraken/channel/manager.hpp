@@ -9,6 +9,7 @@
 #include <cassert>
 
 #include "wirekrak/core/protocol/kraken/enums.hpp"
+#include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/symbol/intern.hpp"
 #include "lcr/log/logger.hpp"
 

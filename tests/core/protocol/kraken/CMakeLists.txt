@@ -15,3 +15,4 @@ endforeach()
 # ADD SUBDIRS
 add_subdirectory(schema)
 add_subdirectory(parser)
+add_subdirectory(channel)
