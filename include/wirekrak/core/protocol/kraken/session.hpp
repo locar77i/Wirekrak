@@ -231,7 +231,7 @@ public:
     }
 
     template <request::Subscription RequestT>
-    inline void subscribe(RequestT req) {
+    inline ctrl::req_id_t subscribe(RequestT req) {
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
@@ -249,16 +249,18 @@ public:
         WK_DEBUG("Sending subscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
+            return ctrl::INVALID_REQ_ID;
         }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         subscription_manager_for_<RequestT>().register_subscription(
             std::move(req.symbols),
             req.req_id.value()
         );
+        return req.req_id.value();
     }
 
     template <request::Unsubscription RequestT>
-    inline void unsubscribe(RequestT req) {
+    inline ctrl::req_id_t unsubscribe(RequestT req) {
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
@@ -273,12 +275,14 @@ public:
         WK_DEBUG("Sending unsubscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
+            return ctrl::INVALID_REQ_ID;
         }
         // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         subscription_manager_for_<RequestT>().register_unsubscription(
             std::move(req.symbols),
             req.req_id.value()
         );
+        return req.req_id.value();
     }
 
     // -----------------------------------------------------------------------------
@@ -508,6 +512,17 @@ public:
             book_channel_manager_.pending_subscribe_symbols() +
             book_channel_manager_.pending_unsubscribe_symbols();
     }
+
+#ifdef WK_UNIT_TEST
+public:
+        transport::Connection<WS>& connection() {
+            return connection_;
+        }
+
+        WS& ws() {
+            return connection_.ws();
+        }
+#endif // WK_UNIT_TEST
 
 private:
     // Sequence generator for request IDs
