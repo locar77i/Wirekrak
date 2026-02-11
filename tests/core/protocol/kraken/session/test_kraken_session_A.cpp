@@ -26,11 +26,6 @@ These tests assume:
 
 #include "common/harness/session.hpp"
 
-using namespace wirekrak::core;
-using namespace wirekrak::core::protocol;
-using namespace wirekrak::core::protocol::kraken;
-using namespace wirekrak::core::protocol::kraken::test;
-
 // ----------------------------------------------------------------------------
 // A1 Single Active Subscription Replayed
 // ----------------------------------------------------------------------------
@@ -38,11 +33,11 @@ using namespace wirekrak::core::protocol::kraken::test;
 void test_single_active_subscription_replayed() {
     std::cout << "[TEST] A1 Single active subscription replayed\n";
 
-    harness::Session h;
+    SessionHarness h;
     h.connect();
 
     // Subscribe trade and receive ACK
-    ctrl::req_id_t req_id = h.subscribe_trade("BTC/USD");
+    auto req_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(req_id, "BTC/USD");
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
@@ -71,16 +66,16 @@ void test_single_active_subscription_replayed() {
 void test_multiple_channel_replay() {
     std::cout << "[TEST] A2 Multi-channel replay\n";
 
-    harness::Session h;
+    SessionHarness h;
     h.connect();
 
     // Subscribe trade and receive ACK
-    ctrl::req_id_t trade_req_id = h.subscribe_trade("BTC/USD");
+    auto trade_req_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(trade_req_id, "BTC/USD");
 
     // Subscribe book and receive ACK
     int depth = 25;
-    ctrl::req_id_t book_req_id = h.subscribe_book("ETH/USD", depth);
+    auto book_req_id = h.subscribe_book("ETH/USD", depth);
     h.confirm_book_subscription(book_req_id, "ETH/USD", depth);
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
@@ -114,11 +109,11 @@ void test_multiple_channel_replay() {
 void test_no_active_no_replay() {
     std::cout << "[TEST] A3 No active → no replay\n";
 
-    harness::Session h;
+    SessionHarness h;
     h.connect();
 
     // Subscribe trade and receive ACK
-    ctrl::req_id_t req_id = h.subscribe_trade("BTC/USD");
+    auto req_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(req_id, "BTC/USD");
 
     // Unsubscribe trade and receive ACK

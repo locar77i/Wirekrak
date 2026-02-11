@@ -269,15 +269,13 @@ public:
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
-        // 2) Register in replay DB (no callback needed for unsubscription)
-        replay_db_.remove(req);
-        // 3) Send JSON BEFORE moving req.symbols
+        // 2) Send JSON BEFORE moving req.symbols
         WK_DEBUG("Sending unsubscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
             return ctrl::INVALID_REQ_ID;
         }
-        // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
+        // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         subscription_manager_for_<RequestT>().register_unsubscription(
             std::move(req.symbols),
             req.req_id.value()
@@ -367,6 +365,9 @@ public:
             }
             else {
                 trade_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
+                if (ack.success) {
+                    replay_db_.remove_symbol<schema::trade::Subscribe>(ack.symbol);
+                }
             }
         }}
         // ===============================================================================
@@ -392,6 +393,9 @@ public:
             }
             else {
                 book_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
+                if (ack.success) {
+                    replay_db_.remove_symbol<schema::book::Subscribe>(ack.symbol);
+                }
             }
         }}
 
@@ -513,6 +517,11 @@ public:
             book_channel_manager_.pending_unsubscribe_symbols();
     }
 
+    [[nodiscard]]
+    inline const replay::Database& replay_database() const noexcept {
+        return replay_db_;
+    }
+
 #ifdef WK_UNIT_TEST
 public:
         transport::Connection<WS>& connection() {
@@ -597,6 +606,8 @@ private:
     }
 
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
+        WK_TRACE("[SESSION] Handling rejection notice for symbol {" << (notice.symbol.has() ? notice.symbol.value() : "N/A" )
+            << "} (req_id=" << (notice.req_id.has() ? notice.req_id.value() : ctrl::INVALID_REQ_ID) << ") - " << notice.error);
         if (notice.req_id.has()) {
             if (notice.symbol.has()) {
                 // we cannot infer channel from notice, so we try all managers

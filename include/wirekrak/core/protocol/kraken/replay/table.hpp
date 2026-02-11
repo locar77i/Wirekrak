@@ -117,7 +117,11 @@ public:
     // table_.emplace_back(request)
     // ------------------------------------------------------------
     inline void add(RequestT req) {
-        ctrl::req_id_t req_id = req.req_id.has() ? req.req_id.value() : ctrl::INVALID_REQ_ID;
+        if (!req.req_id.has()) {
+            WK_FATAL("[REPLAY:TABLE] Attempted to add subscription with invalid req_id");
+            return;
+        }
+        ctrl::req_id_t req_id = req.req_id.value();
         auto [it, inserted] = subscriptions_.emplace(req_id, Subscription<RequestT>{std::move(req)});
         if (!inserted) [[unlikely]] {
             WK_FATAL("[REPLAY:TABLE] Duplicate req_id detected: " << req_id);
@@ -166,6 +170,16 @@ public:
         WK_WARN("[REPLAY:TABLE] Failed to erase symbol {" << symbol << "} from any subscription (not found)");
     }
 
+    [[nodiscard]]
+    inline bool contains_symbol(Symbol symbol) const noexcept {
+        for (const auto& [_, sub] : subscriptions_) {
+            if (sub.contains(symbol)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ------------------------------------------------------------
     // Debug/utility
     // ------------------------------------------------------------
@@ -188,6 +202,20 @@ public:
     [[nodiscard]]
     inline const auto& subscriptions() const noexcept {
         return subscriptions_;
+    }
+
+    [[nodiscard]]
+    inline std::size_t total_requests() const noexcept {
+        return subscriptions_.size();
+    }
+
+    [[nodiscard]]
+    inline size_t total_symbols() const noexcept {
+        size_t count = 0;
+        for (const auto& [_, sub] : subscriptions_) {
+            count += sub.request().symbols.size();
+        }
+        return count;
     }
 
     [[nodiscard]]

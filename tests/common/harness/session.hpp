@@ -10,6 +10,8 @@
 #include "common/json_helpers.hpp"
 #include "common/test_check.hpp"
 
+namespace ctrl = wirekrak::core::protocol::ctrl;
+
 
 namespace wirekrak::core::protocol::kraken::test::harness {
 
@@ -101,6 +103,34 @@ struct Session {
         session.ws().emit_message(json::ack::book_unsub(id, sym, depth));
         (void)session.poll();
     }
+
+    // -------------------------------------------------------------------------
+    // Rejection helpers
+    // -------------------------------------------------------------------------
+
+    inline void reject(std::string_view method, ctrl::req_id_t id, const std::string& sym, std::string_view error) {
+        session.ws().emit_message(json::ack::rejection_notice(method, id, sym, std::string(error)));
+        (void)session.poll();
+    }
+
+    inline void reject_trade_subscription(ctrl::req_id_t id, const std::string& sym) {
+        reject("subscribe", id, sym, "Subscription rejected");
+    }
+
+    inline void reject_trade_unsubscription(ctrl::req_id_t id, const std::string& sym) {
+        reject("unsubscribe", id, sym, "Unsubscription rejected");
+    }
+
+    inline void reject_book_subscription(ctrl::req_id_t id, const std::string& sym) {
+        reject("subscribe", id, sym, "Subscription rejected");
+    }
+
+    inline void reject_book_unsubscription(ctrl::req_id_t id, const std::string& sym) {
+        reject("unsubscribe", id, sym, "Unsubscription rejected");
+    }
 };
 
 } // namespace wirekrak::core::protocol::kraken::test::harness
+
+
+using SessionHarness = wirekrak::core::protocol::kraken::test::harness::Session;

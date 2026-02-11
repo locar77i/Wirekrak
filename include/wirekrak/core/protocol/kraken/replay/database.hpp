@@ -118,6 +118,13 @@ public:
         }
     }
 
+    // Remove a single symbol (ACK-driven removal).
+    // Used when unsubscribe ACK succeeds.
+    template<class RequestT>
+    inline void remove_symbol(Symbol symbol) noexcept {
+        subscription_table_for_<RequestT>().erase_symbol(symbol);
+    }
+
     // Process a protocol rejection by req_id and symbol, removing any matching intent from the table.
     // Returns true if a matching subscription was found and updated, false otherwise.
     inline bool try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
@@ -142,6 +149,26 @@ public:
     inline void clear_all() noexcept {
         trade_.clear();
         book_.clear();
+    }
+
+    // ------------------------------------------------------------
+    // Accessors for diagnostics
+    // ------------------------------------------------------------
+
+    template<class RequestT>
+    [[nodiscard]]
+    inline const auto& subscription_table_for() const noexcept {
+        return subscription_table_for_<RequestT>();
+    }
+
+    [[nodiscard]]
+    inline const auto& trade_table() const noexcept {
+        return trade_;
+    }
+
+    [[nodiscard]]
+    inline const auto& book_table() const noexcept {
+        return book_;
     }
 
 private:
