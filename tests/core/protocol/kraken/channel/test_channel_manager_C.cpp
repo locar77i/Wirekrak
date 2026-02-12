@@ -52,26 +52,17 @@ void test_rejection_clears_pending_subscription() {
 
     channel::Manager mgr{Channel::Trade};
 
-    // Precondition: BTC/USD is already active
+    // Create true pending subscription
     mgr.register_subscription({"BTC/USD"}, 1);
-    mgr.process_subscribe_ack(1, "BTC/USD", true);
-
-    TEST_CHECK(mgr.active_symbols() == 1);
-    TEST_CHECK(!mgr.has_pending_requests());
-
-    // New subscription request (pending)
-    mgr.register_subscription({"BTC/USD"}, 4);
 
     TEST_CHECK(mgr.has_pending_requests());
-    TEST_CHECK(mgr.pending_subscription_requests() == 1);
+    TEST_CHECK(mgr.total_symbols() == 1);
 
-    // Explicit rejection (out-of-band)
-    mgr.try_process_rejection(4, "BTC/USD");
+    mgr.try_process_rejection(1, "BTC/USD");
 
-    // Pending must be cleared, active unchanged
     TEST_CHECK(!mgr.has_pending_requests());
-    TEST_CHECK(mgr.pending_requests() == 0);
-    TEST_CHECK(mgr.active_symbols() == 1);
+    TEST_CHECK(mgr.total_symbols() == 0);
+    TEST_CHECK(mgr.active_symbols() == 0);
 
     std::cout << "[TEST] OK\n";
 }
