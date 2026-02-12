@@ -611,9 +611,13 @@ private:
         if (notice.req_id.has()) {
             if (notice.symbol.has()) {
                 // we cannot infer channel from notice, so we try all managers
-                trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                bool done = trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                if (!done) {
+                    done = book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                }
+                if (!done) {
+                    done = replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                }
             }
         }
     }

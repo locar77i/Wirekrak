@@ -58,7 +58,7 @@ void test_rejection_clears_pending_subscription() {
     TEST_CHECK(mgr.has_pending_requests());
     TEST_CHECK(mgr.total_symbols() == 1);
 
-    mgr.try_process_rejection(1, "BTC/USD");
+    (void)mgr.try_process_rejection(1, "BTC/USD");
 
     TEST_CHECK(!mgr.has_pending_requests());
     TEST_CHECK(mgr.total_symbols() == 0);
@@ -84,7 +84,7 @@ void test_rejection_unknown_req_id_is_ignored() {
     TEST_CHECK(!mgr.has_pending_requests());
 
     // Unknown req_id rejection
-    mgr.try_process_rejection(999, "BTC/USD");
+    (void)mgr.try_process_rejection(999, "BTC/USD");
 
     // No state change allowed
     TEST_CHECK(mgr.active_symbols() == 1);

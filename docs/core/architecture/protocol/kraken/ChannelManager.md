@@ -1,229 +1,232 @@
-# `channel::Manager` — Architecture & Contract
+# Channel Manager - Architecture & Contract
 
 ## Overview
 
-`channel::Manager` is a **protocol-level state machine** responsible for tracking the lifecycle of channel subscriptions for a *single Kraken channel* (e.g. `trade`, `book`).
+The `channel::Manager` is a **protocol-level deterministic state machine**
+responsible for tracking the lifecycle of subscriptions for a single
+Kraken channel (e.g. `trade`, `book`).
 
-It models **only observable protocol facts** derived from outbound requests and inbound acknowledgements (ACKs).
-It does **not** infer state, retry logic, transport health, or timing behavior.
+It models **only observable protocol facts** derived from:
+
+-   outbound requests
+-   inbound ACKs
+-   inbound rejection notices
+
+It does **not** model transport, replay orchestration, retries,
+timeouts, or business logic.
 
 The Manager is designed to be:
-- deterministic
-- replay-safe
-- allocation-bounded
-- ultra-low-latency (ULL) friendly
-- fully testable in isolation
 
----
+-   Deterministic
+-   Replay-safe
+-   Idempotent
+-   Allocation-bounded
+-   Ultra-low-latency friendly
+-   Fully unit-testable in isolation
+
+------------------------------------------------------------------------
+
+## Core Contract
+
+The Manager represents **protocol truth**, not user intent.
+
+It guarantees:
+
+1.  A symbol becomes active **only after a successful subscribe ACK**
+2.  A symbol is removed from active **only after a successful
+    unsubscribe ACK**
+3.  Rejections mutate only pending state
+4.  Duplicate ACKs or unknown `req_id`s are safe and ignored
+5.  State remains consistent under replay and reconnect storms
+
+------------------------------------------------------------------------
 
 ## Responsibilities
 
 The Manager is responsible for:
 
-- Tracking outbound **subscribe** and **unsubscribe** requests
-- Tracking **pending protocol intent** awaiting ACKs
-- Maintaining the authoritative set of **active subscriptions**
-- Applying ACKs and rejections **exactly once**
-- Exposing **queryable protocol facts** to higher layers (Session)
+-   Tracking outbound subscribe/unsubscribe requests
+-   Tracking pending protocol intent awaiting ACK
+-   Maintaining the authoritative active symbol set
+-   Applying ACKs and rejection notices exactly once
+-   Exposing factual state to the Session layer
 
-The Manager is **not** responsible for:
+The Manager is NOT responsible for:
 
-- Transport lifecycle or reconnection
-- Replay scheduling or ordering
-- JSON parsing or schema validation
-- Timing, retries, or backoff
-- Message dispatch or callbacks
+-   Transport lifecycle
+-   Reconnect logic
+-   Replay scheduling
+-   JSON parsing
+-   Retries or backoff
+-   Callback dispatch
 
----
+------------------------------------------------------------------------
 
 ## Scope & Ownership
 
-Each `Manager` instance is bound to **exactly one channel**, supplied at construction:
+Each instance manages exactly one channel:
 
-```cpp
-Manager trade_mgr{Channel::Trade};
-Manager book_mgr{Channel::Book};
-```
+    Manager trade_mgr{Channel::Trade};
+    Manager book_mgr{Channel::Book};
 
-This channel identity is:
-- immutable
-- used only for logging and invariants
-- **not** used for routing or filtering ACKs
+The channel identity:
 
-Routing is handled externally by the Session.
+-   Is immutable
+-   Is used for logging and diagnostics only
+-   Is not used for routing (routing is handled by Session)
 
----
+------------------------------------------------------------------------
 
-## State Model
+## Internal State Model
 
-The Manager maintains three internal sets:
+The Manager maintains three internal structures:
 
-```
-pending_subscriptions_    : req_id → [symbols]
-pending_unsubscriptions_  : req_id → [symbols]
-active_symbols_           : {symbols}
-```
+    pending_subscriptions_    : req_id → [SymbolId]
+    pending_unsubscriptions_  : req_id → [SymbolId]
+    active_symbols_           : {SymbolId}
 
-### State transitions
+### Idempotency Layer
 
-```
-(initial state)
-    ↓ register_subscription()
-pending_subscriptions_
-    ↓ subscribe ACK (success)
-active_symbols_
-    ↓ register_unsubscription()
-pending_unsubscriptions_
-    ↓ unsubscribe ACK (success)
-active_symbols_ (symbol removed)
-```
+The Manager enforces symbol-level idempotency:
 
-### Key properties
+-   A symbol cannot exist in active twice
+-   A symbol cannot be pending-subscribe twice
+-   A symbol cannot be pending-unsubscribe twice
 
-- A symbol becomes **active only after a successful ACK**
-- Pending state is grouped by `req_id`, not symbol
-- Rejections remove pending intent but **never** mutate active state
+Duplicate user requests are tolerated and safely absorbed.
 
----
+------------------------------------------------------------------------
+
+## State Transitions
+
+Initial state:
+
+    ∅
+
+Subscribe flow:
+
+    register_subscription()
+        → pending_subscriptions_
+    subscribe ACK (success)
+        → move symbol to active_symbols_
+    subscribe ACK (failure)
+        → remove from pending_subscriptions_
+
+Unsubscribe flow:
+
+    register_unsubscription()
+        → pending_unsubscriptions_
+    unsubscribe ACK (success)
+        → remove symbol from active_symbols_
+    unsubscribe ACK (failure)
+        → remove from pending_unsubscriptions_
+
+Rejections:
+
+    try_process_rejection()
+        → remove from pending only
+        → never mutates active_symbols_
+
+------------------------------------------------------------------------
 
 ## Replay Semantics
 
-On reconnect, **only active subscriptions are replayed**.
+Replay uses normal protocol flow.
 
-This is achieved implicitly:
-- Replay logic re-emits subscribe requests for `active_symbols_`
-- Replay ACKs flow through the **same paths** as normal ACKs
-- The Manager does not distinguish replay vs user intent
+On reconnect:
+
+-   Session replays active symbols
+-   Replay ACKs go through normal ACK paths
+-   No special-case replay logic exists inside Manager
 
 This guarantees:
-- deterministic convergence
-- no duplicated state
-- no special-case replay handling
 
----
+-   Deterministic convergence
+-   No replay duplication
+-   Idempotent behavior under reconnect storms
 
-## ACK & Rejection Handling
-
-### Subscribe ACK
-
-```cpp
-process_subscribe_ack(req_id, symbol, success)
-```
-
-- `success == true`
-  - Symbol moves from `pending_subscriptions_` → `active_symbols_`
-- `success == false`
-  - Symbol removed from `pending_subscriptions_`
-- Unknown `req_id` or symbol → logged and ignored
-
-### Unsubscribe ACK
-
-```cpp
-process_unsubscribe_ack(req_id, symbol, success)
-```
-
-- `success == true`
-  - Symbol removed from `active_symbols_`
-- `success == false`
-  - Symbol removed from `pending_unsubscriptions_`
-- Unsubscribing a non-active symbol is tolerated and logged
-
-### Rejections
-
-```cpp
-try_process_rejection(req_id, symbol)
-```
-
-- Removes matching symbol from pending state
-- Never mutates `active_symbols_`
-- Safe to call for any rejection notice
-
----
+------------------------------------------------------------------------
 
 ## Public Protocol Facts
 
-The Manager exposes **only factual state**, never inferred meaning.
+### Request-Level
 
-### Request-level (grouped by `req_id`)
+    pending_subscription_requests()
+    pending_unsubscription_requests()
+    pending_requests()
+    has_pending_requests()
 
-```cpp
-pending_subscription_requests()
-pending_unsubscription_requests()
-pending_requests()
-has_pending_requests()
-```
+### Symbol-Level
 
-### Symbol-level
+    pending_subscribe_symbols()
+    pending_unsubscribe_symbols()
+    pending_symbols()
+    active_symbols()
+    has_active_symbols()
 
-```cpp
-pending_subscribe_symbols()
-pending_unsubscribe_symbols()
-pending_symbols()
-active_symbols()
-has_active_symbols()
-```
+### Intent-Level (Architectural Invariant)
 
-These queries are:
-- O(1) or bounded O(n)
-- allocation-free
-- stable under replay and retries
+    total_symbols()
 
----
+This represents:
+
+    active_symbols + pending_subscribe_symbols
+
+It excludes pending_unsubscribe symbols because they are still logically
+active.
+
+------------------------------------------------------------------------
 
 ## Reset Semantics
 
-```cpp
-clear_all()
-```
+    clear_all()
 
-Performs a full reset:
-- Clears all pending intent
-- Clears all active subscriptions
+Clears:
 
-Used for:
-- shutdown
-- full protocol reset
+-   Active symbols
+-   Pending subscriptions
+-   Pending unsubscriptions
 
----
+Used only for shutdown or full protocol reset.
 
-## Invariants & Guarantees
+------------------------------------------------------------------------
 
-### Guaranteed
+## Invariants
 
-- `active_symbols_` is mutated **only** on successful ACKs or reset
-- Rejections never affect active state
-- A symbol cannot become active without an ACK
-- Duplicate or out-of-order ACKs do not corrupt state
-- The Manager is replay-safe and idempotent
+Guaranteed:
 
-### Assumed (enforced by Session)
+-   Active state changes only on successful ACK
+-   Rejections never mutate active state
+-   Duplicate ACKs are safe
+-   Unknown req_id is safe
+-   Replay is idempotent
+-   Symbol accounting is consistent
 
-- A symbol is not subscribed and unsubscribed concurrently
-- ACKs are routed to the correct Manager
-- Requests use unique `req_id`s
+Assumed (enforced by Session):
 
----
+-   Unique req_id generation
+-   Proper ACK routing
+-   Policy decisions (STRICT / LENIENT subscribe policy)
+
+------------------------------------------------------------------------
 
 ## Performance Characteristics
 
-- No dynamic allocation beyond bounded vectors
-- No dynamic dispatch
-- No callbacks
-- No locks
-- O(1) fast paths
-- Channel identity is stored to avoid redundant parameters and branches
+-   No locks
+-   No dynamic polymorphism
+-   Bounded allocation
+-   O(1) hot-path operations
+-   Designed for poll-driven ULL event loops
 
-This makes the Manager suitable for **ULL, poll-driven event loops**.
+------------------------------------------------------------------------
 
----
+## Design Philosophy
 
-## Design Rationale
-
-- **Protocol facts over inferred state**
-- **Composition over inheritance**
-- **Replay as normal protocol flow**
-- **Explicit state, minimal surface**
-- **No hidden coupling to transport or timing**
+-   Protocol facts over inferred state
+-   Replay as normal protocol flow
+-   Explicit state transitions
+-   Idempotency at symbol granularity
+-   Separation of policy (Session) and mechanics (Manager)
 
 ---
 

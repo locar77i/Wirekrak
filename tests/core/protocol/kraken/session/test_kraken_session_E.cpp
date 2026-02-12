@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- protocol::kraken::Session — Group E Cross-Channel Replay Isolation Tests
+ protocol::kraken::Session - Group E Cross-Channel Replay Isolation Tests
 ===============================================================================
 
 Scope:
@@ -259,6 +259,6 @@ int main() {
     test_replay_database_isolated_tables();
     test_multi_channel_reconnect_stress();
 
-    std::cout << "\n[GROUP E — CROSS-CHANNEL REPLAY ISOLATION PASSED]\n";
+    std::cout << "\n[GROUP E - CROSS-CHANNEL REPLAY ISOLATION PASSED]\n";
     return 0;
 }

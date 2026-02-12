@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- protocol::kraken::Session — Group D Epoch & Replay Stress Tests
+ protocol::kraken::Session - Group D Epoch & Replay Stress Tests
 ===============================================================================
 
 Scope:
@@ -80,7 +80,7 @@ void test_replay_once_per_epoch() {
     // Replay must have created exactly one pending request
     TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
 
-    // Poll repeatedly — replay must NOT fire again
+    // Poll repeatedly - replay must NOT fire again
     for (int i = 0; i < 5; ++i)
         h.drain();
 
@@ -169,6 +169,6 @@ int main() {
     test_no_duplicate_replay_across_epochs();
     test_reconnect_stress_convergence();
 
-    std::cout << "\n[GROUP D — EPOCH & REPLAY STRESS TESTS PASSED]\n";
+    std::cout << "\n[GROUP D - EPOCH & REPLAY STRESS TESTS PASSED]\n";
     return 0;
 }

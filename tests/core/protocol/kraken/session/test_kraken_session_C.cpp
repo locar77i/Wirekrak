@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- protocol::kraken::Session — Group C Intent Convergence Tests
+ protocol::kraken::Session - Group C Intent Convergence Tests
 ===============================================================================
 
 Scope:
@@ -208,6 +208,6 @@ int main() {
     test_unsubscribe_accepted_removes_intent();
     test_unsubscribe_rejected_keeps_intent();
 
-    std::cout << "\n[GROUP C — INTENT CONVERGENCE TESTS PASSED]\n";
+    std::cout << "\n[GROUP C - INTENT CONVERGENCE TESTS PASSED]\n";
     return 0;
 }

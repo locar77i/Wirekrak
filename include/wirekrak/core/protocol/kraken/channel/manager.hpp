@@ -165,16 +165,18 @@ public:
     // Rejection notice (generic path)
     // ------------------------------------------------------------
 
-    inline void try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
+    [[nodiscard]]
+    inline bool try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         if (pending_subscriptions_.remove(req_id, symbol)) {
             WK_WARN("[SUBMGR:" << to_string(channel_) << "] Subscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
-            return;
+            return true;
         }
 
         if (pending_unsubscriptions_.remove(req_id, symbol)) {
             WK_WARN("[SUBMGR:" << to_string(channel_) << "] Unsubscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
-            return;
+            return true;
         }
+        return false;
     }
 
     // ------------------------------------------------------------

@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- protocol::kraken::Session — Group B Replay + Pending Interaction Tests
+ protocol::kraken::Session - Group B Replay + Pending Interaction Tests
 ===============================================================================
 
 Scope:
@@ -220,6 +220,6 @@ int main() {
     test_replay_fires_only_once_per_epoch();
     test_replay_ack_unknown_req_id_is_ignored();
 
-    std::cout << "\n[GROUP B — REPLAY + PENDING INTERACTION TESTS PASSED]\n";
+    std::cout << "\n[GROUP B - REPLAY + PENDING INTERACTION TESTS PASSED]\n";
     return 0;
 }

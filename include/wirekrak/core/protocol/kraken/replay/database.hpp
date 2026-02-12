@@ -127,6 +127,7 @@ public:
 
     // Process a protocol rejection by req_id and symbol, removing any matching intent from the table.
     // Returns true if a matching subscription was found and updated, false otherwise.
+    [[nodiscard]]
     inline bool try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         bool done = trade_.try_process_rejection(req_id, symbol);
         if (!done) {

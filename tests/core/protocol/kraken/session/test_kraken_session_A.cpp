@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- protocol::kraken::Session — Group A Replay Tests
+ protocol::kraken::Session - Group A Replay Tests
 ===============================================================================
 
 Scope:
@@ -146,6 +146,6 @@ int main() {
     test_multiple_channel_replay();
     test_no_active_no_replay();
 
-    std::cout << "\n[GROUP A — SESSION REPLAY TESTS PASSED]\n";
+    std::cout << "\n[GROUP A - SESSION REPLAY TESTS PASSED]\n";
     return 0;
 }

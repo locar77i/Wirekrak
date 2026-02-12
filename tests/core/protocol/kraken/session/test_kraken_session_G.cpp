@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- protocol::kraken::Session — Group G Long-Run Convergence Fuzz Tests
+ protocol::kraken::Session - Group G Long-Run Convergence Fuzz Tests
 ===============================================================================
 
 Scope:
@@ -43,7 +43,7 @@ static std::string random_symbol(std::mt19937& rng) {
 
 
 // ------------------------------------------------------------
-// G1 — Random Single-Channel Fuzz
+// G1 - Random Single-Channel Fuzz
 // ------------------------------------------------------------
 
 void test_single_channel_long_run_fuzz() {
@@ -52,9 +52,10 @@ void test_single_channel_long_run_fuzz() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 20;
+    constexpr int STEPS = 400;
+    constexpr uint32_t SEED = 42;
 
-    std::mt19937 rng(42);
+    std::mt19937 rng(SEED);
     std::uniform_int_distribution<> action(0, 3);
     std::uniform_int_distribution<> coin(0, 1);
 
@@ -124,7 +125,7 @@ void test_single_channel_long_run_fuzz() {
 
 
 // ------------------------------------------------------------
-// G2 — Cross-channel fuzz
+// G2 - Cross-channel fuzz
 // ------------------------------------------------------------
 
 void test_cross_channel_long_run_fuzz() {
@@ -133,9 +134,10 @@ void test_cross_channel_long_run_fuzz() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 20;
+    constexpr int STEPS = 400;
+    constexpr uint32_t SEED = 1337;
 
-    std::mt19937 rng(1337);
+    std::mt19937 rng(SEED);
 
     std::vector<std::pair<ctrl::req_id_t, std::string>> trade_pending;
     std::vector<std::pair<ctrl::req_id_t, std::string>> book_pending;
@@ -286,7 +288,7 @@ void test_cross_channel_long_run_fuzz() {
 
 
 // ------------------------------------------------------------
-// G3 — Deterministic chaos simulator
+// G3 - Deterministic chaos simulator
 // ------------------------------------------------------------
 
 void test_deterministic_chaos_simulator() {
@@ -417,7 +419,7 @@ void test_deterministic_chaos_simulator() {
 
 
 // ------------------------------------------------------------
-// G4 — Replay storm amplification
+// G4 - Replay storm amplification
 // Forces reconnect every 5 steps
 // ------------------------------------------------------------
 
@@ -427,7 +429,7 @@ void test_replay_storm_amplification() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 500;
+    constexpr int STEPS = 600;
     constexpr uint32_t SEED = 4242;
 
     std::mt19937 rng(SEED);
@@ -541,7 +543,7 @@ void test_replay_storm_amplification() {
 
 
 // ------------------------------------------------------------
-// G5 — Replay with delayed ACK simulation
+// G5 - Replay with delayed ACK simulation
 // Simulates late ACKs arriving after reconnect
 // ------------------------------------------------------------
 
@@ -702,6 +704,6 @@ int main() {
     test_replay_storm_amplification();
     test_replay_with_delayed_ack_simulation();
 
-    std::cout << "\n[GROUP G — LONG-RUN FUZZ TESTS PASSED]\n";
+    std::cout << "\n[GROUP G - LONG-RUN FUZZ TESTS PASSED]\n";
     return 0;
 }

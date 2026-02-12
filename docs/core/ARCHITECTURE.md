@@ -162,28 +162,27 @@ Every parser is fully unit-tested against invalid, edge, and protocol-violating 
 
 ---
 
-## Subscription Manager <a name="channel-manager"></a>
+## Channel Manager <a name="channel-manager"></a>
 
-The Subscription Manager tracks the full lifecycle of Kraken subscriptions.
+The Channel Manager is the protocol-level state machine that tracks the lifecycle of
+subscriptions for a single Kraken channel.
 
 Responsibilities:
-- Track pending subscriptions
-- Track active subscriptions
-- Track pending unsubscriptions
-- Transition states only after explicit ACKs
+- Track pending subscribe requests
+- Track pending unsubscribe requests
+- Maintain the authoritative set of active symbols
+- Transition state only after explicit ACKs or rejections
 
 Kraken’s multi-symbol subscription model is handled deterministically, including partial
 acknowledgements.
 
-➡️ **[Subscription Manager Overview](./architecture/protocol/kraken/ChannelManager.md)**
+➡️ **[Channel Manager Overview](./architecture/protocol/kraken/ChannelManager.md)**
 
 ---
 
-## Subscription Replay <a name="subscription-replay"></a>
+## Replay Database <a name="replay-database"></a>
 
-The Replay module records **confirmed protocol subscriptions** and replays them automatically
-after reconnects.
-
+The Replay Database records **acknowledged subscription intent** and replays it deterministically after reconnects.
 This ensures:
 - Continuity after transient network failures
 - No duplicate or invalid subscriptions
@@ -191,7 +190,7 @@ This ensures:
 
 This is **protocol replay**, not market-state replay.
 
-➡️ **[Subscription Replay Overview](./architecture/protocol/kraken/SubscriptionReplay.md)**
+➡️ **[Replay Database Overview](./architecture/protocol/kraken/ReplayDatabase.md)**
 
 ---
 

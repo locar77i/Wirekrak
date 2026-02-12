@@ -1,6 +1,6 @@
 /*
 ===============================================================================
- protocol::kraken::Session — Group F Mixed Rejection + Reconnect Chaos
+ protocol::kraken::Session - Group F Mixed Rejection + Reconnect Chaos
 ===============================================================================
 
 Scope:
@@ -199,6 +199,6 @@ int main() {
     test_mixed_accept_reject_cross_channel();
     test_reconnect_storm_with_rejections();
 
-    std::cout << "\n[GROUP F — CHAOS REPLAY TESTS PASSED]\n";
+    std::cout << "\n[GROUP F - CHAOS REPLAY TESTS PASSED]\n";
     return 0;
 }
