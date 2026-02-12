@@ -310,7 +310,7 @@ public:
     //   - poll() processes control-plane events before data-plane delivery
     //   - ACKs and rejections are handled before user-visible messages are drained
     [[nodiscard]]
-    inline uint64_t poll() {
+    inline std::uint64_t poll() {
         // === Heartbeat liveness & reconnection logic ===
         connection_.poll();
         transport::connection::Signal sig;
@@ -409,7 +409,7 @@ public:
 
     // Accessor to the heartbeat counter
     [[nodiscard]]
-    inline uint64_t heartbeat_total() const noexcept {
+    inline std::uint64_t heartbeat_total() const noexcept {
         return connection_.heartbeat_total().load(std::memory_order_relaxed);
     }
 
@@ -432,22 +432,22 @@ public:
     // Accessor to the current transport epoch
     // incremented on each successful connect, used for staleness checks
     [[nodiscard]]
-    inline uint64_t transport_epoch() const noexcept {
+    inline std::uint64_t transport_epoch() const noexcept {
         return connection_.epoch();
     }
 
     [[nodiscard]]
-    inline uint64_t rx_messages() const noexcept {
+    inline std::uint64_t rx_messages() const noexcept {
         return connection_.rx_messages();
     }
 
     [[nodiscard]]
-    inline uint64_t tx_messages() const noexcept {
+    inline std::uint64_t tx_messages() const noexcept {
         return connection_.tx_messages();
     }
 
     [[nodiscard]]
-    inline uint64_t hb_messages() const noexcept {
+    inline std::uint64_t hb_messages() const noexcept {
         return connection_.hb_messages();
     }
 

@@ -50,7 +50,7 @@ public:
         for (auto& s : symbols) {
             vec.push_back(intern_symbol(s));
         }
-        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size()
+        WK_INFO("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size()
             << " - Pending subscriptions = " << pending_subscriptions_.size());
     }
 
@@ -62,7 +62,7 @@ public:
         for (auto& s : symbols) {
             vec.push_back(intern_symbol(s));
         }
-        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size()
+        WK_INFO("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size()
             << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
     }
 
@@ -82,7 +82,7 @@ public:
             if (done) WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Subscription REJECTED for symbol  {" << symbol << "} (req_id=" << req_id << ")");
         }
         if (!done) WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Subscription OMITTED for symbol {" << symbol << "} (unknown req_id=" << req_id << ")");
-        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size() << " - Pending subscriptions = " << pending_subscriptions_.size());
+        WK_INFO("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size() << " - Pending subscriptions = " << pending_subscriptions_.size());
     }
 
     inline void process_unsubscribe_ack(ctrl::req_id_t req_id, Symbol symbol, bool success) noexcept {
@@ -97,7 +97,7 @@ public:
             if (done) WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unsubscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
         }
         if (!done) WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unsubscription ACK omitted for symbol {" << symbol << "} (unknown req_id=" << req_id << ")");
-        WK_TRACE("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
+        WK_INFO("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
     }
 
     inline void try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
@@ -112,6 +112,7 @@ public:
             WK_WARN("[SUBMGR] <" << to_string(channel_) << "> Unsubscription REJECTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
             return;
         }
+        WK_INFO("[SUBMGR] <" << to_string(channel_) << "> Active subscriptions = " << active_symbols_.size() << " - Pending unsubscriptions = " << pending_unsubscriptions_.size());
     }
 
     // ------------------------------------------------------------
@@ -178,6 +179,27 @@ public:
     [[nodiscard]]
     inline std::size_t active_symbols() const noexcept {
         return active_symbols_.size();
+    }
+
+    // ------------------------------------------------------------
+    // Logical state (intent-level view)
+    // ------------------------------------------------------------
+
+    // Total symbols logically owned by this manager.
+    //
+    // Includes:
+    //   - Active symbols
+    //   - Pending subscribe symbols
+    //
+    // Excludes:
+    //   - Pending unsubscribe symbols (they are still logically active
+    //     until unsubscribe is confirmed)
+    //
+    // This mirrors Replay DB intent and is suitable for
+    // architectural invariant checks.
+    [[nodiscard]]
+    inline std::size_t total_symbols() const noexcept {
+        return active_symbols_.size() + pending_subscribe_symbols();
     }
 
     // ------------------------------------------------------------

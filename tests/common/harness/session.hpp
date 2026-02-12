@@ -34,10 +34,10 @@ struct Session {
     // -------------------------------------------------------------------------
     // Force reconnect deterministically
     // -------------------------------------------------------------------------
-    inline void force_reconnect() {
+    inline std::uint64_t force_reconnect() {
         session.ws().emit_error(transport::Error::RemoteClosed);
         session.ws().close();
-        (void)session.poll();
+        return session.poll();
     }
 
     // -------------------------------------------------------------------------
@@ -70,22 +70,38 @@ struct Session {
     // -------------------------------------------------------------------------
     // Subscribe/Unsubscribe helpers
     // -------------------------------------------------------------------------
-    ctrl::req_id_t subscribe_trade(const std::string& symbol) {
-        schema::trade::Subscribe sub{.symbols = {symbol}};
-        return session.subscribe(sub);
+    inline ctrl::req_id_t subscribe_trade(std::vector<std::string> symbols) {
+        schema::trade::Subscribe req{.symbols = std::move(symbols)};
+        return session.subscribe(req);
     }
 
-    ctrl::req_id_t unsubscribe_trade(const std::string& symbol) {
+    inline ctrl::req_id_t subscribe_trade(std::initializer_list<std::string> symbols) {
+        return subscribe_trade(std::vector<std::string>{symbols});
+    }
+
+    inline ctrl::req_id_t subscribe_trade(const std::string& symbol) {
+        return subscribe_trade(std::vector<std::string>{symbol});
+    }
+
+    inline ctrl::req_id_t unsubscribe_trade(const std::string& symbol) {
         schema::trade::Unsubscribe unsub{.symbols = {symbol}};
         return session.unsubscribe(unsub);
     }
 
-    ctrl::req_id_t subscribe_book(const std::string& symbol, int depth) {
-        schema::book::Subscribe sub{.symbols = {symbol}, .depth = depth};
+    inline ctrl::req_id_t subscribe_book(std::vector<std::string> symbols, int depth) {
+        schema::book::Subscribe sub{.symbols = std::move(symbols), .depth = depth};
         return session.subscribe(sub);
     }
 
-    ctrl::req_id_t unsubscribe_book(const std::string& symbol, int depth) {
+    inline ctrl::req_id_t subscribe_book(std::initializer_list<std::string> symbols, int depth) {
+        return subscribe_book(std::vector<std::string>{symbols}, depth);
+    }
+
+    inline ctrl::req_id_t subscribe_book(const std::string& symbol, int depth) {
+        return subscribe_book(std::vector<std::string>{std::move(symbol)}, depth);
+    }
+
+    inline ctrl::req_id_t unsubscribe_book(const std::string& symbol, int depth) {
         schema::book::Unsubscribe unsub{.symbols = {symbol}, .depth = depth};
         return session.unsubscribe(unsub);
     }

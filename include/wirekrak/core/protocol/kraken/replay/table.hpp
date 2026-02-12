@@ -88,6 +88,7 @@ Threading & performance
 
 #include "wirekrak/core/protocol/kraken/replay/subscription.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
+#include "wirekrak/core/symbol/intern.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -116,33 +117,75 @@ public:
     // Add a new replay subscription
     // table_.emplace_back(request)
     // ------------------------------------------------------------
-    inline void add(RequestT req) {
+    inline bool add(RequestT req) {
+        // 0) Validate req_id presence
         if (!req.req_id.has()) {
             WK_FATAL("[REPLAY:TABLE] Attempted to add subscription with invalid req_id");
-            return;
+            return false;
         }
         ctrl::req_id_t req_id = req.req_id.value();
+        // 1) Enforce symbol uniqueness
+        // ------------------------------------------------------------
+        // FIRST-WRITE-WINS POLICY:
+        // Remove duplicated symbols from incoming request.
+        // Do NOT mutate existing subscriptions.
+        // ------------------------------------------------------------
+        auto& symbols = req.symbols;
+        symbols.erase(
+            std::remove_if(
+                symbols.begin(),
+                symbols.end(),
+                [&](const Symbol& symbol) {
+                    auto simbol_id = intern_symbol(symbol);
+                    auto it = symbol_owner_.find(simbol_id);
+                    if (it != symbol_owner_.end()) {
+                        WK_TRACE("[REPLAY:TABLE] Ignoring duplicate symbol {" << symbol << "} already owned by req_id=" << it->second);
+                        return true; // drop from incoming request
+                    }
+                    return false;
+                }
+            ),
+            symbols.end()
+        );
+        // 2) If nothing left after filtering, ignore entire request
+        if (symbols.empty()) {
+            WK_TRACE("[REPLAY:TABLE] Dropping empty subscription request (all symbols duplicated) req_id=" << req_id);
+            return false;
+        }
+        // 3) Insert subscription into the table
         auto [it, inserted] = subscriptions_.emplace(req_id, Subscription<RequestT>{std::move(req)});
         if (!inserted) [[unlikely]] {
             WK_FATAL("[REPLAY:TABLE] Duplicate req_id detected: " << req_id);
+            return false; // hard stop to protect invariants
+        }
+        // 4) Register ownership after successful insertion
+        for (const auto& symbol : it->second.request().symbols) {
+            SymbolId sid = intern_symbol(symbol);
+            symbol_owner_.emplace(sid, req_id);
         }
         WK_TRACE("[REPLAY:TABLE] Added subscription with req_id=" << req_id << " and " << it->second.request().symbols.size() << " symbol(s) " << " (total subscriptions=" << subscriptions_.size() << ")");
+        return true;
     }
 
     inline bool try_process_rejection(ctrl::req_id_t req_id, Symbol symbol) noexcept {
-        // Find the subscription matching the req_id
+        // 1) Find the subscription matching the req_id
         auto it = subscriptions_.find(req_id);
         if (it == subscriptions_.end()) {
             return false;
         }
-        // Apply rejection to the matching subscription
+        // 2) Apply rejection to the matching subscription
         bool done = it->second.try_process_rejection(req_id, symbol);
-        if (done) {
-            WK_TRACE("[REPLAY:TABLE] Rejected symbol {" << symbol << "} from subscription (req_id=" << req_id << ")");
-            if (it->second.empty()) {
-                subscriptions_.erase(it);
-                WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << req_id << " (total subscriptions=" << subscriptions_.size() << ")");
-            }
+        if (!done) {
+            return false;
+        }
+        WK_TRACE("[REPLAY:TABLE] Rejected symbol {" << symbol << "} from subscription (req_id=" << req_id << ")");
+        // 3) Remove the symbol track from the ownership map
+        SymbolId sid = intern_symbol(symbol);
+        symbol_owner_.erase(sid);
+        // 4) If the subscription is now empty, remove it from the table
+        if (it->second.empty()) {
+            subscriptions_.erase(it);
+            WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << req_id << " (total subscriptions=" << subscriptions_.size() << ")");
         }
 
         return done;
@@ -155,29 +198,38 @@ public:
     //   subscription contains it.
     // ------------------------------------------------------------
     inline void erase_symbol(Symbol symbol) noexcept {
-        for (auto it = subscriptions_.begin(); it != subscriptions_.end(); ) {
-            auto& subscription = it->second;
-            bool removed = subscription.erase_symbol(symbol);
-            if (removed) {
-                if (subscription.empty()) {
-                    WK_TRACE("[REPLAY:TABLE] Removed empty subscription with req_id=" << subscription.req_id() << " (total subscriptions=" << subscriptions_.size() - 1 << ")");
-                    it = subscriptions_.erase(it);
-                }
-                return;
-            }
-            ++it;
+        // 1) Find the req_id owning the symbol
+        SymbolId sid = intern_symbol(symbol);
+        auto owner_it = symbol_owner_.find(sid);
+        if (owner_it == symbol_owner_.end()) {
+            WK_WARN("[REPLAY:TABLE] Symbol {" << symbol << "} not found in the ownership map (cannot erase)");
+            return;
         }
-        WK_WARN("[REPLAY:TABLE] Failed to erase symbol {" << symbol << "} from any subscription (not found)");
+        ctrl::req_id_t req_id = owner_it->second;
+        // 2) Find the subscription by req_id
+        auto sub_it = subscriptions_.find(req_id);
+        if (sub_it == subscriptions_.end()) {
+            WK_WARN("[REPLAY:TABLE] Symbol {" << symbol << "} has req_id=" << req_id << " but no matching subscription found (inconsistent state)");
+            symbol_owner_.erase(owner_it);
+            return;
+        }
+        // 3) Remove the symbol from the subscription
+        bool removed = sub_it->second.erase_symbol(symbol);
+        if (removed) {
+            // 4) Remove the symbol track from the ownership map
+            symbol_owner_.erase(owner_it);
+            // 5) If the subscription is now empty, remove it from the table
+            if (sub_it->second.empty()) {
+                subscriptions_.erase(sub_it);
+                WK_TRACE("[REPLAY:TABLE] Removed empty subscription (req_id=" << req_id << ")");
+            }
+        }
     }
 
     [[nodiscard]]
     inline bool contains_symbol(Symbol symbol) const noexcept {
-        for (const auto& [_, sub] : subscriptions_) {
-            if (sub.contains(symbol)) {
-                return true;
-            }
-        }
-        return false;
+        SymbolId sid = intern_symbol(symbol);
+        return symbol_owner_.find(sid) != symbol_owner_.end();
     }
 
     // ------------------------------------------------------------
@@ -189,19 +241,9 @@ public:
         return subscriptions_.empty();
     }
 
-    [[nodiscard]]
-    inline size_t size() const noexcept {
-        return subscriptions_.size();
-    }
-
     inline void clear() noexcept {
         subscriptions_.clear();
-    }
-
-    // for diagnostics only, not iteration-based logic, since order is unspecified
-    [[nodiscard]]
-    inline const auto& subscriptions() const noexcept {
-        return subscriptions_;
+        symbol_owner_.clear();
     }
 
     [[nodiscard]]
@@ -211,11 +253,7 @@ public:
 
     [[nodiscard]]
     inline size_t total_symbols() const noexcept {
-        size_t count = 0;
-        for (const auto& [_, sub] : subscriptions_) {
-            count += sub.request().symbols.size();
-        }
-        return count;
+        return symbol_owner_.size();
     }
 
     [[nodiscard]]
@@ -227,13 +265,24 @@ public:
         for (auto& [_, sub] : subscriptions_) {
             out.push_back(std::move(sub));
         }
-        // Clear the table after moving out subscriptions
-        subscriptions_.clear();
+        // Clear table state after moving out subscriptions
+        clear();
         return out;
     }
 
+#ifndef NDEBUG
+    void assert_consistency() const {
+        size_t symbol_count = 0;
+        for (const auto& [_, sub] : subscriptions_) {
+            symbol_count += sub.request().symbols.size();
+        }
+        assert(symbol_count == symbol_owner_.size());
+    }
+#endif
+
 private:
     std::unordered_map<ctrl::req_id_t, Subscription<RequestT>> subscriptions_;
+    std::unordered_map<SymbolId, ctrl::req_id_t> symbol_owner_;
 };
 
 } // namespace replay
