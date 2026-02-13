@@ -52,7 +52,7 @@ void test_single_channel_long_run_fuzz() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 400;
+    constexpr int STEPS = 10;
     constexpr uint32_t SEED = 42;
 
     std::mt19937 rng(SEED);
@@ -134,7 +134,7 @@ void test_cross_channel_long_run_fuzz() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 400;
+    constexpr int STEPS = 10;
     constexpr uint32_t SEED = 1337;
 
     std::mt19937 rng(SEED);

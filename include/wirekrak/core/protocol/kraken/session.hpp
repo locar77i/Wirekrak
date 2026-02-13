@@ -65,6 +65,7 @@ Data-plane model:
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/policy/liveness.hpp"
+#include "wirekrak/core/protocol/policy/symbol_limit.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
@@ -83,7 +84,10 @@ namespace wirekrak::core {
 namespace protocol {
 namespace kraken {
 
-template<transport::WebSocketConcept WS>
+template<
+    transport::WebSocketConcept WS,
+    policy::SymbolLimitConcept LimitPolicy = policy::NoSymbolLimits
+>
 class Session {
 
 public:
@@ -237,27 +241,68 @@ public:
         );
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
         WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
-        // 1) Assign req_id if missing
+        // 1) Hard symbol limit enforcement (compile-time removable)
+        if constexpr (LimitPolicy::enabled && LimitPolicy::hard) {
+            if (!hard_symbol_limit_enforcement_<RequestT>(req)) {
+                return ctrl::INVALID_REQ_ID;
+            }
+        }
+        // 2) Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
-        // 2) Register in replay DB
+        // 3) Register in replay DB
         // Store protocol intent for deterministic replay after reconnect.
         // Only acknowledged subscriptions will be replayed.
         replay_db_.add(req);
-        // 3) Send JSON BEFORE moving req.symbols
+        // 4) Send JSON BEFORE moving req.symbols
         WK_DEBUG("Sending subscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
             WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
             return ctrl::INVALID_REQ_ID;
         }
-        // 4) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
+        // 5) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         subscription_manager_for_<RequestT>().register_subscription(
             std::move(req.symbols),
             req.req_id.value()
         );
         return req.req_id.value();
     }
+
+    // ------------------------------------------------------------
+    // Hard symbol limit enforcement
+    // ------------------------------------------------------------
+    template <request::Subscription RequestT>
+    [[nodiscard]]
+    inline bool hard_symbol_limit_enforcement_(const RequestT& req) const noexcept {
+        const std::size_t requested = req.symbols.size();
+        // Current logical symbol counts
+        const std::size_t trade_now = trade_channel_manager_.total_symbols();
+        const std::size_t book_now = book_channel_manager_.total_symbols();
+        const std::size_t global_now = trade_now + book_now;
+        // Check limits
+        if constexpr (channel_of_v<RequestT> == Channel::Trade) { // Check trade limits
+
+            if (LimitPolicy::max_trade > 0 && trade_now + requested > LimitPolicy::max_trade) {
+                WK_WARN("[SESSION] Trade symbol limit exceeded (" << trade_now + requested << " > " << LimitPolicy::max_trade << ")");
+                return false;
+            }
+        }
+        else if constexpr (channel_of_v<RequestT> == Channel::Book) { // Check book limits
+
+            if (LimitPolicy::max_book > 0 && book_now + requested > LimitPolicy::max_book) {
+                WK_WARN("[SESSION] Book symbol limit exceeded (" << book_now + requested << " > " << LimitPolicy::max_book << ")");
+                return false;
+            }
+        }
+        // Check global limits
+        if (LimitPolicy::max_global > 0 && global_now + requested > LimitPolicy::max_global) {
+            WK_WARN("[SESSION] Global symbol limit exceeded (" << global_now + requested << " > " << LimitPolicy::max_global << ")");
+            return false;
+        }
+        return true;
+    }
+
 
     template <request::Unsubscription RequestT>
     inline ctrl::req_id_t unsubscribe(RequestT req) {
@@ -615,9 +660,7 @@ private:
                 if (!done) {
                     done = book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
                 }
-                if (!done) {
-                    done = replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                }
+                done = replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
             }
         }
     }

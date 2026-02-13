@@ -15,9 +15,13 @@ namespace ctrl = wirekrak::core::protocol::ctrl;
 
 namespace wirekrak::core::protocol::kraken::test::harness {
 
+template<
+    transport::WebSocketConcept WS = transport::test::MockWebSocket,
+    policy::SymbolLimitConcept LimitPolicy = policy::NoSymbolLimits
+>
 struct Session {
 
-    kraken::Session<transport::test::MockWebSocket> session;
+    kraken::Session<WS, LimitPolicy> session;
 
     Session() {
         wirekrak::core::transport::test::MockWebSocket::reset();
@@ -158,4 +162,4 @@ struct Session {
 } // namespace wirekrak::core::protocol::kraken::test::harness
 
 
-using SessionHarness = wirekrak::core::protocol::kraken::test::harness::Session;
+using SessionHarness = wirekrak::core::protocol::kraken::test::harness::Session<>;

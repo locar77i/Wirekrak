@@ -612,9 +612,17 @@ void test_saturation_race_overlap() {
 // ------------------------------------------------------------
 
 void test_hard_limit_enforcement() {
+    using namespace wirekrak::core::transport;
+    using namespace wirekrak::core::protocol;
     std::cout << "[TEST] H7 Hard limit enforcement\n";
 
-    SessionHarness h;
+    using Hard5 =
+    policy::SymbolLimitPolicy<
+        policy::LimitMode::Hard,
+        5, 5, 8
+    >;
+
+    kraken::test::harness::Session<test::MockWebSocket, Hard5> h;
     h.connect();
 
     constexpr std::size_t MAX_SYMBOLS = 5;
@@ -695,7 +703,7 @@ int main() {
 
     test_out_of_order_ack_burst();
     test_duplicate_ack_storm();
-    //test_subscribe_unsubscribe_race_under_replay();
+    test_subscribe_unsubscribe_race_under_replay();
     //test_replay_db_saturation_limit();
     //test_replay_db_mixed_trade_book_stress();
     //test_saturation_race_overlap();
