@@ -172,10 +172,20 @@ public:
         return book_;
     }
 
+    [[nodiscard]]
+    inline std::size_t total_requests() const noexcept {
+        return trade_.total_requests() + book_.total_requests();
+    }
+
+    [[nodiscard]]
+    inline std::size_t total_symbols() const noexcept {
+        return trade_.total_symbols() + book_.total_symbols();
+    }
+
 private:
-    Table<schema::trade::Subscribe> trade_;
+    Table<schema::trade::Subscribe> trade_{Channel::Trade};
     // Table<ticker::Subscribe> ticker_;
-    Table<schema::book::Subscribe> book_;
+    Table<schema::book::Subscribe> book_{Channel::Book};
 
 private:
     // Helpers to get the correct handler table for a response type

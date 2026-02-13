@@ -52,7 +52,7 @@ void test_single_channel_long_run_fuzz() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 10;
+    constexpr int STEPS = 1000;
     constexpr uint32_t SEED = 42;
 
     std::mt19937 rng(SEED);
@@ -67,22 +67,24 @@ void test_single_channel_long_run_fuzz() {
 
         case 0: { // subscribe
             auto sym = random_symbol(rng);
-            auto id = h.subscribe_trade(sym);
-            pending_subs.push_back(id);
+            auto req_id = h.subscribe_trade(sym);
+            if (req_id != ctrl::INVALID_REQ_ID) {
+                pending_subs.push_back(req_id);
+            }
             break;
         }
 
         case 1: { // resolve one pending
             if (!pending_subs.empty()) {
-                auto id = pending_subs.back();
+                auto req_id = pending_subs.back();
                 pending_subs.pop_back();
 
                 auto sym = random_symbol(rng);
 
                 if (coin(rng)) {
-                    h.confirm_trade_subscription(id, sym);
+                    h.confirm_trade_subscription(req_id, sym);
                 } else {
-                    h.reject_trade_subscription(id, sym);
+                    h.reject_trade_subscription(req_id, sym);
                 }
             }
             break;
@@ -134,7 +136,7 @@ void test_cross_channel_long_run_fuzz() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 10;
+    constexpr int STEPS = 1000;
     constexpr uint32_t SEED = 1337;
 
     std::mt19937 rng(SEED);
@@ -154,29 +156,33 @@ void test_cross_channel_long_run_fuzz() {
         // --- Trade subscribe
         case 0: {
             auto sym = random_symbol(rng);
-            auto id = h.subscribe_trade(sym);
-            trade_pending.emplace_back(id, sym);
+            auto req_id = h.subscribe_trade(sym);
+            if (req_id != ctrl::INVALID_REQ_ID) {
+                trade_pending.emplace_back(req_id, sym);
+            }
             break;
         }
 
         // --- Book subscribe
         case 1: {
             auto sym = random_symbol(rng);
-            auto id = h.subscribe_book(sym, 25);
-            book_pending.emplace_back(id, sym);
+            auto req_id = h.subscribe_book(sym, 25);
+            if (req_id != ctrl::INVALID_REQ_ID) {
+                book_pending.emplace_back(req_id, sym);
+            }
             break;
         }
 
         // --- Resolve trade (ACK or reject)
         case 2: {
             if (!trade_pending.empty()) {
-                auto [id, sym] = trade_pending.back();
+                auto [req_id, sym] = trade_pending.back();
                 trade_pending.pop_back();
 
                 if (coin(rng))
-                    h.confirm_trade_subscription(id, sym);
+                    h.confirm_trade_subscription(req_id, sym);
                 else
-                    h.reject_trade_subscription(id, sym);
+                    h.reject_trade_subscription(req_id, sym);
             }
             break;
         }
@@ -184,13 +190,13 @@ void test_cross_channel_long_run_fuzz() {
         // --- Resolve book (ACK or reject)
         case 3: {
             if (!book_pending.empty()) {
-                auto [id, sym] = book_pending.back();
+                auto [req_id, sym] = book_pending.back();
                 book_pending.pop_back();
 
                 if (coin(rng))
-                    h.confirm_book_subscription(id, sym, 25);
+                    h.confirm_book_subscription(req_id, sym, 25);
                 else
-                    h.reject_book_subscription(id, sym);
+                    h.reject_book_subscription(req_id, sym);
             }
             break;
         }
@@ -198,16 +204,20 @@ void test_cross_channel_long_run_fuzz() {
         // --- Trade unsubscribe
         case 4: {
             auto sym = random_symbol(rng);
-            auto id = h.unsubscribe_trade(sym);
-            trade_pending.emplace_back(id, sym);
+            auto req_id = h.unsubscribe_trade(sym);
+            if (req_id != ctrl::INVALID_REQ_ID) {
+                trade_pending.emplace_back(req_id, sym);
+            }
             break;
         }
 
         // --- Book unsubscribe
         case 5: {
             auto sym = random_symbol(rng);
-            auto id = h.unsubscribe_book(sym, 25);
-            book_pending.emplace_back(id, sym);
+            auto req_id = h.unsubscribe_book(sym, 25);
+            if (req_id != ctrl::INVALID_REQ_ID) {
+                book_pending.emplace_back(req_id, sym);
+            }
             break;
         }
 
@@ -297,7 +307,7 @@ void test_deterministic_chaos_simulator() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 600;
+    constexpr int STEPS = 1000;
     constexpr uint32_t SEED = 1337;
 
     std::mt19937 rng(SEED);
@@ -341,7 +351,7 @@ void test_deterministic_chaos_simulator() {
         // --- Random trade rejection injection (safe: unknown ids ignored)
         case 4: {
             auto sym = random_symbol(rng);
-            h.reject_trade_subscription(9999, sym); // bogus id (ignored safely)
+            h.reject_trade_subscription(9999, sym); // bogus req_id (ignored safely)
             break;
         }
 
@@ -429,7 +439,7 @@ void test_replay_storm_amplification() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 600;
+    constexpr int STEPS = 1000;
     constexpr uint32_t SEED = 4242;
 
     std::mt19937 rng(SEED);
@@ -553,7 +563,7 @@ void test_replay_with_delayed_ack_simulation() {
     SessionHarness h;
     h.connect();
 
-    constexpr int STEPS = 400;
+    constexpr int STEPS = 1000;
     constexpr uint32_t SEED = 9001;
 
     std::mt19937 rng(SEED);
@@ -564,7 +574,7 @@ void test_replay_with_delayed_ack_simulation() {
 
     // Store delayed ACKs (req_id, symbol, is_trade, is_success)
     struct DelayedAck {
-        ctrl::req_id_t id;
+        ctrl::req_id_t req_id;
         std::string sym;
         bool is_trade;
         bool success;
@@ -578,17 +588,19 @@ void test_replay_with_delayed_ack_simulation() {
 
         case 0: { // trade subscribe (ACK delayed)
             auto sym = random_symbol(rng);
-            auto id  = h.subscribe_trade(sym);
-
-            delayed.push_back({id, sym, true, static_cast<bool>(coin(rng))});
+            auto req_id  = h.subscribe_trade(sym);
+            if (req_id != ctrl::INVALID_REQ_ID) {
+                delayed.push_back({req_id, sym, true, static_cast<bool>(coin(rng))});
+            }
             break;
         }
 
         case 1: { // book subscribe (ACK delayed)
             auto sym = random_symbol(rng);
-            auto id  = h.subscribe_book(sym, 25);
-
-            delayed.push_back({id, sym, false, static_cast<bool>(coin(rng))});
+            auto req_id  = h.subscribe_book(sym, 25);
+            if (req_id != ctrl::INVALID_REQ_ID) {
+                delayed.push_back({req_id, sym, false, static_cast<bool>(coin(rng))});
+            }
             break;
         }
 
@@ -599,14 +611,14 @@ void test_replay_with_delayed_ack_simulation() {
 
                 if (ack.is_trade) {
                     if (ack.success)
-                        h.confirm_trade_subscription(ack.id, ack.sym);
+                        h.confirm_trade_subscription(ack.req_id, ack.sym);
                     else
-                        h.reject_trade_subscription(ack.id, ack.sym);
+                        h.reject_trade_subscription(ack.req_id, ack.sym);
                 } else {
                     if (ack.success)
-                        h.confirm_book_subscription(ack.id, ack.sym, 25);
+                        h.confirm_book_subscription(ack.req_id, ack.sym, 25);
                     else
-                        h.reject_book_subscription(ack.id, ack.sym);
+                        h.reject_book_subscription(ack.req_id, ack.sym);
                 }
 
                 delayed.erase(delayed.begin() + idx);
@@ -638,14 +650,14 @@ void test_replay_with_delayed_ack_simulation() {
     for (auto& ack : delayed) {
         if (ack.is_trade) {
             if (ack.success)
-                h.confirm_trade_subscription(ack.id, ack.sym);
+                h.confirm_trade_subscription(ack.req_id, ack.sym);
             else
-                h.reject_trade_subscription(ack.id, ack.sym);
+                h.reject_trade_subscription(ack.req_id, ack.sym);
         } else {
             if (ack.success)
-                h.confirm_book_subscription(ack.id, ack.sym, 25);
+                h.confirm_book_subscription(ack.req_id, ack.sym, 25);
             else
-                h.reject_book_subscription(ack.id, ack.sym);
+                h.reject_book_subscription(ack.req_id, ack.sym);
         }
 
         h.drain();

@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <cstdint>
+#include <cassert>
 
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
@@ -113,23 +114,31 @@ struct Session {
     // -------------------------------------------------------------------------
     // Subscribe/Unsubscribe ACK helpers
     // -------------------------------------------------------------------------
-    inline void confirm_trade_subscription(ctrl::req_id_t id, const std::string& sym) {
-        session.ws().emit_message(json::ack::trade_sub(id, sym));
+    inline void confirm_trade_subscription(ctrl::req_id_t req_id, const std::string& sym) {
+        assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
+        assert(req_id >= 10 && "For trade subscriptions req_id should be >= 10");
+        session.ws().emit_message(json::ack::trade_sub(req_id, sym));
         (void)session.poll();
     }
 
-    inline void confirm_trade_unsubscription(ctrl::req_id_t id, const std::string& sym) {
-        session.ws().emit_message(json::ack::trade_unsub(id, sym));
+    inline void confirm_trade_unsubscription(ctrl::req_id_t req_id, const std::string& sym) {
+        assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
+        assert(req_id >= 10 && "For trade unsubscriptions req_id should be >= 10");
+        session.ws().emit_message(json::ack::trade_unsub(req_id, sym));
         (void)session.poll();
     }
 
-    inline void confirm_book_subscription(ctrl::req_id_t id, const std::string& sym, int depth) {
-        session.ws().emit_message(json::ack::book_sub(id, sym, depth));
+    inline void confirm_book_subscription(ctrl::req_id_t req_id, const std::string& sym, int depth) {
+        assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
+        assert(req_id >= 10 && "For book subscriptions req_id should be >= 10");
+        session.ws().emit_message(json::ack::book_sub(req_id, sym, depth));
         (void)session.poll();
     }
 
-    inline void confirm_book_unsubscription(ctrl::req_id_t id, const std::string& sym, int depth) {
-        session.ws().emit_message(json::ack::book_unsub(id, sym, depth));
+    inline void confirm_book_unsubscription(ctrl::req_id_t req_id, const std::string& sym, int depth) {
+        assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
+        assert(req_id >= 10 && "For book unsubscriptions req_id should be >= 10");
+        session.ws().emit_message(json::ack::book_unsub(req_id, sym, depth));
         (void)session.poll();
     }
 
@@ -137,25 +146,27 @@ struct Session {
     // Rejection helpers
     // -------------------------------------------------------------------------
 
-    inline void reject(std::string_view method, ctrl::req_id_t id, const std::string& sym, std::string_view error) {
-        session.ws().emit_message(json::ack::rejection_notice(method, id, sym, std::string(error)));
+    inline void reject(std::string_view method, ctrl::req_id_t req_id, const std::string& sym, std::string_view error) {
+        assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
+        assert(req_id >= 10 && "For rejection notices, req_id should be >= 10");
+        session.ws().emit_message(json::ack::rejection_notice(method, req_id, sym, std::string(error)));
         (void)session.poll();
     }
 
-    inline void reject_trade_subscription(ctrl::req_id_t id, const std::string& sym) {
-        reject("subscribe", id, sym, "Subscription rejected");
+    inline void reject_trade_subscription(ctrl::req_id_t req_id, const std::string& sym) {
+        reject("subscribe", req_id, sym, "Subscription rejected");
     }
 
-    inline void reject_trade_unsubscription(ctrl::req_id_t id, const std::string& sym) {
-        reject("unsubscribe", id, sym, "Unsubscription rejected");
+    inline void reject_trade_unsubscription(ctrl::req_id_t req_id, const std::string& sym) {
+        reject("unsubscribe", req_id, sym, "Unsubscription rejected");
     }
 
-    inline void reject_book_subscription(ctrl::req_id_t id, const std::string& sym) {
-        reject("subscribe", id, sym, "Subscription rejected");
+    inline void reject_book_subscription(ctrl::req_id_t req_id, const std::string& sym) {
+        reject("subscribe", req_id, sym, "Subscription rejected");
     }
 
-    inline void reject_book_unsubscription(ctrl::req_id_t id, const std::string& sym) {
-        reject("unsubscribe", id, sym, "Unsubscription rejected");
+    inline void reject_book_unsubscription(ctrl::req_id_t req_id, const std::string& sym) {
+        reject("unsubscribe", req_id, sym, "Unsubscription rejected");
     }
 };
 

@@ -240,7 +240,7 @@ public:
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
-        WK_INFO("Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        WK_INFO("[SESSION] Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         // 1) Hard symbol limit enforcement (compile-time removable)
         if constexpr (LimitPolicy::enabled && LimitPolicy::hard) {
             if (!hard_symbol_limit_enforcement_<RequestT>(req)) {
@@ -251,21 +251,25 @@ public:
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
-        // 3) Register in replay DB
+        // 3) Register subscription with manager (internal filtering)
+        auto& mgr = subscription_manager_for_<RequestT>();
+        auto accepted_symbols = mgr.register_subscription(std::move(req.symbols), req.req_id.value());
+        if (accepted_symbols.empty()) {
+            WK_TRACE("[SESSION] Subscription fully filtered by manager");
+            return ctrl::INVALID_REQ_ID;
+        }
+        // 4) Replace request symbols with accepted set
+        req.symbols = std::move(accepted_symbols);
+        // 5) Register in replay DB using filtered request
         // Store protocol intent for deterministic replay after reconnect.
         // Only acknowledged subscriptions will be replayed.
         replay_db_.add(req);
-        // 4) Send JSON BEFORE moving req.symbols
-        WK_DEBUG("Sending subscribe message: " << req.to_json());
+        // 6) Send JSON BEFORE moving req.symbols
+        WK_DEBUG("[SESSION] Sending subscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
-            WK_ERROR("Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
+            WK_ERROR("[SESSION] Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
             return ctrl::INVALID_REQ_ID;
         }
-        // 5) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        subscription_manager_for_<RequestT>().register_subscription(
-            std::move(req.symbols),
-            req.req_id.value()
-        );
         return req.req_id.value();
     }
 
@@ -321,10 +325,14 @@ public:
             return ctrl::INVALID_REQ_ID;
         }
         // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        subscription_manager_for_<RequestT>().register_unsubscription(
+        std::vector<Symbol> cancelled = subscription_manager_for_<RequestT>().register_unsubscription(
             std::move(req.symbols),
             req.req_id.value()
         );
+        // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect
+        for (const auto& symbol : cancelled) {
+            replay_db_.remove_symbol<RequestT>(symbol);
+        }
         return req.req_id.value();
     }
 
@@ -619,7 +627,7 @@ private:
             if(!trade_subscriptions.empty()) {
                 WK_DEBUG("[REPLAY] Replaying " << trade_subscriptions.size() << " trade subscription(s)");
                 for (const auto& subscription : trade_subscriptions) {
-                    (void)subscribe(subscription.request());
+                    re_subscribe_(subscription.request());
                 }
             }
             else {
@@ -630,12 +638,33 @@ private:
             if(!book_subscriptions.empty()) {
                 WK_DEBUG("[REPLAY] Replaying " << book_subscriptions.size() << " book subscription(s)");
                 for (const auto& subscription : book_subscriptions) {
-                    (void)subscribe(subscription.request());
+                    re_subscribe_(subscription.request());
                 }
             }
             else {
                 WK_DEBUG("[REPLAY] No book subscriptions to replay");
             }
+        }
+    }
+
+    template <request::Subscription RequestT>
+    void re_subscribe_(RequestT req) {
+        WK_INFO("[SESSION] Re-subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        // 1) Register subscription with manager (internal filtering)
+        auto& mgr = subscription_manager_for_<RequestT>();
+        auto accepted_symbols = mgr.register_subscription(std::move(req.symbols), req.req_id.value());
+        if (accepted_symbols.empty()) {
+            WK_TRACE("[SESSION] Re-subscription fully filtered by manager");
+            return;
+        }
+        // 2) Replace request symbols with accepted set
+        req.symbols = std::move(accepted_symbols);
+        // 3) Register in replay DB using filtered request
+        replay_db_.add(req);
+        // 4) Send JSON BEFORE moving req.symbols
+        WK_DEBUG("[SESSION] Sending re-subscribe message: " << req.to_json());
+        if (!connection_.send(req.to_json())) {
+            WK_ERROR("[SESSION] Failed to send re-subscription request (req_id=" << lcr::to_string(req.req_id) << ")");
         }
     }
 
@@ -656,11 +685,9 @@ private:
         if (notice.req_id.has()) {
             if (notice.symbol.has()) {
                 // we cannot infer channel from notice, so we try all managers
-                bool done = trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                if (!done) {
-                    done = book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                }
-                done = replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                (void)trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                (void)book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                (void)replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
             }
         }
     }

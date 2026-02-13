@@ -53,16 +53,20 @@ void test_unsubscribe_happy_path() {
 
     channel::Manager mgr{Channel::Trade};
 
+    const ctrl::req_id_t req_id{10};
+
     // Precondition: BTC/USD is active
-    mgr.register_subscription({"BTC/USD"}, 1);
-    mgr.process_subscribe_ack(1, "BTC/USD", true);
+    (void)mgr.register_subscription({"BTC/USD"}, req_id);
+    mgr.process_subscribe_ack(req_id, "BTC/USD", true);
 
     TEST_CHECK(mgr.active_symbols() == 1);
     TEST_CHECK(mgr.has_active_symbols());
 
+    const ctrl::req_id_t req_id2{11};
+
     // Unsubscribe BTC/USD
-    mgr.register_unsubscription({"BTC/USD"}, 2);
-    mgr.process_unsubscribe_ack(2, "BTC/USD", true);
+    (void)mgr.register_unsubscription({"BTC/USD"}, req_id2);
+    mgr.process_unsubscribe_ack(req_id2, "BTC/USD", true);
 
     TEST_CHECK(mgr.active_symbols() == 0);
     TEST_CHECK(!mgr.has_active_symbols());
@@ -80,14 +84,18 @@ void test_unsubscribe_rejected() {
 
     channel::Manager mgr{Channel::Trade};
 
+    const ctrl::req_id_t req_id{10};
+
     // Precondition: BTC/USD is active
-    mgr.register_subscription({"BTC/USD"}, 1);
-    mgr.process_subscribe_ack(1, "BTC/USD", true);
+    (void)mgr.register_subscription({"BTC/USD"}, req_id);
+    mgr.process_subscribe_ack(req_id, "BTC/USD", true);
 
     TEST_CHECK(mgr.active_symbols() == 1);
 
+    const ctrl::req_id_t req_id2{11};
+
     // Attempt unsubscribe (rejected)
-    mgr.register_unsubscription({"BTC/USD"}, 2);
+    (void)mgr.register_unsubscription({"BTC/USD"}, req_id2);
     mgr.process_unsubscribe_ack(2, "BTC/USD", false);
 
     // Active state must remain unchanged
@@ -107,15 +115,19 @@ void test_unsubscribe_non_active_symbol() {
 
     channel::Manager mgr{Channel::Trade};
 
+    const ctrl::req_id_t req_id{10};
+
     // Precondition: BTC/USD is active
-    mgr.register_subscription({"BTC/USD"}, 1);
-    mgr.process_subscribe_ack(1, "BTC/USD", true);
+    (void)mgr.register_subscription({"BTC/USD"}, req_id);
+    mgr.process_subscribe_ack(req_id, "BTC/USD", true);
 
     TEST_CHECK(mgr.active_symbols() == 1);
 
+    const ctrl::req_id_t req_id2{12};
+    
     // Attempt to unsubscribe ETH/USD (never active)
-    mgr.register_unsubscription({"ETH/USD"}, 3);
-    mgr.process_unsubscribe_ack(3, "ETH/USD", true);
+    (void)mgr.register_unsubscription({"ETH/USD"}, req_id2);
+    mgr.process_unsubscribe_ack(req_id2, "ETH/USD", true);
 
     // Must be a safe no-op
     TEST_CHECK(mgr.active_symbols() == 1);

@@ -52,9 +52,9 @@ void test_subscribe_happy_path_single_symbol() {
     std::cout << "[TEST] Group A1: subscribe happy path (single symbol)\n";
 
     channel::Manager mgr{Channel::Trade};
-    const ctrl::req_id_t req_id{1};
+    const ctrl::req_id_t req_id{10};
 
-    mgr.register_subscription({"BTC/USD"}, req_id);
+    (void)mgr.register_subscription({"BTC/USD"}, req_id);
 
     TEST_CHECK(mgr.has_pending_requests());
     TEST_CHECK(mgr.pending_subscription_requests() == 1);
@@ -80,9 +80,9 @@ void test_subscribe_rejected() {
     std::cout << "[TEST] Group A2: subscribe rejected\n";
 
     channel::Manager mgr{Channel::Trade};
-    const ctrl::req_id_t req_id{1};
+    const ctrl::req_id_t req_id{10};
 
-    mgr.register_subscription({"BTC/USD"}, req_id);
+    (void)mgr.register_subscription({"BTC/USD"}, req_id);
 
     TEST_CHECK(mgr.pending_subscription_requests() == 1);
     TEST_CHECK(mgr.pending_subscribe_symbols() == 1);
@@ -105,12 +105,9 @@ void test_multi_symbol_subscribe_partial_ack() {
     std::cout << "[TEST] Group A3: multi-symbol subscribe (partial ACK)\n";
 
     channel::Manager mgr{Channel::Trade};
-    const ctrl::req_id_t req_id{1};
+    const ctrl::req_id_t req_id{10};
 
-    mgr.register_subscription(
-        {"BTC/USD", "ETH/USD"},
-        req_id
-    );
+    (void)mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
 
     TEST_CHECK(mgr.pending_subscription_requests() == 1);
     TEST_CHECK(mgr.pending_subscribe_symbols() == 2);
@@ -135,9 +132,9 @@ void test_multi_symbol_subscribe_full_ack() {
     std::cout << "[TEST] Group A4: multi-symbol subscribe (full ACK)\n";
 
     channel::Manager mgr{Channel::Trade};
-    const ctrl::req_id_t req_id{1};
+    const ctrl::req_id_t req_id{10};
 
-    mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
+    (void)mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
 
     // First ACK (partial)
     mgr.process_subscribe_ack(req_id, "BTC/USD", true);
@@ -165,9 +162,9 @@ void test_duplicate_subscribe_ack_is_ignored() {
     std::cout << "[TEST] Group A5: duplicate subscribe ACK is ignored\n";
 
     channel::Manager mgr{Channel::Trade};
-    const ctrl::req_id_t req_id{1};
+    const ctrl::req_id_t req_id{10};
 
-    mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
+    (void)mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
 
     mgr.process_subscribe_ack(req_id, "BTC/USD", true);
     mgr.process_subscribe_ack(req_id, "ETH/USD", true);

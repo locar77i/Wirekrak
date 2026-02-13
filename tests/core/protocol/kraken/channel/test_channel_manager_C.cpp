@@ -52,13 +52,15 @@ void test_rejection_clears_pending_subscription() {
 
     channel::Manager mgr{Channel::Trade};
 
+    const ctrl::req_id_t req_id{10};
+
     // Create true pending subscription
-    mgr.register_subscription({"BTC/USD"}, 1);
+    (void)mgr.register_subscription({"BTC/USD"}, req_id);
 
     TEST_CHECK(mgr.has_pending_requests());
     TEST_CHECK(mgr.total_symbols() == 1);
 
-    (void)mgr.try_process_rejection(1, "BTC/USD");
+    (void)mgr.try_process_rejection(req_id, "BTC/USD");
 
     TEST_CHECK(!mgr.has_pending_requests());
     TEST_CHECK(mgr.total_symbols() == 0);
@@ -76,9 +78,11 @@ void test_rejection_unknown_req_id_is_ignored() {
 
     channel::Manager mgr{Channel::Trade};
 
+    const ctrl::req_id_t req_id{10};
+
     // Precondition: BTC/USD is active
-    mgr.register_subscription({"BTC/USD"}, 1);
-    mgr.process_subscribe_ack(1, "BTC/USD", true);
+    (void)mgr.register_subscription({"BTC/USD"}, req_id);
+    mgr.process_subscribe_ack(req_id, "BTC/USD", true);
 
     TEST_CHECK(mgr.active_symbols() == 1);
     TEST_CHECK(!mgr.has_pending_requests());
@@ -103,9 +107,11 @@ void test_clear_all_resets_everything() {
 
     channel::Manager mgr{Channel::Trade};
 
+    const ctrl::req_id_t req_id{10};
+
     // Create mixed state
-    mgr.register_subscription({"BTC/USD", "ETH/USD"}, 1);
-    mgr.process_subscribe_ack(1, "BTC/USD", true); // partial
+    (void)mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
+    mgr.process_subscribe_ack(req_id, "BTC/USD", true); // partial
 
     TEST_CHECK(mgr.active_symbols() == 1);
     TEST_CHECK(mgr.has_pending_requests());
