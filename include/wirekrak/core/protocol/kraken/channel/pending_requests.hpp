@@ -80,6 +80,7 @@ public:
     // Remove a specific symbol from a specific request
     // Returns true if removed
     // ------------------------------------------------------------
+    [[nodiscard]]
     inline bool remove(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         SymbolId sid = intern_symbol(symbol);
 
@@ -107,6 +108,7 @@ public:
     // Remove a symbol globally (owner lookup)
     // Returns true if removed
     // ------------------------------------------------------------
+    [[nodiscard]]
     inline bool remove_symbol(Symbol symbol) noexcept {
         SymbolId sid = intern_symbol(symbol);
 

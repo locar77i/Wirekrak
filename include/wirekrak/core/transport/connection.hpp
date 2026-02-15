@@ -437,18 +437,11 @@ private:
         if (events_.push(sig)) [[likely]] {
             return;
         }
-
-        // Buffer full: drop oldest event
-        connection::Signal dropped;
-        (void)events_.pop(dropped); // guaranteed to succeed if full
-
-        // Retry push (must succeed now)
-        if (!events_.push(sig)) {
-            // This should be impossible in SPSC; log defensively
-            WK_ERROR("[CONN] connection::Signal buffer corrupted; signal lost: " << to_string(sig));
-        } else {
-            WK_WARN("[CONN] connection::Signal buffer full; dropped oldest signal: " << to_string(dropped));
-        }
+        WK_WARN("[CONN] Failed to emit signal '" << to_string(sig) << "' (buffer full) - Poll signals is required to drain the buffer.");
+        // Future backpresusre policy (default:strict)
+        // Wirekrak should never lie to the user or perform magic without explicit user instruction
+        WK_FATAL("[CONN] Forcing connection close to preserve correctness guarantees.");
+        close();
     }
 
 private:

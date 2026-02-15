@@ -278,7 +278,7 @@ public:
     }
 
     inline void log_state_() const noexcept {
-        WK_INFO("[REPLAY:" << to_string(channel_) << "] Total requests = " << total_requests() << " - Total symbols = " << total_symbols());
+        WK_DEBUG("[REPLAY:" << to_string(channel_) << "] Total requests = " << total_requests() << " - Total symbols = " << total_symbols());
     }
 
 #ifndef NDEBUG

@@ -313,15 +313,15 @@ public:
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
-         WK_INFO("Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+         WK_INFO("[SESSION] Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         // 1) Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
         // 2) Send JSON BEFORE moving req.symbols
-        WK_DEBUG("Sending unsubscribe message: " << req.to_json());
+        WK_DEBUG("[SESSION] Sending unsubscribe message: " << req.to_json());
         if (!connection_.send(req.to_json())) {
-            WK_ERROR("Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
+            WK_ERROR("[SESSION] Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
             return ctrl::INVALID_REQ_ID;
         }
         // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
@@ -402,7 +402,7 @@ public:
         schema::trade::SubscribeAck ack;
         while (ctx_.trade_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
-                WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
+                WK_WARN("[SESSION] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
             }
             else {
                 trade_channel_manager_.process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
@@ -411,10 +411,10 @@ public:
         { // === Process trade unsubscribe ring ===
         schema::trade::UnsubscribeAck ack;
         while (ctx_.trade_unsubscribe_ring.pop(ack)) {
-            WK_TRACE("[SUBMGR] Processing trade unsubscribe ACK for symbol {" << ack.symbol << "}");
+            WK_TRACE("[SESSION] Processing trade unsubscribe ACK for symbol {" << ack.symbol << "}");
             //dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
-                WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
+                WK_WARN("[SESSION] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
             }
             else {
                 trade_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
@@ -430,7 +430,7 @@ public:
         schema::book::SubscribeAck ack;
         while (ctx_.book_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
-                WK_WARN("[SUBMGR] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
+                WK_WARN("[SESSION] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
             }
             else {
                 book_channel_manager_.process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
@@ -439,10 +439,10 @@ public:
         { // === Process book unsubscribe ring ===
         schema::book::UnsubscribeAck ack;
         while (ctx_.book_unsubscribe_ring.pop(ack)) {
-            WK_TRACE("[SUBMGR] Processing book unsubscribe ACK for symbol {" << ack.symbol << "}");
+            WK_TRACE("[SESSION] Processing book unsubscribe ACK for symbol {" << ack.symbol << "}");
             //dispatcher_.remove_symbol_handlers<schema::book::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
-                WK_WARN("[SUBMGR] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
+                WK_WARN("[SESSION] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
             }
             else {
                 book_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
@@ -749,7 +749,7 @@ private:
         }
         std::string json = req.to_json();
         if (!connection_.send(json)) {
-            WK_ERROR("Failed to send raw message: " << json);
+            WK_ERROR("[SESSION] Failed to send raw message: " << json);
         }
     }
 };

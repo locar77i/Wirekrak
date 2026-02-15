@@ -1,16 +1,6 @@
-#pragma once
-
-#include <atomic>
-#include <cstdint>
-#include <type_traits>
-#include <utility>
-
-namespace lcr {
-namespace lockfree {
-
 /*
 ================================================================================
- last_value_slot<T>
+ last_value<T>
 ================================================================================
 
 A lock-free, overwrite-on-write, single-writer / multi-reader storage primitive
@@ -24,7 +14,7 @@ recent update.
  Design intent
 --------------------------------------------------------------------------------
 
-`last_value_slot` is designed for control-plane and telemetry signals such as:
+`last_value` is designed for control-plane and telemetry signals such as:
 
   • protocol liveness (pong, heartbeat)
   • session status
@@ -70,15 +60,18 @@ It is *not* suitable for data streams where ordering or losslessness is required
  Memory ordering
 --------------------------------------------------------------------------------
 
-  • Writer:
-      - Writes the value
-      - Publishes it by incrementing the epoch with `memory_order_release`
+  Memory safety relies on:
 
-  • Reader:
-      - Reads the epoch with `memory_order_acquire`
-      - Guarantees visibility of the stored value if the epoch changed
+  • Writer performs:
+        value_ write (non-atomic)
+        epoch_.fetch_add(..., memory_order_release)
 
-No ordering is implied relative to other components or data structures.
+  • Reader performs:
+        epoch_.load(memory_order_acquire)
+        then reads value_
+
+The release/acquire pair establishes a happens-before relationship,
+making the non-atomic read of `value_` well-defined for trivially copyable types.
 
 --------------------------------------------------------------------------------
  Limitations
@@ -86,15 +79,19 @@ No ordering is implied relative to other components or data structures.
 
   • Only one writer is allowed
   • No history is preserved
-  • The stored type `T` must be:
-      - Move-assignable or copy-assignable
-      - Safe to read after publication without external synchronization
+  • The stored type `T` must be trivially copyable
+      - No internal ownership (e.g. no std::string, std::vector, std::optional<std::string>)
+      - No non-trivial destructor
+      - Safe for non-atomic concurrent reads after release/acquire synchronization
+
+  • Exactly one writer thread is allowed
+  • No history is preserved
 
 --------------------------------------------------------------------------------
  Summary
 --------------------------------------------------------------------------------
 
-`last_value_slot` is the correct primitive when:
+`last_value` is the correct primitive when:
 
   • only the most recent value matters
   • loss of intermediate updates is acceptable
@@ -106,18 +103,29 @@ No ordering is implied relative to other components or data structures.
 ================================================================================
 */
 
+#pragma once
+
+#include <atomic>
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+
+namespace lcr {
+namespace lockfree {
+namespace slot {
+
+
 template <typename T>
-class alignas(64) last_value_slot {
-    static_assert(std::is_move_assignable_v<T> || std::is_copy_assignable_v<T>, "T must be move-assignable or copy-assignable");
-    static_assert(std::is_trivially_destructible_v<T> || std::is_nothrow_move_assignable_v<T>);
+class alignas(64) last_value {
+    static_assert(std::is_trivially_copyable_v<T>, "last_value<T> requires T to be trivially copyable");
 
 public:
-    last_value_slot() noexcept = default;
-    ~last_value_slot() noexcept = default;
+    last_value() noexcept = default;
+    ~last_value() noexcept = default;
 
     // Non-copyable / non-movable
-    last_value_slot(const last_value_slot&) = delete;
-    last_value_slot& operator=(const last_value_slot&) = delete;
+    last_value(const last_value&) = delete;
+    last_value& operator=(const last_value&) = delete;
 
     // -------------------------------------------------------------------------
     // Writer API
@@ -200,5 +208,6 @@ private:
     alignas(64) std::atomic<std::uint64_t> epoch_{0};
 };
 
+} // namespace slot
 } // namespace lockfree
 } // namespace lcr

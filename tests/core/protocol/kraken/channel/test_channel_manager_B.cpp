@@ -96,7 +96,7 @@ void test_unsubscribe_rejected() {
 
     // Attempt unsubscribe (rejected)
     (void)mgr.register_unsubscription({"BTC/USD"}, req_id2);
-    mgr.process_unsubscribe_ack(2, "BTC/USD", false);
+    mgr.process_unsubscribe_ack(req_id2, "BTC/USD", false);
 
     // Active state must remain unchanged
     TEST_CHECK(mgr.active_symbols() == 1);

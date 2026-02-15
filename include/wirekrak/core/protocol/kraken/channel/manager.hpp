@@ -76,8 +76,9 @@ public:
             }
             // Cancel pending unsubscribe
             if (pending_unsubscriptions_.contains(sid)) {
-                pending_unsubscriptions_.remove_symbol(symbol);
-                active_symbols_.insert(sid);
+                if (pending_unsubscriptions_.remove_symbol(symbol)) {
+                    active_symbols_.insert(sid);
+                }
                 continue;
             }
             // Keep symbol (move forward if needed)
@@ -111,8 +112,9 @@ public:
             // 1️) If pending subscribe -> cancel it immediately
             if (pending_subscriptions_.contains(sid)) {
                 WK_TRACE("[SUBMGR:" << to_string(channel_) << "] Cancelling pending subscription for symbol {" << symbol << "} (req_id=" << req_id << ")");
-                pending_subscriptions_.remove_symbol(symbol);
-                cancelled.push_back(symbol);
+                if (pending_subscriptions_.remove_symbol(symbol)) {
+                    cancelled.push_back(symbol);
+                }
                 continue;
             }
             // 2️) If not active -> ignore
@@ -161,7 +163,7 @@ public:
     inline void process_unsubscribe_ack(ctrl::req_id_t req_id,  Symbol symbol,  bool success) noexcept {
         WK_TRACE("[SUBMGR:" << to_string(channel_) << "] Processing unsubscribe ACK for symbol {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
         if (!pending_unsubscriptions_.contains(symbol)) {
-            WK_WARN("[SUBMGR:" << to_string(channel_) << "] Unsubscription ACK omitted for symbol {" << symbol << "} (unknown req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR:" << to_string(channel_) << "] Unsubscription OMITTED for symbol {" << symbol << "} (unknown req_id=" << req_id << ")");
             return;
         }
 
@@ -287,15 +289,21 @@ private:
         SymbolId sid = intern_symbol(symbol);
 
         if (!pending_subscriptions_.remove(req_id, symbol)) {
+            WK_TRACE("[SUBMGR:" << to_string(channel_) << "] No matching pending request for symbol {" << symbol << "} (req_id=" << req_id << ") - Ignoring");
             return;
         }
 
         active_symbols_.insert(sid);
+        WK_INFO("[SUBMGR:" << to_string(channel_) << "] Subscription ACCEPTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
     }
 
     inline void reject_subscription_(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         WK_DEBUG("[SUBMGR:" << to_string(channel_) << "] Rejecting subscription for symbol {" << symbol << "} (req_id=" << req_id << ")");
-        pending_subscriptions_.remove(req_id, symbol);
+        if (!pending_subscriptions_.remove(req_id, symbol)) {
+            WK_TRACE("[SUBMGR:" << to_string(channel_) << "] No matching pending request for symbol {" << symbol << "} (req_id=" << req_id << ") - Ignoring");
+            return;
+        }
+        WK_WARN("[SUBMGR:" << to_string(channel_) << "] Subscription REJECTED for symbol  {" << symbol << "} (req_id=" << req_id << ")");
     }
 
     inline void confirm_unsubscription_(ctrl::req_id_t req_id, Symbol symbol) noexcept {
@@ -303,19 +311,25 @@ private:
         SymbolId sid = intern_symbol(symbol);
 
         if (!pending_unsubscriptions_.remove(req_id, symbol)) {
+            WK_TRACE("[SUBMGR:" << to_string(channel_) << "] No matching pending request for symbol {" << symbol << "} (req_id=" << req_id << ") - Ignoring");
             return;
         }
 
         active_symbols_.erase(sid);
+        WK_INFO("[SUBMGR:" << to_string(channel_) << "] Unsubscription ACCEPTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
     }
 
     inline void reject_unsubscription_(ctrl::req_id_t req_id, Symbol symbol) noexcept {
         WK_DEBUG("[SUBMGR:" << to_string(channel_) << "] Rejecting unsubscription for symbol {" << symbol << "} (req_id=" << req_id << ")");
-        pending_unsubscriptions_.remove(req_id, symbol);
+        if (!pending_unsubscriptions_.remove(req_id, symbol)) {
+            WK_TRACE("[SUBMGR:" << to_string(channel_) << "] No matching pending request for symbol {" << symbol << "} (req_id=" << req_id << ") - Ignoring");
+            return;
+        }
+        WK_WARN("[SUBMGR:" << to_string(channel_) << "] Unsubscription REJECTED for symbol  {" << symbol << "} (req_id=" << req_id << ")");
     }
 
     inline void log_state_() const noexcept {
-        WK_INFO("[SUBMGR:" << to_string(channel_) << "] Active subscriptions = " << active_symbols_.size()
+        WK_DEBUG("[SUBMGR:" << to_string(channel_) << "] Active subscriptions = " << active_symbols_.size()
             << " - Pending subscriptions = " << pending_subscriptions_.symbol_count()
             << " - Pending unsubscriptions = " << pending_unsubscriptions_.symbol_count()
         );

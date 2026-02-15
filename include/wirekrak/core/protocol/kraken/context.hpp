@@ -15,7 +15,7 @@
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe_ack.hpp"
 
 #include "lcr/lockfree/spsc_ring.hpp"
-#include "lcr/lockfree/last_value_slot.hpp"
+#include "lcr/lockfree/slot/last_value_snapshot.hpp"
 
 
 namespace wirekrak::core::protocol::kraken {
@@ -41,10 +41,10 @@ struct Context {
     std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts;
 
     // Output rings for pong messages
-    lcr::lockfree::last_value_slot<schema::system::Pong> pong_slot{};
+    lcr::lockfree::slot::last_value_snapshot<schema::system::Pong> pong_slot{};
 
     // Output rings for status channel
-    lcr::lockfree::last_value_slot<schema::status::Update> status_slot{};
+    lcr::lockfree::slot::last_value_snapshot<schema::status::Update> status_slot{};
 
     // Output rings for rejection notices
     lcr::lockfree::spsc_ring<schema::rejection::Notice, config::rejection_ring> rejection_ring{};
@@ -103,10 +103,10 @@ struct ContextView {
     std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts;
 
     // Output rings for pong messages
-    lcr::lockfree::last_value_slot<schema::system::Pong>& pong_slot;
+    lcr::lockfree::slot::last_value_snapshot<schema::system::Pong>& pong_slot;
 
     // Status
-    lcr::lockfree::last_value_slot<schema::status::Update>& status_slot;
+    lcr::lockfree::slot::last_value_snapshot<schema::status::Update>& status_slot;
 
     // Output rings for rejection notices
     lcr::lockfree::spsc_ring<schema::rejection::Notice, config::rejection_ring>& rejection_ring;
