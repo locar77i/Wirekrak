@@ -1,152 +1,314 @@
-# Wirekrak Transport Architecture
+# Wirekrak Transport WebSocket Connection
 
-This document describes the **transport layer architecture** used by Wirekrak.
-It is designed to be **low-latency**, **testable**, and **fully decoupled**
-from protocol and exchange-specific logic.
+## Overview
 
----
+The **Wirekrak Transport WebSocket Connection** is a deterministic,
+transport-agnostic, poll-driven abstraction responsible for managing the
+full lifecycle of a logical WebSocket connection.
 
-## Goals
+A `Connection<WS>` instance represents a *stable logical identity*
+across transient transport failures and automatic reconnections. While
+the underlying WebSocket instance may be destroyed and recreated
+multiple times, the `Connection` object remains stable and exposes
+monotonic progress signals.
 
-- Zero dynamic polymorphism (no virtual functions)
-- Compile-time validation via C++20 concepts
-- Transport-agnostic connection abstraction
-- Easy mocking for unit tests
-- Windows-native TLS via WinHTTP (SChannel)
-
-```Note:``` WinHTTP is the first production transport implementation, chosen for
-its tight integration with Windows networking and native SChannel TLS support.
+This component is intentionally protocol-agnostic and reusable across
+exchanges (Kraken, future venues, custom feeds).
 
 ---
 
-## High-Level Architecture
+## Architectural Properties
 
-```
-                    ┌──────────────────────────────┐
-                    │   Exchange Protocol Session  │
-                    │   (Kraken, etc.)             │
-                    │                              │
-                    │  • subscriptions             │
-                    │  • message routing           │
-                    │  • schema parsing            │
-                    └──────────────▲───────────────┘
-                                   │
-                                   │ decoded messages
-                                   │
-                    ┌──────────────┴───────────────┐
-                    │   transport::Connection      │
-                    │                              │
-                    │  • liveness detection        │
-                    │  • automatic reconnect       │
-                    │  • heartbeat handling        │
-                    │  • transport-level isolation │
-                    └──────────────▲───────────────┘
-                                   │
-                                   │ raw text frames
-                                   │
-                    ┌──────────────┴───────────────┐
-                    │ transport::WebSocketConcept  │
-                    │                              │
-                    │  • connect / send / close    │
-                    │  • callbacks                 │
-                    │                              │
-                    │ (concept, no inheritance)    │
-                    └──────────────▲───────────────┘
-                                   │
-                                   │ platform calls
-                                   │
-                    ┌──────────────┴───────────────┐
-                    │ transport::<implementation>  │
-                    │                              │
-                    │  • OS / library WebSocket    │
-                    │  • TLS integration           │
-                    └──────────────────────────────┘
+-   Header-only
+-   Concept-based design (`WebSocketConcept`)
+-   No inheritance
+-   No virtual dispatch
+-   No background threads
+-   No timers
+-   Fully poll-driven
+-   Deterministic state transitions
+-   Unit-testable with mock transports
+-   Ultra-low-latency friendly
+
+---
+
+## Logical vs Physical Connection
+
+The transport may reconnect multiple times internally.
+
+Each successful WebSocket establishment:
+
+-   Creates a fresh `WS` instance
+-   Increments `epoch()` exactly once
+-   Emits `connection::Signal::Connected`
+
+This guarantees:
+
+-   Epoch monotonicity
+-   Stable logical identity
+-   Deterministic lifetime boundaries
+
+---
+
+## Progress & Observability Model
+
+The connection exposes **facts**, not inferred health states.
+
+### Epoch
+
+``` cpp
+uint64_t epoch() const noexcept;
 ```
 
+Incremented exactly once per successful connection.
+
+Used by higher layers to detect transport recycling.
+
+### Counters
+
+-   `rx_messages()`
+-   `tx_messages()`
+-   `heartbeat_total()`
+
+All counters are monotonic and never reset.
+
+### Signals
+
+Edge-triggered, single-shot events delivered via an internal SPSC ring:
+
+-   `Connected`
+-   `Disconnected`
+-   `RetryImmediate`
+-   `RetryScheduled`
+-   `LivenessThreatened`
+
+Signals are informational only and must not be used for correctness.
+
+Correctness must rely on epoch + counters.
+
 ---
 
-## Core Concepts
+## State Machine
 
-```Key Idea:``` Concepts, Not Base Classes
+Internal states:
 
-WWirekrak avoids inheritance and instead uses **C++20 concepts** to define
-compile-time contracts between layers.
+-   `Disconnected`
+-   `Connecting`
+-   `Connected`
+-   `Disconnecting`
+-   `WaitingReconnect`
+
+Transitions are driven exclusively through `transition_()`.
+
+State is not externally exposed beyond `get_state()`.
 
 ---
 
-### `transport::WebSocketConcept`
+## Connection Lifecycle
 
-`WebSocketConcept` defines the generic **WebSocket transport contract**
-required by the transport connection layer, independent of any platform
-or library.
+### open(url)
 
-- connect / send / close
-- callbacks for message and close events
+Preconditions:
 
-```cpp
-template<class WS>
-concept WebSocketConcept =
-    requires(
-        WS ws,
-        const std::string& host,
-        const std::string& port,
-        const std::string& path,
-        const std::string& msg
-    ) {
-        { ws.connect(host, port, path) } -> std::same_as<bool>;
-        { ws.send(msg) } -> std::same_as<bool>;
-        { ws.close() } -> std::same_as<void>;
-    };
+-   Allowed only in `Disconnected` or `WaitingReconnect`
+-   URL must parse successfully
+
+Behavior:
+
+1.  Transition to `Connecting`
+2.  Create new transport
+3.  Attempt connect
+4.  On success → `Connected`
+5.  On failure → retry cycle may begin
+
+Calling `open()` while in `WaitingReconnect` **cancels the retry cycle**
+and immediately attempts a fresh connection.
+
+---
+
+### close()
+
+-   Idempotent
+-   Cancels retry cycle
+-   Transitions to `Disconnecting`
+-   Emits `Disconnected` once transport closes
+
+Destructor calls `close()`.
+
+No retries occur after destruction.
+
+---
+
+## Poll Model
+
+All progress is driven by:
+
+``` cpp
+conn.poll();
 ```
 
-This enables:
-- real platform implementations
-- fully mocked transports for testing
-- future backends (Boost.Beast, ASIO, etc.)
+Responsibilities:
+
+1.  Drain WebSocket events
+2.  Process transport errors and closures
+3.  Execute reconnection attempts if retry timer expired
+4.  Evaluate liveness
+5.  Emit edge-triggered signals
+
+No background activity exists outside `poll()`.
 
 ---
 
-## Reference Implementation <a name="winhttp"></a>
+## Liveness Model
 
-The first reference transport implementation is based on **WinHTTP**.
+Two independent signals:
 
-- `transport::winhttp::WebSocket` implements `WebSocketConcept`
-- Uses Windows-native WebSocket support
-- TLS is provided by Windows SChannel
-- No OpenSSL or third-party networking stack required
+-   Last message timestamp
+-   Last heartbeat timestamp
 
-Implementation-specific API abstraction details are documented separately:
+Liveness expires only if **both** exceed their configured timeouts.
 
-➡️ [WinHTTP Transport Implementation](./winhttp/Transport.md)
+### Warning Phase
 
----
+When remaining time falls below:
 
-## Why This Design?
+    liveness_danger_window_
 
-- **Ultra-low latency**: no vtables, no hidden allocations
-- **Concepts over base classes**
-- **Zero-cost abstractions**
-- **Safety**: compile-time errors instead of runtime failures
-- **Testability**: mock WebSocket transports
-- **Extensibility**: new transports without touching protocol code
+`LivenessThreatened` is emitted once per silence window.
 
----
+### Expiration Phase
 
-## Testing
+When both signals are stale:
 
-- `WebSocketConcept` enables full transport mocking
-- Liveness, reconnection, and error paths are unit-tested
-- No network access required for transport tests
+-   Transport is force-closed
+-   FSM transitions to retry path
+-   Immediate reconnect attempt occurs
 
 ---
 
-## Summary
+## Retry Model
 
-- Wirekrak uses **modern C++20 concepts** instead of inheritance
-- Transport layer is **fully decoupled** from exchange logic
-- Architecture is **implementation-agnostic**
-- Platform-specific transports are isolated and replaceable
-- Designed for **high-frequency streaming workloads**
+Retry is permitted only for transient errors:
+
+-   ConnectionFailed
+-   HandshakeFailed
+-   Timeout
+-   RemoteClosed
+-   TransportFailure
+
+Retry behavior:
+
+1.  First retry is immediate (`RetryImmediate`)
+2.  Subsequent retries use exponential backoff
+3.  Backoff capped per error category
+4.  Fresh transport instance created each attempt
+
+Backoff is deterministic and bounded.
+
+---
+
+## Signal Buffering
+
+Signals are stored in:
+
+    lcr::lockfree::spsc_ring<connection::Signal, 16>
+
+Properties:
+
+-   Lock-free
+-   Single producer
+-   Single consumer
+-   Allocation-free
+-   Bounded capacity
+
+Overflow policy:
+
+-   Log warning
+-   Force connection close
+-   Preserve correctness guarantees
+
+---
+
+## Idle Detection
+
+``` cpp
+bool is_idle() const noexcept;
+```
+
+Returns true if:
+
+-   No pending signals
+-   No reconnect timer ready to fire
+-   No internal work pending
+
+Does not call poll().
+
+---
+
+## Transport Recreation
+
+Each reconnect:
+
+-   Closes old transport
+-   Destroys instance
+-   Constructs new `WS`
+-   Re-registers message callback
+
+No transport reuse occurs.
+
+---
+
+## Determinism Guarantees
+
+-   No implicit reconnection outside poll()
+-   No hidden timers
+-   No hidden threads
+-   No callback-based state mutation
+-   All transitions logged
+-   All retries explicit
+-   Epoch strictly monotonic
+
+---
+
+## Usage Example
+
+``` cpp
+transport::telemetry::Connection telemetry;
+transport::Connection<MyWebSocket> conn(telemetry);
+
+conn.open("wss://example.com/ws");
+
+while (running) {
+    conn.poll();
+
+    connection::Signal sig;
+    while (conn.poll_signal(sig)) {
+        // Optional reaction
+    }
+}
+```
+
+---
+
+## Design Philosophy
+
+The Connection never:
+
+-   Infers protocol intent
+-   Replays subscriptions
+-   Invents traffic
+-   Hides transport recycling
+
+It exposes deterministic transport facts and leaves protocol logic to
+higher layers.
+
+---
+
+## Related documents
+
+➡️ [WinHTTP Transport Websocket](./winhttp/Transport.md)
+
+➡️ [Transport Connection](./Connection.md)
 
 ---
 

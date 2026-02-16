@@ -1,181 +1,306 @@
-# Wirekrak Transport Connection
+# Wirekrak Transport WebSocket Connection
 
 ## Overview
 
-The **Wirekrak Transport Connection** is a transport-agnostic, poll-driven WebSocket
-connection abstraction responsible for managing **transport lifecycle, liveness enforcement,
-progress signaling, and automatic reconnection**, independently of any exchange protocol.
+The **Wirekrak Transport WebSocket Connection** is a deterministic,
+transport-agnostic, poll-driven abstraction responsible for managing the
+full lifecycle of a logical WebSocket connection.
 
-A `Connection` represents a **logical transport connection** whose identity remains stable
-across transient transport failures and internal reconnections, while still exposing
-**observable progress facts** to higher layers.
+A `Connection<WS>` instance represents a *stable logical identity*
+across transient transport failures and automatic reconnections. While
+the underlying WebSocket instance may be destroyed and recreated
+multiple times, the `Connection` object remains stable and exposes
+monotonic progress signals.
 
-It is the foundational component beneath protocol sessions (e.g. Kraken) and is intentionally
-decoupled from message schemas, subscriptions, and business logic.
-
-Unlike callback-driven designs, Wirekrak exposes **explicit, pull-based signals**
-that make transport progress observable, deterministic, and suitable for ultra-low-latency
-(ULL) environments.
+This component is intentionally protocol-agnostic and reusable across
+exchanges (Kraken, future venues, custom feeds).
 
 ---
 
-## Key Characteristics
+## Architectural Properties
 
-- **Header-only, zero-cost abstraction**
-- **Concept-based design** (no inheritance, no virtual functions)
-- **Transport-agnostic** (any WebSocket backend implementing `WebSocketConcept`)
-- **Deterministic, poll-driven execution**
-- **No background threads or timers**
-- **Fully unit-testable with mock transports**
-- **ULL-safe** (no callbacks, no blocking, no allocations on hot paths)
+-   Header-only
+-   Concept-based design (`WebSocketConcept`)
+-   No inheritance
+-   No virtual dispatch
+-   No background threads
+-   No timers
+-   Fully poll-driven
+-   Deterministic state transitions
+-   Unit-testable with mock transports
+-   Ultra-low-latency friendly
 
 ---
 
-## Responsibilities
+## Logical vs Physical Connection
 
-- Establish and manage a **logical WebSocket connection**
-- Own the complete **transport lifecycle** (connect, disconnect, retry)
-- Dispatch raw text frames to higher-level protocol layers
-- Track **transport progress and activity**
-- Enforce **liveness deterministically**
-- Automatically reconnect using **explicit retry semantics**
-- Emit **edge-triggered transport signals**
-- Remain silent about protocol intent (no subscriptions or message replay)
+The transport may reconnect multiple times internally.
+
+Each successful WebSocket establishment:
+
+-   Creates a fresh `WS` instance
+-   Increments `epoch()` exactly once
+-   Emits `connection::Signal::Connected`
+
+This guarantees:
+
+-   Epoch monotonicity
+-   Stable logical identity
+-   Deterministic lifetime boundaries
 
 ---
 
 ## Progress & Observability Model
 
-The transport connection exposes **facts, not inferred health states**.
-Correctness never depends on observing signals.
+The connection exposes **facts**, not inferred health states.
 
-### Transport Epoch
+### Epoch
 
-- `epoch() -> uint64_t`
-- Incremented **exactly once per successful WebSocket connection**
-- Represents completed transport lifetimes
-- Monotonic for the lifetime of the `Connection`
+``` cpp
+uint64_t epoch() const noexcept;
+```
 
-The epoch allows higher layers to detect **transport recycling**
-without lifecycle hooks or callbacks.
+Incremented exactly once per successful connection.
 
-### Message Counters
+Used by higher layers to detect transport recycling.
 
-- `rx_messages()`
-- `tx_messages()`
+### Counters
 
-Monotonic counters tracking **successfully received and sent messages**.
-They act as progression signals and are never reset.
+-   `rx_messages()`
+-   `tx_messages()`
+-   `heartbeat_total()`
 
-### Signals (`connection::Signal`)
+All counters are monotonic and never reset.
 
-Edge-triggered, single-shot signals representing externally observable facts:
+### Signals
 
-- `Connected`
-- `Disconnected`
-- `RetryImmediate`
-- `RetryScheduled`
-- `LivenessThreatened`
+Edge-triggered, single-shot events delivered via an internal SPSC ring:
 
-Signals are **informational only** and never represent full state.
+-   `Connected`
+-   `Disconnected`
+-   `RetryImmediate`
+-   `RetryScheduled`
+-   `LivenessThreatened`
 
----
+Signals are informational only and must not be used for correctness.
 
-## Signal Delivery Model
-
-- Signals are emitted synchronously during `poll()`
-- Buffered internally in a bounded, lock-free SPSC ring
-- Non-blocking and allocation-free
-- Oldest signal is dropped if the buffer overflows
-- Signals are not replayed across transport lifetimes
-
-Users must rely on **epoch + counters** for correctness.
-Signals are optional.
-
----
-
-## Liveness & Reconnection Model
-
-The connection tracks **two independent activity signals**:
-
-1. Last received message timestamp
-2. Last received heartbeat timestamp
-
-Liveness failure occurs **only if both signals are stale**.
-
-When liveness expires:
-
-- The underlying transport is force-closed
-- A `LivenessThreatened` signal may have been emitted earlier
-- A forced disconnect occurs
-- An **immediate reconnect attempt** is executed if retryable
-- Exponential backoff applies **only after a failed reconnect**
-- A fresh transport instance is created on each attempt
-
-Higher-level protocol sessions decide **what to replay**, if anything.
+Correctness must rely on epoch + counters.
 
 ---
 
 ## State Machine
 
-Internally, the transport connection uses an explicit, deterministic state machine:
+Internal states:
 
-- `Connecting`
-- `Connected`
-- `WaitingReconnect`
-- `Disconnecting`
-- `Disconnected`
+-   `Disconnected`
+-   `Connecting`
+-   `Connected`
+-   `Disconnecting`
+-   `WaitingReconnect`
 
-Internal state is **not exposed**.
-Only externally meaningful signals and progress facts are observable.
+Transitions are driven exclusively through `transition_()`.
+
+State is not externally exposed beyond `get_state()`.
 
 ---
 
-## Usage Pattern
+## Connection Lifecycle
 
-```cpp
-wirekrak::core::transport::telemetry::Connection telemetry;
-wirekrak::core::transport::Connection<WS> conn(telemetry);
+### open(url)
 
-conn.open("wss://ws.kraken.com/v2");
+Preconditions:
 
-uint64_t last_epoch = conn.epoch();
+-   Allowed only in `Disconnected` or `WaitingReconnect`
+-   URL must parse successfully
+
+Behavior:
+
+1.  Transition to `Connecting`
+2.  Create new transport
+3.  Attempt connect
+4.  On success → `Connected`
+5.  On failure → retry cycle may begin
+
+Calling `open()` while in `WaitingReconnect` **cancels the retry cycle**
+and immediately attempts a fresh connection.
+
+---
+
+### close()
+
+-   Idempotent
+-   Cancels retry cycle
+-   Transitions to `Disconnecting`
+-   Emits `Disconnected` once transport closes
+
+Destructor calls `close()`.
+
+No retries occur after destruction.
+
+---
+
+## Poll Model
+
+All progress is driven by:
+
+``` cpp
+conn.poll();
+```
+
+Responsibilities:
+
+1.  Drain WebSocket events
+2.  Process transport errors and closures
+3.  Execute reconnection attempts if retry timer expired
+4.  Evaluate liveness
+5.  Emit edge-triggered signals
+
+No background activity exists outside `poll()`.
+
+---
+
+## Liveness Model
+
+Two independent signals:
+
+-   Last message timestamp
+-   Last heartbeat timestamp
+
+Liveness expires only if **both** exceed their configured timeouts.
+
+### Warning Phase
+
+When remaining time falls below:
+
+    liveness_danger_window_
+
+`LivenessThreatened` is emitted once per silence window.
+
+### Expiration Phase
+
+When both signals are stale:
+
+-   Transport is force-closed
+-   FSM transitions to retry path
+-   Immediate reconnect attempt occurs
+
+---
+
+## Retry Model
+
+Retry is permitted only for transient errors:
+
+-   ConnectionFailed
+-   HandshakeFailed
+-   Timeout
+-   RemoteClosed
+-   TransportFailure
+
+Retry behavior:
+
+1.  First retry is immediate (`RetryImmediate`)
+2.  Subsequent retries use exponential backoff
+3.  Backoff capped per error category
+4.  Fresh transport instance created each attempt
+
+Backoff is deterministic and bounded.
+
+---
+
+## Signal Buffering
+
+Signals are stored in:
+
+    lcr::lockfree::spsc_ring<connection::Signal, 16>
+
+Properties:
+
+-   Lock-free
+-   Single producer
+-   Single consumer
+-   Allocation-free
+-   Bounded capacity
+
+Overflow policy:
+
+-   Log warning
+-   Force connection close
+-   Preserve correctness guarantees
+
+---
+
+## Idle Detection
+
+``` cpp
+bool is_idle() const noexcept;
+```
+
+Returns true if:
+
+-   No pending signals
+-   No reconnect timer ready to fire
+-   No internal work pending
+
+Does not call poll().
+
+---
+
+## Transport Recreation
+
+Each reconnect:
+
+-   Closes old transport
+-   Destroys instance
+-   Constructs new `WS`
+-   Re-registers message callback
+
+No transport reuse occurs.
+
+---
+
+## Determinism Guarantees
+
+-   No implicit reconnection outside poll()
+-   No hidden timers
+-   No hidden threads
+-   No callback-based state mutation
+-   All transitions logged
+-   All retries explicit
+-   Epoch strictly monotonic
+
+---
+
+## Usage Example
+
+``` cpp
+transport::telemetry::Connection telemetry;
+transport::Connection<MyWebSocket> conn(telemetry);
+
+conn.open("wss://example.com/ws");
 
 while (running) {
     conn.poll();
 
-    if (conn.epoch() != last_epoch) {
-        // Transport lifetime changed
-        last_epoch = conn.epoch();
-    }
-
     connection::Signal sig;
     while (conn.poll_signal(sig)) {
-        // React if desired (optional)
+        // Optional reaction
     }
 }
 ```
 
 ---
 
-## Destructor Semantics
+## Design Philosophy
 
-- The destructor **always closes the underlying transport**
-- No retries are scheduled after destruction
-- No signals are emitted after object lifetime ends
-- Destructor side effects are intentionally **not observable**
+The Connection never:
 
-This guarantees deterministic teardown and avoids use-after-destruction ambiguity.
+-   Infers protocol intent
+-   Replays subscriptions
+-   Invents traffic
+-   Hides transport recycling
 
----
-
-## Design Notes
-
-- URL parsing is intentionally minimal (`ws://` and `wss://` only)
-- TLS handling is delegated to the transport layer
-- Transport instances are **destroyed and recreated** on reconnect
-- All progress is driven explicitly via `poll()`
-- The connection never invents traffic or protocol behavior
+It exposes deterministic transport facts and leaves protocol logic to
+higher layers.
 
 ---
 
