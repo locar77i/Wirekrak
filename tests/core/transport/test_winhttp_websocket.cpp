@@ -98,16 +98,9 @@ void test_close_called_once() {
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
 
-    std::atomic<int> close_count{0};
-
     // Simulate close frame
     ws.test_api().results.push(ERROR_SUCCESS);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE);
-
-    // Fake-connect (we bypass real WinHTTP by calling receive loop indirectly)
-    ws.set_error_callback(nullptr);
-    ws.set_message_callback(nullptr);
-    ws.set_close_callback([&] { close_count++; });
 
     //if (!ws.connect("x", "443", "/"))
     ws.test_start_receive_loop();
@@ -116,10 +109,26 @@ void test_close_called_once() {
     while (!receive_started.load(std::memory_order_acquire)) {
         std::this_thread::yield();
     }
+
     ws.close();
     ws.close(); // idempotent
 
-    assert(close_count.load() == 1);
+    // Drain control-plane events
+    int close_count{0};
+
+    websocket::Event ev;
+    while (ws.poll_event(ev)) {
+        switch (ev.type) {
+        case websocket::EventType::Close:
+            close_count++;
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    assert(close_count == 1);
     std::cout << "[TEST] Done." << std::endl;
 }
 
@@ -131,13 +140,6 @@ void test_error_triggers_close() {
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
-
-    std::atomic<int> close_count{0};
-    std::atomic<int> error_count{0};
-    std::atomic<Error> last_error{Error::None};
-
-    ws.set_close_callback([&] { close_count++; });
-    ws.set_error_callback([&](Error err) { error_count++; last_error.store(err, std::memory_order_release); });
 
     // Simulate error
     ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
@@ -151,23 +153,45 @@ void test_error_triggers_close() {
         std::this_thread::yield();
     }
 
-    // Let receive thread run naturally
-    std::this_thread::yield();
-
+    // Wait until receive thread processes one receive call
+    while (ws.test_api().receive_count < 1) {
+        std::this_thread::yield();
+    }
     ws.close();
 
+    // Drain control-plane events
+    int error_count = 0;
+    int close_count = 0;
+    Error last_error = Error::None;
+
+    websocket::Event ev;
+    while (ws.poll_event(ev)) {
+        switch (ev.type) {
+        case websocket::EventType::Error:
+            error_count++;
+            last_error = ev.error;
+            break;
+
+        case websocket::EventType::Close:
+            close_count++;
+            break;
+
+        default:
+            break;
+        }
+    }
+
     // Now assert observed behavior
-    assert(error_count.load() <= 1);
-    assert(close_count.load() == 1);
+    assert(error_count <= 1);
+    assert(close_count == 1);
 
     // If error happened, it must have happened before close
-    if (error_count.load() == 1) {
+    if (error_count == 1) {
         assert(ws.test_api().receive_count >= 1);
     }
 
     // Validate semantic error classification
-    auto err = last_error.load(std::memory_order_acquire);
-    assert(err == Error::RemoteClosed || err == Error::TransportFailure);
+    assert(last_error == Error::RemoteClosed || last_error == Error::TransportFailure);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -260,11 +284,8 @@ void test_error_then_close_ordering() {
     telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
-    std::vector<std::string> events;
-    std::atomic<Error> last_error{Error::None};
-
-    ws.set_error_callback([&](Error err) { events.push_back("error"); last_error.store(err, std::memory_order_release); });
-    ws.set_close_callback([&] { events.push_back("close"); });
+    std::atomic<bool> receive_started{false};
+    ws.set_receive_started_flag(&receive_started);
 
     ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
@@ -272,19 +293,49 @@ void test_error_then_close_ordering() {
     //if (!ws.connect("x", "443", "/"))
     ws.test_start_receive_loop();
 
-    // wait until close observed
-    while (events.size() < 2) {
+    // Wait until receive loop has actually started
+    while (!receive_started.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    // Give receive loop opportunity to process injected error
+    std::this_thread::yield();
+
+    while (ws.test_api().receive_count == 0) {
         std::this_thread::yield();
     }
     ws.close();
 
+    // Drain control-plane events
+    std::vector<std::string> events;
+    Error last_error = Error::None;
+    websocket::Event ev;
+    while (ws.poll_event(ev)) {
+        switch (ev.type) {
+        case websocket::EventType::Error:
+            events.push_back("error");
+            last_error = ev.error;
+            break;
+
+        case websocket::EventType::Close:
+            events.push_back("close");
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    std::cout << "Observed events in order: " << events.size() << " events\n";
+    for (const auto& e : events) {
+        std::cout << "  " << e << "\n";
+    }
     assert(events.size() == 2);
     assert(events[0] == "error");
     assert(events[1] == "close");
 
     // Validate semantic error classification
-    auto err = last_error.load(std::memory_order_acquire);
-    assert(err == Error::RemoteClosed);
+    assert(last_error == Error::RemoteClosed);
 
     std::cout << "[TEST] Done." << std::endl;
 }

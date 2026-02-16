@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
-    while (running.load()) {
+    while (running.load(std::memory_order_relaxed)) {
         (void)session.poll();
         drain_messages(session);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

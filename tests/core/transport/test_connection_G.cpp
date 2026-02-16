@@ -548,7 +548,7 @@ int main() {
     test_successful_reconnect_resets_retry_state();
     test_retry_root_cause_stability();
     test_retry_aborts_on_non_retriable_reconnect_failure();
-    test_open_cancels_retry_cycle();
+    test_open_cancels_retry_cycle(); // TODO: re-check after fixing multi-transition in a single poll() call
     test_poll_is_noop_while_connected();
 
     std::cout << "\n[GROUP G — RECONNECTION LOGIC TESTS PASSED]\n";

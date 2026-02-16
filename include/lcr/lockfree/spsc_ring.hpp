@@ -1,20 +1,3 @@
-
-#pragma once
-
-
-#include <array>
-#include <atomic>
-#include <cstddef>
-#include <cstdint>
-#include <utility>
-#include <type_traits>
-
-#include "lcr/memory/footprint.hpp"
-
-
-namespace lcr {
-namespace lockfree {
-
 // -----------------------------------------------------------------------------
 // Ultra-low-latency SPSC ring buffer with compile-time capacity
 // Lock-free, wait-free, cacheline-separated producer/consumer indices.
@@ -31,6 +14,21 @@ namespace lockfree {
 //   - Single Producer, Single Consumer only
 //   - All operations O(1), noexcept
 // -----------------------------------------------------------------------------
+#pragma once
+
+
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <type_traits>
+
+#include "lcr/memory/footprint.hpp"
+
+
+namespace lcr::lockfree {
+
 template <typename T, size_t Capacity>
 class alignas(64) spsc_ring {
     static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0),
@@ -129,6 +127,4 @@ private:
     alignas(64) PaddedAtomic tail_;
 };
 
-
-} // namespace lockfree
-} // namespace lcr
+} // namespace lcr::lockfree

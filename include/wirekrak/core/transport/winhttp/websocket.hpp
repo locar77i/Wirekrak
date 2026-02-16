@@ -12,7 +12,9 @@
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
+#include "wirekrak/core/transport/websocket/events.hpp"
 #include "wirekrak/core/telemetry.hpp"
+#include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
 
 #include <windows.h>
@@ -77,8 +79,6 @@ class WebSocketImpl {
 
 public:
     using MessageCallback = std::function<void(std::string_view)>;
-    using CloseCallback   = std::function<void()>;
-    using ErrorCallback   = std::function<void(Error)>;
 
 public:
     explicit WebSocketImpl(telemetry::WebSocket& telemetry) noexcept
@@ -171,9 +171,6 @@ public:
                    (DWORD)msg.size()) == ERROR_SUCCESS;
         if (!ok) [[unlikely]] {
             WK_ERROR("[WS] websocket_send() failed");
-             if (on_error_) {
-                on_error_(transport::Error::TransportFailure);
-            }
         }
         else {
             WK_TL1( telemetry_.bytes_tx_total.inc(msg.size()) );
@@ -183,15 +180,15 @@ public:
     }
 
     inline void close() noexcept {
-        // Close the WebSocket (idempotent)
+        // Idempotent guard
+        if (!running_.exchange(false, std::memory_order_acq_rel)) {
+            return; // already closed or never started
+        }
+        // Close the WebSocket
         if (hWebSocket_) {
             WK_TRACE("[WS:API] Closing WebSocket ...");
             api_.websocket_close(hWebSocket_);
         }
-        // Stop the receive loop (idempotent)
-        running_.store(false, std::memory_order_release);
-        // Signal close callback (idempotent)
-        signal_close_();
         // Join receive thread
         if (recv_thread_.joinable()) {
             recv_thread_.join();
@@ -203,19 +200,14 @@ public:
         WK_TRACE("[WS] WebSocket closed.");
     }
 
+    [[nodiscard]]
+    inline bool poll_event(websocket::Event& out) noexcept {
+        return control_events_.pop(out);
+    }
+
     // Message callback is invoked on each complete message received.
     inline void set_message_callback(MessageCallback cb) noexcept {
         on_message_ = std::move(cb); 
-    }
-
-    // Close is always signaled exactly once.
-    inline void set_close_callback(CloseCallback cb) noexcept {
-        on_close_ = std::move(cb); 
-    }
-
-    // Error callbacks are delivered before close callbacks.
-    inline void set_error_callback(ErrorCallback cb) noexcept {
-        on_error_ = std::move(cb); 
     }
 
 private:
@@ -247,8 +239,8 @@ private:
             if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
             WK_TL1( telemetry_.receive_errors_total.inc() );
                 auto error = handle_receive_error_(result);
-                if (on_error_) {
-                    on_error_(error);
+                if (!control_events_.push(websocket::Event::make_error(error))) {
+                    handle_control_ring_full_();
                 }
                 running_.store(false, std::memory_order_release);
                 signal_close_();
@@ -300,6 +292,8 @@ private:
                 WK_TL1( ++fragments );
             }
         }
+        // If we exit loop without explicit close signaling
+        signal_close_();
     }
 
     inline Error handle_receive_error_(DWORD error) noexcept {
@@ -338,9 +332,13 @@ private:
             return;
         }
         WK_TL1( telemetry_.close_events_total.inc() );
-        if (on_close_) {
-            on_close_();
+        if (!control_events_.push(websocket::Event::make_close())) {
+            handle_control_ring_full_();
         }
+    }
+
+    inline void handle_control_ring_full_() noexcept {
+        WK_FATAL("[WS] Control event ring is full! Events may be lost.");
     }
 
 private:
@@ -359,8 +357,9 @@ private:
     std::atomic<bool> closed_{false};
 
     MessageCallback on_message_;
-    CloseCallback   on_close_;
-    ErrorCallback   on_error_;
+
+    // Control event queue (for signaling events like close and error)
+    lcr::lockfree::spsc_ring<websocket::Event, 16> control_events_;
 
 #ifdef WK_UNIT_TEST
 public:

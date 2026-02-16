@@ -1,23 +1,9 @@
-#pragma once
-
-
-#include <array>
-#include <atomic>
-#include <cstddef>
-#include <cstdint>
-#include <utility>
-#include <type_traits>
-
-
-namespace lcr {
-namespace lockfree {
-
 // -----------------------------------------------------------------------------
 // Ultra-Low-Latency SPMC Task Ring Buffer
 // Single Producer → Multiple Consumers
 // Each item is consumed exactly once by one consumer.
 //
-// Lock-free, wait-free, no dynamic allocations.
+// Lock-free (consumers may retry under contention), no dynamic allocations.
 // Designed for high-throughput task queues, schedulers, and ULL systems.
 //
 // Example:
@@ -32,6 +18,18 @@ namespace lockfree {
 //   - Each element consumed exactly once
 //   - All operations O(1), noexcept
 // -----------------------------------------------------------------------------
+#pragma once
+
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <type_traits>
+
+
+namespace lcr::lockfree {
+
 template <typename T, size_t Capacity>
 class alignas(64) spmc_task_ring {
     static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0),
@@ -124,6 +122,4 @@ private:
     alignas(64) std::atomic<size_t> tail_{0}; // shared by consumers
 };
 
-
-} // namespace lockfree
-} // namespace lcr
+} // namespace lcr::lockfree

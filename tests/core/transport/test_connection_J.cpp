@@ -102,6 +102,7 @@ void test_close_idempotent() {
     h.connection->close();
     h.connection->close();
 
+    h.connection->poll();
     h.drain_signals();
 
     // Check signals

@@ -8,6 +8,8 @@
 #include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
+#include "wirekrak/core/transport/websocket/events.hpp"
+#include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -19,13 +21,9 @@ namespace wirekrak::core::transport::test {
 // WebSocket instance internally and tests are strictly single-threaded.
 // Each test MUST call MockWebSocket::reset() before constructing Connection.
 class MockWebSocket {
-    using MessageCallback = std::function<void(const std::string&)>;
-    using CloseCallback   = std::function<void()>;
-    using ErrorCallback   = std::function<void(Error)>;
+    using MessageCallback = std::function<void(std::string_view)>;
 
     MessageCallback on_message_cb_;
-    CloseCallback   on_close_cb_;
-    ErrorCallback   on_error_cb_;
 
 public:
     MockWebSocket(telemetry::WebSocket& telemetry) noexcept {
@@ -58,21 +56,18 @@ public:
         if (!connected_) return;
         connected_ = false;
         close_count_++;
-        if (on_close_cb_) {
-            on_close_cb_();
+        if (!control_events_.push(websocket::Event::make_close())) {
+            handle_control_ring_full_();
         }
+    }
+
+    [[nodiscard]]
+    inline bool poll_event(websocket::Event& out) noexcept {
+        return control_events_.pop(out);
     }
 
     inline void set_message_callback(MessageCallback cb) noexcept {
         on_message_cb_ = std::move(cb);
-    }
-
-    inline void set_close_callback(CloseCallback cb) noexcept {
-        on_close_cb_ = std::move(cb);
-    }
-
-    inline void set_error_callback(ErrorCallback cb) noexcept {
-        on_error_cb_ = std::move(cb);
     }
 
     // ---------------------------------------------------------------------
@@ -81,14 +76,14 @@ public:
 
     inline void emit_message(const std::string& msg) noexcept {
         if (on_message_cb_) {
-            on_message_cb_(msg);
+            on_message_cb_(std::string_view(msg));
         }
     }
 
-    inline void emit_error(Error code = Error::TransportFailure) noexcept {
+    inline void emit_error(Error error = Error::TransportFailure) noexcept {
         error_count_++;
-        if (on_error_cb_) {
-            on_error_cb_(code);
+        if (!control_events_.push(websocket::Event::make_error(error))) {
+            handle_control_ring_full_();
         }
     }
 
@@ -113,6 +108,13 @@ public:
         close_count_ = 0;
         error_count_ = 0;
         next_connect_result_ = Error::None;
+        websocket::Event tmp;
+        while (control_events_.pop(tmp)) {}
+    }
+
+private:
+    inline void handle_control_ring_full_() noexcept {
+        WK_FATAL("[WS] Control event ring is full! Events may be lost.");
     }
 
 private:
@@ -121,6 +123,9 @@ private:
     static inline int close_count_{0};
     static inline int error_count_{0};
     static inline Error next_connect_result_{Error::None};
+
+    // Control event queue (for signaling events like close and error)
+    static inline lcr::lockfree::spsc_ring<websocket::Event, 16> control_events_;
 };
 // Assert that MockWebSocket conforms to transport::WebSocketConcept concept
 static_assert(WebSocketConcept<MockWebSocket>);

@@ -12,6 +12,7 @@
 #include "wirekrak/core/transport/parse_url.hpp"
 #include "wirekrak/core/transport/state.hpp"
 #include "wirekrak/core/transport/connection/signal.hpp"
+#include "wirekrak/core/transport/websocket/events.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/optional.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
@@ -217,6 +218,19 @@ public:
 
     // Event loop
     inline void poll() noexcept {
+        //WK_TRACE("[CONN] Polling connection ... (state: " << to_string(get_state_()) << ")");
+        websocket::Event ev;
+        while (ws_->poll_event(ev)) {
+            switch (ev.type) {
+                case websocket::EventType::Close:
+                    on_transport_closed_();
+                    break;
+
+                case websocket::EventType::Error:
+                    on_transport_error_(ev.error);
+                    break;
+            }
+        }
         // === Reconnection logic ===
         auto now = std::chrono::steady_clock::now();
         if (get_state_() == State::WaitingReconnect && now >= next_retry_) {
@@ -262,7 +276,7 @@ public:
     // Accessors
     [[nodiscard]]
     inline State get_state() const noexcept {
-        return state_;
+        return get_state_();
     }
 
     [[nodiscard]]
@@ -342,7 +356,7 @@ public:
         }
 
         // 2) Reconnect timer ready to fire → not idle
-        if (state_ == State::WaitingReconnect) {
+        if (get_state_() == State::WaitingReconnect) {
             auto now = std::chrono::steady_clock::now();
             if (next_retry_ != std::chrono::steady_clock::time_point{} && now >= next_retry_) {
                 return false;
@@ -425,7 +439,7 @@ private:
     std::atomic<DisconnectReason> disconnect_reason_{DisconnectReason::None};
 
     // State machine 
-    State state_{State::Disconnected};
+    std::atomic<State> state_{State::Disconnected};
     std::chrono::steady_clock::time_point next_retry_{};
     int retry_attempts_{0}; // It is 1-based and represents the ordinal number of the next retry attempt (not completed attempts).
 
@@ -447,18 +461,19 @@ private:
 private:
     // State accessor
     inline State get_state_() const noexcept {
-        return state_;
+        return state_.load(std::memory_order_acquire);
     }
 
     // State mutator with logging
     inline void set_state_(State new_state) noexcept {
-        WK_TRACE("[CONN] State:  " << to_string(state_) << " -> " << to_string(new_state));
-        state_ = new_state;
+        const State old_state = state_.load(std::memory_order_relaxed);
+        WK_TRACE("[CONN] State:  " << to_string(old_state) << " -> " << to_string(new_state));
+        state_.store(new_state, std::memory_order_release);
     }
 
     // State machine transition function
     inline void transition_(Event event, Error error = Error::None) noexcept {
-        const State state  = state_;
+        const State state  = get_state_();
         const auto reason  = disconnect_reason_.load(std::memory_order_relaxed);
 
         WK_TRACE("[FSM] (" << to_string(state) << ") --" << to_string(event) << "-->");
@@ -657,12 +672,6 @@ private:
         // Set callbacks
         ws_->set_message_callback([this](std::string_view msg) {
             on_message_received_(msg);
-        });
-        ws_->set_error_callback([this](Error error) {
-            on_transport_error_(error);
-        });
-        ws_->set_close_callback([this]() {
-            on_transport_closed_();
         });
     }
                     

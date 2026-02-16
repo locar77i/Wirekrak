@@ -102,7 +102,6 @@ making the non-atomic read of `value_` well-defined for trivially copyable types
 
 ================================================================================
 */
-
 #pragma once
 
 #include <atomic>

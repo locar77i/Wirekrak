@@ -28,10 +28,6 @@ int main() {
         std::cout << "Received: " << msg << std::endl;
     });
 
-    ws.set_close_callback([]() {
-        std::cout << "[WS] Connection closed\n";
-    });
-
     if (ws.connect("ws.kraken.com", "443", "/v2") != transport::Error::None) {
         std::cerr << "Connect failed\n";
         return 1;

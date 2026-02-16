@@ -12,7 +12,6 @@
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
-// TODO:
 #include "wirekrak/core/protocol/kraken/response/partitioner.hpp"
 
 
