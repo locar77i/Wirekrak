@@ -10,9 +10,16 @@ namespace wirekrak::core::protocol::kraken::parser {
 // PARSER RESULT ENUM
 // ===============================================
 enum class Result : std::uint8_t {
-    Ok,             // Parsed successfully
-    InvalidSchema,  // Missing / malformed fields or structure
-    InvalidValue    // Field present but semantically invalid
+    // ---- Parsing domain (0–7) ----
+    Ignored        = 0,            // Not applicable / unknown method or channel
+    InvalidJson    = 1,            // Structural failure
+    InvalidSchema  = 2,            // Schema validation failure (missing required field, type mismatch, etc.)
+    InvalidValue   = 3,            // Field present but semantically invalid
+    Parsed         = 4,            // Parsed successfully
+
+    // ---- Delivery domain (8–15) ----
+    Delivered      = 8,            // Parsed successfully and delivered to the next stage (e.g. ring buffer)
+    Backpressure   = 9             // Delivery failure due to backpressure (e.g. full ring buffer)
 };
 
 // -----------------------------------------------------------------------------
@@ -21,9 +28,13 @@ enum class Result : std::uint8_t {
 [[nodiscard]]
 inline constexpr std::string_view to_string(Result r) noexcept {
     switch (r) {
-        case Result::Ok:             return "ok";
-        case Result::InvalidSchema:  return "invalid_schema";
-        case Result::InvalidValue:   return "invalid_value";
+        case Result::Ignored:        return "Ignored";
+        case Result::InvalidJson:    return "InvalidJson";
+        case Result::InvalidSchema:  return "InvalidSchema";
+        case Result::InvalidValue:   return "InvalidValue";
+        case Result::Parsed:         return "Parsed";
+        case Result::Delivered:      return "Delivered";
+        case Result::Backpressure:   return "Backpressure";
         default:                     return "unknown";
     }
 }

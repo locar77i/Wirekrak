@@ -58,9 +58,9 @@ void test_book_unsubscribe_ack_success() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    bool ok = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::book::unsubscribe_ack::parse(root, ack);
 
-    assert(ok);
+    assert(r == parser::Result::Parsed);
 
     // Required fields
     assert(ack.symbol == "BTC/USD");
@@ -101,9 +101,9 @@ void test_book_unsubscribe_ack_error() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    bool ok = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::book::unsubscribe_ack::parse(root, ack);
 
-    assert(ok);
+    assert(r == parser::Result::Parsed);
     assert(ack.success == false);
     assert(ack.error.has());
     assert(ack.error.value() == "not subscribed");
@@ -133,9 +133,9 @@ void test_book_unsubscribe_ack_wrong_method() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    bool ok = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::book::unsubscribe_ack::parse(root, ack);
 
-    assert(!ok);
+    assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -161,9 +161,9 @@ void test_book_unsubscribe_ack_wrong_channel() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    bool ok = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::book::unsubscribe_ack::parse(root, ack);
 
-    assert(!ok);
+    assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -189,9 +189,9 @@ void test_book_unsubscribe_ack_missing_symbol() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    bool ok = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::book::unsubscribe_ack::parse(root, ack);
 
-    assert(!ok);
+    assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -217,9 +217,9 @@ void test_book_unsubscribe_ack_invalid_depth_type() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    bool ok = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::book::unsubscribe_ack::parse(root, ack);
 
-    assert(!ok);
+    assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -239,9 +239,9 @@ void test_book_unsubscribe_ack_missing_result() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    bool ok = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::book::unsubscribe_ack::parse(root, ack);
 
-    assert(!ok);
+    assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";
 }

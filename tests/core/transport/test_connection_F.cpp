@@ -89,15 +89,34 @@ void test_liveness_both_stale() {
 
     // Drive liveness state evaluation
     h.connection->poll();
-    h.connection->poll();
-
     h.drain_signals();
 
     // Check signals
-    TEST_CHECK(h.connect_signals == 1);
-    TEST_CHECK(h.disconnect_signals == 1);        // Disconnection must occur due to liveness timeout
-    TEST_CHECK(h.retry_schedule_signals == 0);
+    TEST_CHECK(h.connect_signals == 1);           // Connected successfully
+    TEST_CHECK(h.disconnect_signals == 0);        // No disconnect signals yet (until next poll)
     TEST_CHECK(h.liveness_warning_signals == 1);  // One single liveness warning signal
+    TEST_CHECK(h.retry_immediate_signals == 0);   // No retry immediate signals yet
+    TEST_CHECK(h.retry_schedule_signals == 0);    // No retry schedule signals yet
+    TEST_CHECK(h.signals.size() == 2);
+    TEST_CHECK(h.signals[0] == connection::Signal::Connected);
+    TEST_CHECK(h.signals[1] == connection::Signal::LivenessThreatened);
+
+    // Drive inmediate retry logic (due to liveness timeout)
+    h.connection->poll();
+    h.drain_signals();
+
+    // Check signals
+    TEST_CHECK(h.connect_signals == 2);           // Re-connected successfully
+    TEST_CHECK(h.disconnect_signals == 1);        // The first disconnect signal (due to liveness timeout)
+    TEST_CHECK(h.liveness_warning_signals == 1);  // One single liveness warning signal
+    TEST_CHECK(h.retry_immediate_signals == 1);   // One retry immediate signal
+    TEST_CHECK(h.retry_schedule_signals == 0);    // No retry schedule signals yet
+    TEST_CHECK(h.signals.size() == 5);
+    TEST_CHECK(h.signals[0] == connection::Signal::Connected);
+    TEST_CHECK(h.signals[1] == connection::Signal::LivenessThreatened);
+    TEST_CHECK(h.signals[2] == connection::Signal::Disconnected);
+    TEST_CHECK(h.signals[3] == connection::Signal::RetryImmediate);
+    TEST_CHECK(h.signals[4] == connection::Signal::Connected);
 
     // Transport must be force-closed to enter reconnect path
     TEST_CHECK(test::MockWebSocket::close_count() == 1);

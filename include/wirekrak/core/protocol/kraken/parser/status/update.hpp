@@ -3,6 +3,8 @@
 #include <simdjson.h>
 
 #include "wirekrak/core/protocol/kraken/schema/status/update.hpp"
+#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -23,61 +25,67 @@ public:
     //   "data": [ { ... } ]
     // }
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, schema::status::Update& out) noexcept
+    static inline Result parse(const simdjson::dom::element& root, schema::status::Update& out) noexcept
     {
         using namespace simdjson;
 
+        // Root must be an object
+        auto r = helper::require_object(root);
+        if (r != Result::Parsed) {
+            WK_DEBUG("[PARSER] Root not an object in status update -> ignore message.");
+            return r;
+        }
+
         // data must be an array
         dom::array data;
-        if (root["data"].get(data)) {
+        r = helper::parse_array_required(root, "data", data);
+        if (r != Result::Parsed) {
             WK_DEBUG("[PARSER] Field 'data' missing or invalid in status update -> ignore message.");
-            return false;
+            return r;
         }
 
         // Kraken guarantees exactly one object
         auto it = data.begin();
         if (it == data.end()) {
             WK_DEBUG("[PARSER] Empty 'data' array in status update -> ignore message.");
-            return false;
+            return Result::InvalidSchema;
         }
 
         const dom::element& obj = *it;
 
         // system (required)
-        std::string_view system_sv;
-        if (obj["system"].get(system_sv)) {
-            WK_DEBUG("[PARSER] Field 'system' missing in status update -> ignore message.");
-            return false;
-        }
-        out.system = to_system_state_enum_fast(system_sv);
-        if (out.system == SystemState::Unknown) {
-            WK_DEBUG("[PARSER] Unknown system state '" << system_sv << "' -> ignore message.");
-            return false;
+        r = adapter::parse_system_state_required(obj, "system", out.system);
+        if (r != Result::Parsed) {
+            WK_DEBUG("[PARSER] Field 'system' invalid or missing in status update -> ignore message.");
+            return r;
         }
 
         // api_version (required)
         std::string_view api_sv;
-        if (obj["api_version"].get(api_sv)) {
+        r = helper::parse_string_required(obj, "api_version", api_sv);
+        if (r != Result::Parsed) {
             WK_DEBUG("[PARSER] Field 'api_version' missing in status update -> ignore message.");
-            return false;
+            return r;
         }
         out.api_version.assign(api_sv);
 
         // connection_id (required)
-        if (obj["connection_id"].get(out.connection_id)) {
-            WK_DEBUG("[PARSER] Field 'connection_id' missing in status update -> ignore message.");
-            return false;
+        r = helper::parse_uint64_required(obj, "connection_id", out.connection_id);
+        if (r != Result::Parsed) {
+            WK_DEBUG("[PARSER] Field 'connection_id' missing or invalid in status update -> ignore message.");
+            return r;
         }
 
         // version (required)
-        std::string_view version_sv;
-        if (obj["version"].get(version_sv)) {
+        std::string_view sv;
+        r = helper::parse_string_required(obj, "version", sv);
+        if (r != Result::Parsed) {
             WK_DEBUG("[PARSER] Field 'version' missing in status update -> ignore message.");
-            return false;
+            return r;
         }
-        out.version.assign(version_sv);
+        out.version.assign(sv);
 
-        return true;
+        return Result::Parsed;
     }
 };
 

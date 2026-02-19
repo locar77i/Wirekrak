@@ -189,6 +189,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
 
     while (!ping_enabled.load(std::memory_order_relaxed) && running.load(std::memory_order_relaxed)) {
         connection.poll();
+        drain_events();     // Drain any pending events
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 

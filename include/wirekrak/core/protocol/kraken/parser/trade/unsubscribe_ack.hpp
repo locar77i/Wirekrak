@@ -14,7 +14,7 @@ namespace trade {
 
 struct unsubscribe_ack {
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, schema::trade::UnsubscribeAck& out) noexcept {
+    static inline Result parse(const simdjson::dom::element& root, schema::trade::UnsubscribeAck& out) noexcept {
         out = schema::trade::UnsubscribeAck{};
         return detail::parse_ack_common(root, "unsubscribe", out);
     }

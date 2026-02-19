@@ -31,7 +31,7 @@ static bool parse(std::string_view json, schema::status::Update& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
-    return parser::status::update::parse(doc.value(), out);
+    return (parser::status::update::parse(doc.value(), out) == parser::Result::Parsed);
 }
 
 // ------------------------------------------------------------

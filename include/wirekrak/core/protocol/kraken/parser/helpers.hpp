@@ -52,7 +52,7 @@ namespace wirekrak::core::protocol::kraken::parser::helper {
 
 [[nodiscard]]
 inline parser::Result require_object(const simdjson::dom::element& root) noexcept {
-    return (root.type() == simdjson::dom::element_type::OBJECT) ? parser::Result::Ok : parser::Result::InvalidSchema;
+    return (root.type() == simdjson::dom::element_type::OBJECT) ? parser::Result::Parsed : parser::Result::InvalidSchema;
 }
 
 // ------------------------------------------------------------
@@ -62,7 +62,7 @@ inline parser::Result require_object(const simdjson::dom::element& root) noexcep
 inline parser::Result parse_object_required(const simdjson::dom::element& parent, const char* key, simdjson::dom::element& out) noexcept {
     // ensure parent is object
     auto r = require_object(parent);
-    if (r != parser::Result::Ok) {
+    if (r != parser::Result::Parsed) {
         return r;
     }
     // lookup field
@@ -74,10 +74,10 @@ inline parser::Result parse_object_required(const simdjson::dom::element& parent
     out = field.value();
     // Field must be an object
     r = require_object(out);
-    if (r != parser::Result::Ok) {
+    if (r != parser::Result::Parsed) {
         return r;
     }
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 // ------------------------------------------------------------
@@ -88,22 +88,22 @@ inline parser::Result parse_object_optional(const simdjson::dom::element& parent
     // Default: not present
     present = false;
     // Parent must be an object
-    if (require_object(parent) != parser::Result::Ok) {
+    if (require_object(parent) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
     auto field = parent[key];
     if (field.error()) {
-        return parser::Result::Ok; // optional, not present
+        return parser::Result::Parsed; // optional, not present
     }
     // Extract value
     out = field.value();
     // Field must be an object
-    if (require_object(out) != parser::Result::Ok) {
+    if (require_object(out) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     present = true;
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 // ------------------------------------------------------------
@@ -112,7 +112,7 @@ inline parser::Result parse_object_optional(const simdjson::dom::element& parent
 [[nodiscard]]
 inline parser::Result parse_array_required(const simdjson::dom::element& parent, const char* key, simdjson::dom::array& out) noexcept {
     // Parent must be an object
-    if (require_object(parent) != parser::Result::Ok) {
+    if (require_object(parent) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
@@ -124,7 +124,7 @@ inline parser::Result parse_array_required(const simdjson::dom::element& parent,
     if (field.get(out)) {
         return parser::Result::InvalidSchema;
     }
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 // ------------------------------------------------------------
@@ -134,27 +134,27 @@ inline parser::Result parse_array_required(const simdjson::dom::element& parent,
 inline parser::Result parse_array_optional(const simdjson::dom::element& parent, const char* key, simdjson::dom::array& out, bool& present) noexcept {
     present = false;
     // Parent must be object
-    if (require_object(parent) != parser::Result::Ok) {
+    if (require_object(parent) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
     auto field = parent[key];
     if (field.error()) {
-        return parser::Result::Ok; // optional, not present
+        return parser::Result::Parsed; // optional, not present
     }
     // Extract array
     if (field.get(out)) {
         return parser::Result::InvalidSchema;
     }
     present = true;
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 
 [[nodiscard]]
 inline bool parse_string_equals_required(const simdjson::dom::element& obj, const char* key, std::string_view expected) noexcept {
     auto r = require_object(obj);
-    if (r != parser::Result::Ok) {
+    if (r != parser::Result::Parsed) {
         return false;
     }
     // Get string field
@@ -173,7 +173,7 @@ inline bool parse_string_equals_required(const simdjson::dom::element& obj, cons
 [[nodiscard]]
 inline parser::Result parse_bool_required(const simdjson::dom::element& obj, const char* key, bool& out) noexcept {
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
@@ -185,13 +185,13 @@ inline parser::Result parse_bool_required(const simdjson::dom::element& obj, con
     if (field.get(out)) {
         return parser::Result::InvalidSchema;
     }
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 [[nodiscard]]
 inline parser::Result parse_uint64_required(const simdjson::dom::element& obj, const char* key, std::uint64_t& out) noexcept {
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
@@ -203,13 +203,13 @@ inline parser::Result parse_uint64_required(const simdjson::dom::element& obj, c
     if (field.get(out)) {
         return parser::Result::InvalidSchema;
     }
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 [[nodiscard]]
 inline parser::Result parse_double_required(const simdjson::dom::element& obj, const char* key, double& out) noexcept {
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
@@ -221,13 +221,13 @@ inline parser::Result parse_double_required(const simdjson::dom::element& obj, c
     if (field.get(out)) {
         return parser::Result::InvalidSchema;
     }
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 [[nodiscard]]
 inline parser::Result parse_string_required(const simdjson::dom::element& obj, const char* key, std::string_view& out) noexcept {
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
@@ -239,7 +239,7 @@ inline parser::Result parse_string_required(const simdjson::dom::element& obj, c
     if (field.get(out)) {
         return parser::Result::InvalidSchema;
     }
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 // ============================================================================
@@ -251,14 +251,14 @@ inline parser::Result parse_string_optional(const simdjson::dom::element& obj, c
     presence = false;
     out = std::string_view{};
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
     auto field = obj[key];
     if (field.error()) {
         // Optional field not present
-        return parser::Result::Ok;
+        return parser::Result::Parsed;
     }
     // Field is present
     presence = true;
@@ -266,7 +266,7 @@ inline parser::Result parse_string_optional(const simdjson::dom::element& obj, c
     if (field.get(out)) {
         return parser::Result::InvalidSchema;
     }
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 [[nodiscard]]
@@ -274,13 +274,13 @@ inline parser::Result parse_bool_optional(const simdjson::dom::element& obj, con
     // Always reset output (streaming safety)
     out.reset();
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
     auto field = obj[key];
     if (field.error()) {
-        return parser::Result::Ok; // optional, not present
+        return parser::Result::Parsed; // optional, not present
     }
     // Extract boolean
     bool tmp{};
@@ -288,7 +288,7 @@ inline parser::Result parse_bool_optional(const simdjson::dom::element& obj, con
         return parser::Result::InvalidSchema;
     }
     out = tmp;
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 [[nodiscard]]
@@ -296,13 +296,13 @@ inline parser::Result parse_uint64_optional(const simdjson::dom::element& obj, c
     // Always reset output (streaming safety)
     out.reset();
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
     auto field = obj[key];
     if (field.error()) {
-        return parser::Result::Ok; // optional, not present
+        return parser::Result::Parsed; // optional, not present
     }
     // Extract value
     std::uint64_t tmp{};
@@ -310,7 +310,7 @@ inline parser::Result parse_uint64_optional(const simdjson::dom::element& obj, c
         return parser::Result::InvalidSchema;
     }
     out = tmp;
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 [[nodiscard]]
@@ -318,13 +318,13 @@ inline parser::Result parse_double_optional(const simdjson::dom::element& obj, c
     // Always reset output (streaming safety)
     out.reset();
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
     auto field = obj[key];
     if (field.error()) {
-        return parser::Result::Ok; // optional, not present
+        return parser::Result::Parsed; // optional, not present
     }
     // Extract value
     double tmp{};
@@ -332,7 +332,7 @@ inline parser::Result parse_double_optional(const simdjson::dom::element& obj, c
         return parser::Result::InvalidSchema;
     }
     out = tmp;
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 [[nodiscard]]
@@ -341,13 +341,13 @@ inline parser::Result parse_string_list_optional(const simdjson::dom::element& o
     out.clear();
     present = false;
     // Parent must be an object
-    if (require_object(obj) != parser::Result::Ok) {
+    if (require_object(obj) != parser::Result::Parsed) {
         return parser::Result::InvalidSchema;
     }
     // Lookup field
     auto field = obj[key];
     if (field.error()) {
-        return parser::Result::Ok; // optional, not present
+        return parser::Result::Parsed; // optional, not present
     }
     // Extract array
     simdjson::dom::array arr;
@@ -363,7 +363,7 @@ inline parser::Result parse_string_list_optional(const simdjson::dom::element& o
         out.emplace_back(sv);
     }
     present = true;
-    return parser::Result::Ok;
+    return parser::Result::Parsed;
 }
 
 } // namespace wirekrak::core::protocol::kraken::parser::helper

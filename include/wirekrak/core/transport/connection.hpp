@@ -147,7 +147,7 @@ public:
 
         // --- Synchronous preconditions (must succeed before FSM starts) ---
 
-        // 0) PRECONDITION: must be disconnected to open()
+        // 0) PRECONDITION: must be disconnected or waiting to reconnect
         if (get_state_() != State::Disconnected && get_state_() != State::WaitingReconnect) {
             WK_WARN("[CONN] open() called while not disconnected  (state: " << to_string(get_state_()) << "). Ignoring.");
             return Error::InvalidState;
@@ -174,9 +174,9 @@ public:
             return last_error_;
         }
         // 5) Transport connection established -> finalize Connected state
-        WK_INFO("[CONN] Connected to server: " << last_url_);
         WK_TL1( telemetry_.connect_success_total.inc() ); // This reflects a state-machine fact, not a transport fact.
         transition_(Event::TransportConnected);
+        WK_INFO("[CONN] Connected to server: " << last_url_);
         return Error::None;
     }
 
@@ -216,7 +216,8 @@ public:
 
     // Event loop
     inline void poll() noexcept {
-        //WK_TRACE("[CONN] Polling connection ... (state: " << to_string(get_state_()) << ")");
+        WK_TRACE("[CONN] Polling connection ... (state: " << to_string(get_state_()) << ")");
+        // === Drain transport events ===
         websocket::Event ev;
         while (ws_->poll_event(ev)) {
             switch (ev.type) {
@@ -254,7 +255,7 @@ public:
             }
             // === Liveness timeout check ===
             if (!liveness_timeout_emitted_ && is_liveness_stale_()) {
-                WK_TRACE("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
+                WK_DEBUG("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
                 liveness_timeout_emitted_ = true;
                 transition_(Event::LivenessExpired, Error::Timeout);
             }
@@ -445,13 +446,15 @@ private:
     lcr::lockfree::spsc_ring<connection::Signal, 16> events_;
 
     inline void emit_(connection::Signal sig) noexcept {
+        WK_TRACE("[CONN] Emitting signal: " << to_string(sig));
         // Fast path: try to push
         if (events_.push(sig)) [[likely]] {
             return;
         }
-        WK_WARN("[CONN] Failed to emit signal '" << to_string(sig) << "' (buffer full) - Poll signals is required to drain the buffer.");
+        WK_WARN("[CONN] Failed to emit signal '" << to_string(sig) << "' (backpressure) - protocol correctness compromised (user is not draining fast enough)");
         // Future backpresusre policy (default:strict)
         // Wirekrak should never lie to the user or perform magic without explicit user instruction
+        // Defensive action: close the connection to prevent further damage
         WK_FATAL("[CONN] Forcing connection close to preserve correctness guarantees.");
         close();
     }
@@ -564,11 +567,13 @@ private:
                 break;
 
             case Event::CloseRequested:
+                WK_DEBUG("[CONN] Disconnecting from: " << last_url_);
                 disconnect_reason_ = DisconnectReason::LocalClose;
                 set_state_(State::Disconnecting);
-                // CloseRequested does not cancel pending retry state explicitly;
+                // This event does not cancel pending retry state explicitly;
                 // retry resolution is handled by transport close callback.
                 ws_->close();
+                WK_INFO("[CONN] Disconnected from server: " << last_url_);
                 break;
 
             case Event::TransportClosed:
@@ -697,7 +702,6 @@ private:
 
     // Placeholder for user-defined behavior on transport closure
     inline void on_transport_closed_() {
-        WK_TRACE("[CONN] Disconnect reason: " << to_string(disconnect_reason_));
         // Guard against multiple invocations
         if (get_state_() == State::Disconnected) {
             return; // already resolved
@@ -707,10 +711,10 @@ private:
             return;
         }
         WK_TL1( telemetry_.disconnect_events_total.inc() ); // transport closure as observed by Connection
-        WK_INFO("[CONN] Disconnected from server: " << last_url_);
         emit_(connection::Signal::Disconnected);
         // Notify FSM that the transport has closed (resolution is state-dependent)
         transition_(Event::TransportClosed, last_error_);
+        WK_INFO("[CONN] Connection closed from server: " << last_url_ << " (reason: " << to_string(disconnect_reason_) << ")");
     }
 
     // Determines whether a transport error represents a transient, external
@@ -753,7 +757,7 @@ private:
             return false;
         }
         // INVARIANT: parsed_url_ must be valid here
-        assert(parsed_url_.has() && "reconnect_() without parsed_url");
+        assert(parsed_url_.has() && "reconnect cannot be called without the parsed url data");
         // 1) Retry delay elapsed -> FSM may initiate reconnection attempt
         transition_(Event::RetryTimerExpired);
         // 2) Create a fresh transport instance
@@ -761,15 +765,15 @@ private:
         // 3) Attempt reconnection
         last_error_ = ws_->connect(parsed_url_.value().host, parsed_url_.value().port, parsed_url_.value().path);
         if (last_error_ != Error::None) {
-            WK_ERROR("[CONN] Reconnection failed.");
+            WK_ERROR("[CONN] Reconnection failed (" << to_string(last_error_) << ")");
             // Reconnection attempt failed -> apply backoff-based retry policy
             transition_(Event::TransportReconnectFailed, last_error_);
             return false;
         }
         // 4) Enter connected state
-        WK_INFO("[CONN] Connection re-established with server '" << last_url_ << "'.");
         WK_TL1( telemetry_.retry_success_total.inc() ); // State-based success, not transport-based
         transition_(Event::TransportConnected);
+        WK_INFO("[CONN] Connection re-established with server '" << last_url_ << "'.");
         return true;
     }
 
@@ -790,6 +794,8 @@ private:
         auto now = std::chrono::steady_clock::now();
         auto delay = backoff_(retry_root_error_, retry_attempts_);
         next_retry_ = now + delay;
+        WK_INFO("[CONN] Next reconnection attempt in " << delay.count() << " ms");
+/*
         // convert to seconds for logging
         auto seconds = std::chrono::duration_cast<std::chrono::seconds>(delay);
         if (seconds.count() == 1) {
@@ -797,6 +803,7 @@ private:
         } else if (seconds.count() > 1) {
             WK_INFO("[CONN] Next reconnection attempt in " << seconds.count() << " seconds.");
         }
+*/
     }
 
     [[nodiscard]]

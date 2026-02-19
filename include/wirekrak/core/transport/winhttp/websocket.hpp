@@ -253,7 +253,7 @@ private:
             }
             // Handle close frame
             if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) { // normal termination
-                WK_INFO("[WS] Received WebSocket close frame.");
+                WK_DEBUG("[WS] Received WebSocket close frame.");
                 running_.store(false, std::memory_order_release);
                 signal_close_();
                 break;
@@ -269,6 +269,7 @@ private:
                     WK_TL1( telemetry_.fragments_per_message.record(1) );
                 }
                 else { // completing fragmented message
+                    WK_TRACE("[WS] Received final message fragment (size " << bytes << ")");
                     message_buffer_.append(buffer.data(), bytes);
                     WK_TL1( telemetry_.rx_fragments_total.inc() );
                     if (on_message_) {
@@ -284,7 +285,7 @@ private:
             }
             else // Handle message fragments
             if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
-                WK_DEBUG("[WS] Received message fragment (size " << bytes << ")");
+                WK_TRACE("[WS] Received message fragment (size " << bytes << ")");
                 message_buffer_.append(buffer.data(), bytes);
                 WK_TL1( telemetry_.rx_fragments_total.inc() );
                 // Track fragments for telemetry
@@ -305,7 +306,7 @@ private:
 
         case ERROR_WINHTTP_CONNECTION_ERROR: // ERR_CONNECTION_ABORTED 12030 (peer closed)
             // Remote closed connection (no CLOSE frame)
-            WK_INFO("[WS] Connection closed by peer");
+            WK_DEBUG("[WS] Connection closed by peer");
             return Error::RemoteClosed;
 
         case ERROR_WINHTTP_TIMEOUT: // ERR_TIMED_OUT 12002 (timeout)
@@ -338,7 +339,9 @@ private:
     }
 
     inline void handle_control_ring_full_() noexcept {
-        WK_FATAL("[WS] Control event ring is full! Events may be lost.");
+        WK_WARN("[WS] Control event ring is full! Events may be lost.");
+        WK_FATAL("[WS] Forcing transport shutdown to preserve correctness guarantees.");
+        running_.store(false, std::memory_order_release);
     }
 
 private:

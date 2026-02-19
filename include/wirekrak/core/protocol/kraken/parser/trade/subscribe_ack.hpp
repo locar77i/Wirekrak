@@ -10,7 +10,7 @@ namespace wirekrak::core::protocol::kraken::parser::trade {
 
 struct subscribe_ack {
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, schema::trade::SubscribeAck& out) noexcept {
+    static inline Result parse(const simdjson::dom::element& root, schema::trade::SubscribeAck& out) noexcept {
         out = schema::trade::SubscribeAck{};
         return detail::parse_ack_common(root, "subscribe", out);
     }

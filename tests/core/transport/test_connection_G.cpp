@@ -420,9 +420,12 @@ void test_open_cancels_retry_cycle() {
         // Initial connection
         .connect_ok()
 
-        // Transport failure arms retry
+        // Transport failure arms immediate retry
         .error(Error::RemoteClosed)
         .close()
+
+        // Inmediate retry fails
+        .connect_fail(Error::TransportFailure)
 
         // User explicitly reopens connection
         .connect_ok(); // clean connect to new URL
@@ -435,28 +438,47 @@ void test_open_cancels_retry_cycle() {
     // Initial connect
     script.step(h.connection->ws());
 
+    h.connection->poll();
     h.drain_signals();
 
-    // First connect signal
-    TEST_CHECK(h.connect_signals == 1);
+    // Check signals
+    TEST_CHECK(h.connect_signals == 1);           // Connected successfully
+    TEST_CHECK(h.disconnect_signals == 0);        // No disconnect signals yet (until next poll)
+    TEST_CHECK(h.liveness_warning_signals == 0);  // No liveness warning signals
+    TEST_CHECK(h.retry_immediate_signals == 0);   // No retry immediate signals yet
+    TEST_CHECK(h.retry_schedule_signals == 0);    // No retry schedule signals yet
+    TEST_CHECK(h.signals.size() == 1);
+    TEST_CHECK(h.signals[0] == connection::Signal::Connected);
 
-    // Transport error + close (retry armed)
+    // Transport error + close (immediate retry armed) + transport failure
     script.step(h.connection->ws());
     script.step(h.connection->ws());
-
-    // User explicitly opens a new connection
-    TEST_CHECK(h.connection->open("wss://new.example.com/ws") == Error::None);
-
-    // New connection succeeds
     script.step(h.connection->ws());
 
     h.connection->poll();
     h.drain_signals();
 
+    // New connection succeeds
+    script.step(h.connection->ws());
+
+    // User explicitly opens a new connection
+    TEST_CHECK(h.connection->open("wss://new.example.com/ws") == Error::None);
+
+    h.connection->poll();
+    h.drain_signals();
+
     // Check signals
-    TEST_CHECK(h.connect_signals == 2);    // initial + explicit open
-    TEST_CHECK(h.disconnect_signals == 1); // single disconnect
-    TEST_CHECK(h.retry_schedule_signals == 0);      // retry cycle was cancelled
+    TEST_CHECK(h.connect_signals == 2);           // Connected successfully
+    TEST_CHECK(h.disconnect_signals == 1);        // No disconnect signals yet (until next poll)
+    TEST_CHECK(h.liveness_warning_signals == 0);  // No liveness warning signals
+    TEST_CHECK(h.retry_immediate_signals == 1);   // No retry immediate signals yet
+    TEST_CHECK(h.retry_schedule_signals == 1);    // No retry schedule signals yet
+    TEST_CHECK(h.signals.size() == 5);
+    TEST_CHECK(h.signals[0] == connection::Signal::Connected);
+    TEST_CHECK(h.signals[1] == connection::Signal::Disconnected);
+    TEST_CHECK(h.signals[2] == connection::Signal::RetryImmediate);
+    TEST_CHECK(h.signals[3] == connection::Signal::RetryScheduled);
+    TEST_CHECK(h.signals[4] == connection::Signal::Connected);
 
     std::cout << "[TEST] OK\n";
 }

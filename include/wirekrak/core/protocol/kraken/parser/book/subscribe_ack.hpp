@@ -15,7 +15,7 @@ namespace book {
 
 struct subscribe_ack {
     [[nodiscard]]
-    static inline bool parse(const simdjson::dom::element& root, schema::book::SubscribeAck& out) noexcept {
+    static inline Result parse(const simdjson::dom::element& root, schema::book::SubscribeAck& out) noexcept {
         out = schema::book::SubscribeAck{};
         return detail::parse_ack_common(root, "subscribe", out);
     }

@@ -33,7 +33,7 @@ static bool parse(std::string_view json, schema::trade::SubscribeAck& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
-    return parser::trade::subscribe_ack::parse(doc.value(), out);
+    return (parser::trade::subscribe_ack::parse(doc.value(), out) == parser::Result::Parsed);
 }
 
 // ------------------------------------------------------------

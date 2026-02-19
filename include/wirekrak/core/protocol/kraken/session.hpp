@@ -59,6 +59,7 @@ Data-plane model:
 #include <functional>
 #include <chrono>
 #include <utility>
+#include <atomic>
 
 #include "wirekrak/core/config/ring_sizes.hpp"
 #include "wirekrak/core/transport/connection.hpp"
@@ -231,7 +232,9 @@ public:
     // -----------------------------------------------------------------------------
 
     inline void ping() noexcept{
-        send_raw_request_(schema::system::Ping{.req_id = ctrl::PING_ID});
+        schema::system::Ping req{.req_id = ctrl::PING_ID};
+        WK_DEBUG("[SESSION] Sending ping message: " << req.to_json());
+        send_raw_request_(req);
     }
 
     template <request::Subscription RequestT>
@@ -388,9 +391,8 @@ public:
             handle_rejection_(notice);
             // 2) Forward to user-visible rejection buffer (lossless)
             if (!user_rejection_buffer_.push(notice)) [[unlikely]] { // This is a hard failure: we cannot report semantic errors reliably
-                WK_FATAL("[SESSION] Rejection buffer overflow — protocol correctness compromised (user not draining rejections)");
-                // Defensive action: close the connection to prevent further damage
-                connection_.close();
+                WK_WARN("[SESSION] Failed to deliver rejection notice (backpressure) — protocol correctness compromised (user is not draining fast enough)");
+                backpressure_violation_.store(true, std::memory_order_release);
                 break;
             }
         }}
@@ -451,6 +453,16 @@ public:
                 }
             }
         }}
+
+        // Check for backpressure violations and close connection if necessary
+        // Future backpresusre policy (default:strict)
+        // Wirekrak should never lie to the user or perform magic without explicit user instruction
+        // Defensive action: close the connection to prevent further damage
+        if (backpressure_violation_.load(std::memory_order_acquire)) {
+            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees.");
+            connection_.close();
+            backpressure_violation_.store(false, std::memory_order_release);
+        }
 
         return connection_.epoch();
     }
@@ -617,6 +629,9 @@ private:
     // Replay database
     replay::Database replay_db_;
 
+    // Backpressure violation flag
+    std::atomic<bool> backpressure_violation_{false};
+
 private:
     inline void handle_connect_() {
         WK_TRACE("[SESSION] handle connect (transport_epoch = " << transport_epoch() << ")");
@@ -676,7 +691,11 @@ private:
     }
 
     inline void handle_message_(std::string_view sv) {
-        parser_.parse_and_route(sv);
+        auto r = parser_.parse_and_route(sv);
+        if (r == parser::Result::Backpressure) {
+            WK_WARN("[SESSION] Failed to deliver message (backpressure) — protocol correctness compromised (user is not draining fast enough)");
+            backpressure_violation_.store(true, std::memory_order_release);
+        }
     }
 
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
@@ -706,7 +725,7 @@ private:
         case transport::connection::Signal::LivenessThreatened:
             // Currently no user-defined hook for liveness warning
             if (liveness_policy_ == policy::Liveness::Active) {
-                    send_raw_request_(schema::system::Ping{.req_id = ctrl::PING_ID});
+                    ping();
                 }
             break;
         default:
