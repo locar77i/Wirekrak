@@ -13,6 +13,7 @@
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
+#include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
@@ -60,30 +61,17 @@ inline std::wstring to_wide(const std::string& utf8) {
 
 namespace wirekrak::core {
 namespace transport {
+
+constexpr static std::size_t RX_RING_CAPACITY = 64; // Capacity of the message ring buffer (number of messages)
+
 namespace winhttp {
 
 template<ApiConcept Api = RealApi>
 class WebSocketImpl {
 
-    // The receive buffer will be sized for the common case (not the worst case). Why RX_BUFFER_SIZE = 8 KB:
-    // - fits comfortably in L1/L2 cache
-    // - covers >99% of messages in one call
-    // - snapshots still handled correctly
-    // - fragmentation remains rare
-    // - minimal memory waste
-    //
-    // Telemetry shows 8–16 KB is optimal: 
-    // Big enough to hold the 99th percentile message comfortably, small enough to stay cache-friendly.
-    // 8 KB buffers give us the best balance of cache locality and correctness, with no measurable downside for Kraken traffic.
-    constexpr static size_t RX_BUFFER_SIZE = 8 * 1024;
-
-public:
-    using MessageCallback = std::function<void(std::string_view)>;
-
 public:
     explicit WebSocketImpl(telemetry::WebSocket& telemetry) noexcept
         : telemetry_(telemetry) {
-        message_buffer_.reserve(RX_BUFFER_SIZE);
     }
 
     ~WebSocketImpl() {
@@ -205,12 +193,22 @@ public:
         return control_events_.pop(out);
     }
 
-    // Message callback is invoked on each complete message received.
-    inline void set_message_callback(MessageCallback cb) noexcept {
-        on_message_ = std::move(cb); 
+    [[nodiscard]]
+    inline websocket::DataBlock* peek_message() noexcept {
+        return message_ring_.peek_consumer_slot();
+    }
+
+    inline void release_message() noexcept {
+        message_ring_.release_consumer_slot();
     }
 
 private:
+    // The receive loop is the heart of the transport's receive path.
+    // Key features:
+    // - Lock-free
+    // - Zero-copy
+    // - ULL-safe
+    // - Deterministic
     inline void receive_loop_() noexcept {
 #ifdef WK_UNIT_TEST
         // Debug builds exposed a race in the test harness.
@@ -220,29 +218,51 @@ private:
             receive_started_flag_->store(true, std::memory_order_release);
         }
 #endif // WK_UNIT_TEST
-        std::vector<char> buffer(RX_BUFFER_SIZE);
-        std::string message;
-        WK_TL1( uint32_t fragments = 0 );
+
+        uint32_t fragments = 0;
+        websocket::DataBlock* current_slot = nullptr;
+        std::uint32_t current_size = 0;
+        
         // Receive internal loop
         while (running_.load(std::memory_order_acquire)) {
             DWORD bytes = 0;
             WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
+
+            // Acquire slot lazily (only when starting a message)
+            if (!current_slot) {
+                current_slot = message_ring_.acquire_producer_slot();
+                if (!current_slot) {
+                    WK_WARN("[WS] Failed to prepare the next data block (backpressure) - transport correctness compromised (user is not draining fast enough)");
+                    // Future backpresusre policy (default:strict)
+                    // Wirekrak should never lie to the user or perform magic without explicit user instruction
+                    // Defensive action: close the connection to prevent further damage
+                    WK_FATAL("[WS] Forcing transport close to preserve correctness guarantees.");
+                    running_.store(false, std::memory_order_release);
+                    break;
+                }
+                current_size = 0;
+            }
+            // === Call WebSocket receive API ===
             WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
+            DWORD remaining = websocket::RX_BUFFER_SIZE - current_size;
             DWORD result = api_.websocket_receive(
                 hWebSocket_,
-                buffer.data(),
-                (DWORD)buffer.size(),
+                current_slot->data + current_size,
+                remaining,
                 &bytes,
                 &type
             );
-            // Handle errors
+            // === Handle errors ===
             if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
-            WK_TL1( telemetry_.receive_errors_total.inc() );
+                WK_TL1( telemetry_.receive_errors_total.inc() );
                 auto error = handle_receive_error_(result);
                 if (!control_events_.push(websocket::Event::make_error(error))) {
                     handle_control_ring_full_();
                 }
                 running_.store(false, std::memory_order_release);
+                // abandon current slot (not committed) and signal close
+                current_slot = nullptr;
+                current_size = 0;
                 signal_close_();
                 break;
             }
@@ -251,46 +271,39 @@ private:
                 // including fragments and control frames.
                 WK_TL1( telemetry_.bytes_rx_total.inc(bytes) );
             }
-            // Handle close frame
+            // === Handle close frame ===
             if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) { // normal termination
                 WK_DEBUG("[WS] Received WebSocket close frame.");
                 running_.store(false, std::memory_order_release);
+                // abandon current slot (not committed) and signal close
+                current_slot = nullptr;
+                current_size = 0;
                 signal_close_();
                 break;
             }
-            // Handle final message frame
+            current_size += bytes;
+            // === Handle final message frame ===
             if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE)  [[likely]] {
-                if (message_buffer_.empty()) { // single-frame message
-                    if (on_message_) {
-                        on_message_(std::string_view(buffer.data(), bytes));
-                    }
-                    WK_TL1( telemetry_.rx_message_bytes.set(bytes) );
-                    WK_TL1( telemetry_.messages_rx_total.inc() );
-                    WK_TL1( telemetry_.fragments_per_message.record(1) );
-                }
-                else { // completing fragmented message
-                    WK_TRACE("[WS] Received final message fragment (size " << bytes << ")");
-                    message_buffer_.append(buffer.data(), bytes);
+                if (fragments > 0) {
+                    WK_TRACE("[WS] Received final message fragment (size " << bytes << ", total message size " << current_size << ", fragments " << fragments << ")");
                     WK_TL1( telemetry_.rx_fragments_total.inc() );
-                    if (on_message_) {
-                        on_message_(std::string_view(message_buffer_.data(), message_buffer_.size()));
-                    }
-                    WK_TL1( telemetry_.rx_message_bytes.set(message_buffer_.size()) );
-                    WK_TL1( telemetry_.messages_rx_total.inc() );
-                    WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
-                    WK_TL1( fragments = 0 );
-                    message_buffer_.clear();
                 }
-                
+                WK_TL1( telemetry_.rx_message_bytes.set(current_size) );
+                WK_TL1( telemetry_.messages_rx_total.inc() );
+                WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
+                // Commit the complete message to the ring buffer
+                current_slot->size = current_size;
+                message_ring_.commit_producer_slot();
+                // Reset for the next message
+                fragments = 0;
+                current_slot = nullptr;
+                current_size = 0;  
             }
-            else // Handle message fragments
+            else // === Handle message fragments ===
             if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
                 WK_TRACE("[WS] Received message fragment (size " << bytes << ")");
-                message_buffer_.append(buffer.data(), bytes);
                 WK_TL1( telemetry_.rx_fragments_total.inc() );
-                // Track fragments for telemetry
-                WK_TL1( telemetry_.rx_message_bytes.set(message_buffer_.size()) );
-                WK_TL1( ++fragments );
+                ++fragments;
             }
         }
         // If we exit loop without explicit close signaling
@@ -327,7 +340,6 @@ private:
     }
 
     inline void signal_close_() noexcept {
-        message_buffer_.clear();
         // Ensure close callback is invoked exactly once
         if (closed_.exchange(true)) {
             return;
@@ -348,8 +360,6 @@ private:
     telemetry::WebSocket& telemetry_;
     Api api_;
 
-    std::string message_buffer_{};
-
     HINTERNET hSession_   = nullptr;
     HINTERNET hConnect_   = nullptr;
     HINTERNET hRequest_   = nullptr;
@@ -359,10 +369,11 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> closed_{false};
 
-    MessageCallback on_message_;
-
     // Control event queue (for signaling events like close and error)
     lcr::lockfree::spsc_ring<websocket::Event, 16> control_events_;
+
+    // Data message queue (transport → connection/session)
+    lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY> message_ring_;
 
 #ifdef WK_UNIT_TEST
 public:

@@ -157,12 +157,6 @@ int main() {
     // Create a telemetry manager to report the metrics
     lcr::metrics::snapshot::Manager<transport::telemetry::WebSocket> telemetry_mgr{telemetry};
 
-/*
-    ws.set_message_callback([](const std::string& msg){
-        std::cout << "Received: " << msg << std::endl;
-    });
-*/
-
     std::cout << "[WS] Connecting to ws.kraken.com ..." << std::endl;
     if (ws.connect("ws.kraken.com", "443", "/v2") != transport::Error::None) {
         std::cerr << "Connect failed for 'ws.kraken.com'" << std::endl;

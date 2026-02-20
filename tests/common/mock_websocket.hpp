@@ -4,16 +4,21 @@
 #include <functional>
 #include <utility>
 #include <concepts>
+#include <cstring>
 
 #include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
+#include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
 
 
 namespace wirekrak::core::transport::test {
+
+constexpr static std::size_t RX_RING_CAPACITY = 64; // Capacity of the message ring buffer (number of messages)
+
 
 // NOTE:
 // MockWebSocket uses process-global static state by design.
@@ -21,10 +26,6 @@ namespace wirekrak::core::transport::test {
 // WebSocket instance internally and tests are strictly single-threaded.
 // Each test MUST call MockWebSocket::reset() before constructing Connection.
 class MockWebSocket {
-    using MessageCallback = std::function<void(std::string_view)>;
-
-    MessageCallback on_message_cb_;
-
 public:
     MockWebSocket(telemetry::WebSocket& telemetry) noexcept {
         (void)telemetry;
@@ -56,18 +57,14 @@ public:
         if (!connected_) return;
         connected_ = false;
         close_count_++;
-        if (!control_events_.push(websocket::Event::make_close())) {
+        if (!control_ring_.push(websocket::Event::make_close())) {
             handle_control_ring_full_();
         }
     }
 
     [[nodiscard]]
     inline bool poll_event(websocket::Event& out) noexcept {
-        return control_events_.pop(out);
-    }
-
-    inline void set_message_callback(MessageCallback cb) noexcept {
-        on_message_cb_ = std::move(cb);
+        return control_ring_.pop(out);
     }
 
     // ---------------------------------------------------------------------
@@ -75,14 +72,19 @@ public:
     // ---------------------------------------------------------------------
 
     inline void emit_message(const std::string& msg) noexcept {
-        if (on_message_cb_) {
-            on_message_cb_(std::string_view(msg));
+        websocket::DataBlock* block = message_ring_.acquire_producer_slot();
+        if (!block) {
+            WK_WARN("[MockWebSocket] Message ring is full! Cannot emit message.");
+            return;
         }
+        std::strncpy(block->data, msg.data(), websocket::RX_BUFFER_SIZE);
+        block->size = static_cast<uint32_t>(std::min(msg.size(), static_cast<size_t>(websocket::RX_BUFFER_SIZE)));
+        message_ring_.commit_producer_slot();
     }
 
     inline void emit_error(Error error = Error::TransportFailure) noexcept {
         error_count_++;
-        if (!control_events_.push(websocket::Event::make_error(error))) {
+        if (!control_ring_.push(websocket::Event::make_error(error))) {
             handle_control_ring_full_();
         }
     }
@@ -109,7 +111,19 @@ public:
         error_count_ = 0;
         next_connect_result_ = Error::None;
         websocket::Event tmp;
-        while (control_events_.pop(tmp)) {}
+        while (control_ring_.pop(tmp)) {}
+        while (message_ring_.peek_consumer_slot() != nullptr) {
+            message_ring_.release_consumer_slot();
+        }
+    }
+
+     [[nodiscard]]
+    inline websocket::DataBlock* peek_message() noexcept {
+        return message_ring_.peek_consumer_slot();
+    }
+
+    inline void release_message() noexcept {
+        message_ring_.release_consumer_slot();
     }
 
 private:
@@ -125,7 +139,10 @@ private:
     static inline Error next_connect_result_{Error::None};
 
     // Control event queue (for signaling events like close and error)
-    static inline lcr::lockfree::spsc_ring<websocket::Event, 16> control_events_;
+    static inline lcr::lockfree::spsc_ring<websocket::Event, 16> control_ring_;
+
+    // Data message queue (transport → connection/session)
+    static inline lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY> message_ring_;
 };
 // Assert that MockWebSocket conforms to transport::WebSocketConcept concept
 static_assert(WebSocketConcept<MockWebSocket>);

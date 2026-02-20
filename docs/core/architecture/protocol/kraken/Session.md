@@ -2,35 +2,56 @@
 
 ## Overview
 
-The **Wirekrak Kraken Session** implements the Kraken WebSocket API v2 on top of
-Wirekrak’s generic transport and streaming infrastructure.
+The **Wirekrak Kraken Session** implements the Kraken WebSocket API v2
+on top of Wirekrak's generic transport and streaming infrastructure.
 
-It provides a **protocol-oriented, type-safe interface** for interacting with
-Kraken channels while deliberately exposing only **observable protocol facts**.
+It provides a **protocol-oriented, type-safe interface** for interacting
+with Kraken channels while deliberately exposing only **observable
+protocol facts**.
 
-> **Important:** The Session expresses *protocol intent*, not completion.
-> Callers submit subscribe/unsubscribe requests but never observe protocol
-> identifiers or lifecycle details.
+> **Important:** The Session expresses *protocol intent*, not
+> completion. Callers submit subscribe/unsubscribe requests but never
+> observe protocol identifiers or lifecycle details.
 
-The Session is designed for **deterministic, ultra-low-latency (ULL) systems**
-such as trading engines, SDKs, and real-time market data pipelines.
+The Session is designed for **deterministic, ultra-low-latency (ULL)
+systems** such as trading engines, SDKs, and real-time market data
+pipelines.
 
 ---
 
-## Design Principles
+## Architectural Properties
 
-- **Composition over inheritance**
-- **Zero runtime polymorphism**
-- **Compile-time safety via C++20 concepts**
-- **Explicit, poll-driven execution model**
-- **Fact-based observability**
-- **Fail-fast semantics for protocol violations**
-- **Strict separation of Core and Lite responsibilities**
+-   Header-only Core
+-   Composition over inheritance
+-   Zero runtime polymorphism
+-   Compile-time safety via C++20 concepts
+-   Explicit, poll-driven execution model
+-   Deterministic replay semantics
+-   Fact-based observability
+-   Fail-fast protocol correctness
+-   Strict Core / Lite separation
 
-The Session exposes **Kraken protocol truth only**: typed messages, ACK effects,
-rejections, and progress facts.
+---
 
-All user-facing behavior (dispatch, callbacks, symbol routing) lives outside Core.
+## Threading Contract
+
+`Kraken::Session` is **NOT thread-safe**.
+
+All public methods must be invoked from the same thread:
+
+-   `open()` / `close()`
+-   `subscribe()` / `unsubscribe()`
+-   `poll()`
+-   All `pop_*()` and `try_load_*()` APIs
+
+Concurrency boundaries exist only between:
+
+-   Transport IO thread (inside WebSocket implementation)
+-   Core session thread (user thread)
+
+Cross-thread communication is strictly isolated via bounded SPSC rings.
+
+All protocol logic is single-threaded and deterministic.
 
 ---
 
@@ -38,57 +59,51 @@ All user-facing behavior (dispatch, callbacks, symbol routing) lives outside Cor
 
 The Kraken Session is a **Core-level component**.
 
-- It owns protocol correctness
-- It owns request identifiers (`req_id`)
-- It owns replay and ACK tracking
-- It never exposes protocol identifiers to callers
+Core responsibilities:
 
-User code must not depend on protocol correlation mechanisms.
+-   Own protocol correctness
+-   Own internal request identifiers (`req_id`)
+-   Own ACK tracking and replay eligibility
+-   Own rejection processing
+-   Own transport epoch awareness
 
----
+User code must not depend on protocol correlation identifiers.
 
-## Architecture
-
-The Session is composed of three strictly separated layers:
-
-### Transport Layer
-- WebSocket backend (WinHTTP or mockable)
-- Connection lifecycle and reconnection
-- Heartbeat tracking and liveness enforcement
-- Transport progress accounting
-
-### Session Layer (Core)
-- Composition over `transport::Connection`
-- Deterministic reaction to transport signals
-- Replay of **acknowledged protocol intent only**
-- Exposure of **protocol facts via pull APIs**
-- Enforcement of protocol correctness
-
-### Protocol Layer (Kraken)
-- Request serialization
-- JSON parsing and routing
-- Schema validation
-- Channel-specific subscription management
-- Typed protocol domain models
-
-This architecture keeps Core minimal, allocation-stable, and ULL-focused.
+The Session never exposes internal `req_id` values.
 
 ---
 
-## Core Responsibilities
+## Layered Architecture
 
-The Kraken Session is responsible for:
+The Session composes three strictly separated layers:
 
-- Establishing and maintaining a Kraken WebSocket session
-- Parsing and routing raw JSON into typed protocol messages
-- Assigning and managing internal protocol request identifiers
-- Tracking subscription state with explicit ACK handling
-- Replaying **only acknowledged subscriptions** after reconnect
-- Surfacing authoritative protocol rejections
-- Exposing protocol messages via lock-free rings
+### 1. Transport Layer
 
-The Session **never dispatches callbacks**, never partitions messages, and never
-assumes user intent.
+-   WebSocket backend (WinHTTP or mock)
+-   Connection lifecycle management
+-   Liveness enforcement
+-   Transport epoch tracking
+-   Control-plane signaling
+
+### 2. Session Layer (Core)
+
+-   Composition over `transport::Connection`
+-   Deterministic reaction to transport signals
+-   ACK-driven subscription state machine
+-   Replay of acknowledged protocol intent only
+-   Lock-free message exposure
+-   Rejection surfacing
+-   No callbacks, no symbol routing
+
+### 3. Protocol Layer (Kraken Schema)
+
+-   Request serialization
+-   JSON parsing
+-   Message classification
+-   Schema validation
+-   Typed domain models
+
+This separation keeps Core allocation-stable, minimal, and ULL-friendly.
 
 ---
 
@@ -98,46 +113,71 @@ Subscriptions follow an **ACK-driven intent model**.
 
 ### Subscribe
 
-```cpp
+``` cpp
 session.subscribe(schema::trade::Subscribe{ .symbols = {"BTC/EUR"} });
 ```
 
 Semantics:
 
-- A protocol request identifier is assigned internally
-- The request is sent immediately
-- The subscription enters a *pending* state
-- On ACK success, it becomes replay-eligible
-- On rejection, the intent is discarded permanently
+1.  Internal `req_id` assigned
+2.  Request serialized and sent immediately
+3.  Intent enters *Pending* state
+4.  On ACK success → becomes replay-eligible
+5.  On rejection → permanently discarded
 
-> The assigned `req_id` is **never returned** and **never observable**.
+The assigned `req_id` is never returned and never observable.
+
+---
 
 ### Unsubscribe
 
-```cpp
+``` cpp
 session.unsubscribe(schema::trade::Unsubscribe{ .symbols = {"BTC/EUR"} });
 ```
 
 Semantics:
 
-- Unsubscribe intent is expressed immediately
-- Replay intent is removed deterministically
-- Protocol ACKs are handled internally
-- The caller must not assume immediate exchange-side effect
+-   Intent expressed immediately
+-   Replay eligibility removed deterministically
+-   ACK handled internally
+-   Caller must not assume immediate exchange-side effect
 
-Unsubscribe ACK identifiers are **not correlated** with subscribe identifiers.
-This complexity is intentionally hidden inside Core.
+Unsubscribe ACK identifiers are not correlated with subscribe
+identifiers. This complexity is fully encapsulated inside Core.
+
+---
+
+## Subscription State Model
+
+Each subscription exists in exactly one of:
+
+-   NotRequested
+-   Pending
+-   Active (ACKed)
+-   Rejected (terminal)
+
+Only **Active** subscriptions are eligible for replay.
+
+Rejected subscriptions are final and never retried automatically.
 
 ---
 
 ## Replay Semantics
 
-- Only **acknowledged subscriptions** are replayed
-- Rejected intent is **final**
-- Replay occurs **only after transport epoch change**
-- No replay without a successful reconnect
+Replay occurs only when:
 
-Replay is deterministic and idempotent.
+-   Transport epoch increments
+-   A new connection is successfully established
+
+Replay rules:
+
+-   Only ACKed subscriptions replay
+-   Order preserved
+-   Idempotent
+-   Deterministic
+-   No replay during transient connection failure
+
+Replay never occurs without an epoch change.
 
 ---
 
@@ -145,80 +185,178 @@ Replay is deterministic and idempotent.
 
 Protocol rejections are:
 
-- Surfaced verbatim
-- Treated as authoritative
-- Lossless and ordered
-- Never retried, repaired, or replayed
+-   Surfaced verbatim
+-   Lossless
+-   Ordered
+-   Authoritative
+-   Never auto-retried
 
-Rejections are processed internally for correctness, then exposed via a bounded,
-lossless queue.
+Rejections are placed into a bounded lock-free ring.
 
-Failure to drain rejections is considered a **user error**.
+Failure to drain rejections is considered a user logic error.
+
+Core will not invent corrective behavior.
 
 ---
 
 ## Pong & Status Semantics
 
-Pong and status messages are treated as **state**, not streams:
+Pong and status updates represent **state**, not streams.
 
-- Only the most recent value is retained
-- Intermediate updates may be overwritten
-- No buffering, backpressure, or callbacks
+-   Only latest value retained
+-   Intermediate updates may be overwritten
+-   No buffering beyond latest snapshot
 
-They are exposed via pull-based APIs:
+Exposed via pull-based APIs:
 
-```cpp
+``` cpp
 bool try_load_pong(schema::system::Pong&);
 bool try_load_status(schema::status::Update&);
 ```
+
+These APIs are non-blocking and allocation-free.
 
 ---
 
 ## Data-Plane Message Access
 
-Channel messages are exposed as **raw protocol responses** via lock-free rings.
+Channel responses are exposed via lock-free rings:
 
-```cpp
+``` cpp
 bool pop_trade_message(schema::trade::Response&);
 bool pop_book_message(schema::book::Response&);
 ```
 
-Core does **not** partition or dispatch messages.
-All symbol routing and callbacks belong to Lite.
+Core does NOT:
+
+-   Dispatch callbacks
+-   Route by symbol
+-   Partition by channel instance
+
+All message routing belongs to Lite.
 
 ---
 
 ## Execution Model
 
-All progress is driven explicitly by:
+All progress is driven explicitly via:
 
-```cpp
+``` cpp
 uint64_t poll();
 ```
 
 Each call advances:
 
-- Transport liveness and reconnection
-- Connection signal handling
-- Protocol message routing into rings
-- ACK and rejection processing
+1.  Transport polling
+2.  Connection signal handling
+3.  Transport epoch detection
+4.  JSON parsing
+5.  Protocol routing
+6.  ACK processing
+7.  Replay if required
+8.  Rejection buffering
 
-There are **no background threads** in Core.
+There are no background threads in Core.
+
+If `poll()` is not called, no progress occurs.
 
 ---
 
-## Summary
+## Transport Epoch Integration
 
-The Kraken Session provides:
+Session observes `connection.epoch()`.
 
-- Deterministic, poll-driven execution
-- Internal ownership of protocol identifiers
-- Explicit ACK- and rejection-driven correctness
-- Replay bounded by transport epochs
-- Fact-based observability
-- A clean Core / Lite separation
+When epoch increases:
 
-Wirekrak Core never guesses.
+-   All Active subscriptions replay
+-   Pending subscriptions remain pending
+-   Rejected subscriptions remain discarded
+
+Epoch is the only reconnection boundary signal.
+
+---
+
+## Determinism Guarantees
+
+-   No hidden retries
+-   No implicit subscription repair
+-   No protocol inference
+-   No callback-based mutation
+-   No background activity
+-   No implicit replay
+-   Replay strictly epoch-bounded
+-   All protocol state explicit and finite
+
+Core never guesses.
+
+---
+
+## Failure Model
+
+Transport failures are handled by `Connection`.
+
+Protocol failures are handled by Session.
+
+Failure domains are strictly separated.
+
+Transport failure does NOT imply protocol failure.
+
+Protocol rejection does NOT imply transport instability.
+
+---
+
+## Example Usage
+
+``` cpp
+kraken::Session<MyWebSocket> session(telemetry);
+
+session.open("wss://ws.kraken.com/v2");
+
+session.subscribe(schema::trade::Subscribe{ .symbols = {"BTC/EUR"} });
+
+while (running) {
+    session.poll();
+
+    schema::trade::Response trade;
+    while (session.pop_trade_message(trade)) {
+        // User-level routing
+    }
+}
+```
+
+---
+
+## Core vs Lite
+
+Core:
+
+-   Deterministic protocol engine
+-   Typed message exposure
+-   Replay enforcement
+-   Rejection surfacing
+
+Lite:
+
+-   Symbol routing
+-   Callback registration
+-   Convenience APIs
+-   User-friendly ergonomics
+
+Core remains minimal, strict, and allocation-stable.
+
+---
+
+## Design Philosophy
+
+Wirekrak Core never:
+
+-   Infers user intent
+-   Repairs rejected subscriptions
+-   Hides transport recycling
+-   Exposes protocol identifiers
+-   Dispatches callbacks
+-   Owns business logic
+
 It exposes protocol truth and enforces correctness.
 
 ---

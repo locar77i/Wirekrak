@@ -8,6 +8,10 @@ assumptions.
 > Telemetry describes what *actually happened on the wire* — not what the
 > exchange or application *meant* to send.
 
+This example intentionally pulls all available messages from the connection
+data-plane in order to observe their reconstructed size and fragmentation
+characteristics.
+
 ---
 
 ## What this example proves
@@ -15,6 +19,7 @@ assumptions.
 - Message size is an **observed outcome**, not a protocol promise
 - WebSocket fragmentation is **visible and measurable**
 - Transport telemetry reflects **assembly and framing**, not payload semantics
+- Pulling (consumption) is separate from transport observation
 - Wirekrak does not reinterpret or normalize message shape
 
 ---
@@ -25,8 +30,10 @@ assumptions.
 - ❌ It does not assume schema correctness
 - ❌ It does not reconstruct sender intent
 - ❌ It does not “fix” fragmentation
+- ❌ It does not automatically consume messages
 
-This example is about **observation, not interpretation**.
+This example is about **observation, availability, and explicit consumption** —
+not interpretation.
 
 ---
 
@@ -35,26 +42,37 @@ This example is about **observation, not interpretation**.
 1. A WebSocket connection is opened
 2. A subscription message is sent
 3. The exchange emits messages of varying sizes
-4. Wirekrak records:
-   - Message sizes
+4. The application explicitly pulls messages via `peek_message()`
+5. Wirekrak records:
+   - Assembled message sizes
    - Fragment counts
    - Fragment totals
-5. Telemetry is dumped for inspection
+6. Telemetry is dumped for inspection
 
 No assumptions are made about:
+
 - Exchange framing strategy
 - Compression
 - Message boundaries
+- Sender intent
 
 ---
 
 ## Key telemetry fields explained
 
-### RX messages
+### WebSocket RX messages
 
-- Count of **fully assembled messages**
-- Represents what the application receives
-- Independent of fragmentation
+- Count of **fully assembled messages observed at the transport layer**
+- Reflects what arrived on the wire
+- Independent of whether the application consumes them
+
+---
+
+### Messages forwarded
+
+- Incremented when the application calls `peek_message()`
+- Represents explicit consumption of available messages
+- Always ≤ WebSocket RX messages
 
 ---
 
@@ -65,6 +83,7 @@ No assumptions are made about:
   - min / max / avg
   - last observed size
 - Reflects *post-assembly* payload size
+- Observed fact, not a protocol guarantee
 
 ---
 
@@ -103,7 +122,9 @@ Wirekrak makes fragmentation **visible**, measurable, and undeniable.
 
 ## Design contract demonstrated
 
-- Transport reports **facts**, not interpretations
+- Transport reports **facts**
+- Connection exposes **availability**
+- Applications explicitly **consume**
 - Message shape is an **observable property**
 - Fragmentation is **not hidden**
 - Telemetry matches wire reality exactly
@@ -118,6 +139,7 @@ Wirekrak makes fragmentation **visible**, measurable, and undeniable.
 | Fragments/msg > 1 | Messages were split across frames |
 | RX fragments = 0 | No fragmentation observed |
 | Wide RX size range | Variable message payloads |
+| Forwarded < RX | Application did not pull all available messages |
 
 ---
 
@@ -128,6 +150,9 @@ If the wire fragments messages,
 
 If messages vary in size,  
 **Wirekrak records it.**
+
+If you do not pull messages,  
+**they are not consumed.**
 
 Nothing is guessed.  
 Nothing is normalized.

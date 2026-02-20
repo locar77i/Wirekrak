@@ -23,12 +23,35 @@ exchanges (Kraken, future venues, custom feeds).
 -   Concept-based design (`WebSocketConcept`)
 -   No inheritance
 -   No virtual dispatch
--   No background threads
+-   No background threads inside `Connection`
 -   No timers
 -   Fully poll-driven
 -   Deterministic state transitions
 -   Unit-testable with mock transports
 -   Ultra-low-latency friendly
+
+---
+
+## Threading Contract
+
+`Connection` is **NOT thread-safe**.
+
+All public methods must be called from the same thread:
+
+-   `open()`
+-   `close()`
+-   `send()`
+-   `poll()`
+-   `peek_message()`
+-   `release_message()`
+-   `poll_signal()`
+
+Cross-thread interaction is isolated to the underlying WebSocket
+transport, which communicates with `Connection` exclusively via bounded
+SPSC rings.
+
+All internal state within `Connection` is single-threaded and non-atomic
+by design.
 
 ---
 
@@ -71,6 +94,9 @@ Used by higher layers to detect transport recycling.
 -   `heartbeat_total()`
 
 All counters are monotonic and never reset.
+
+Counters are updated only from the user thread when progress is observed
+(e.g., during `peek_message()` or `send()`).
 
 ### Signals
 
@@ -121,8 +147,8 @@ Behavior:
 4.  On success → `Connected`
 5.  On failure → retry cycle may begin
 
-Calling `open()` while in `WaitingReconnect` **cancels the retry cycle**
-and immediately attempts a fresh connection.
+Calling `open()` while in `WaitingReconnect` cancels the retry cycle and
+immediately attempts a fresh connection.
 
 ---
 
@@ -149,13 +175,41 @@ conn.poll();
 
 Responsibilities:
 
-1.  Drain WebSocket events
+1.  Drain WebSocket control events
 2.  Process transport errors and closures
 3.  Execute reconnection attempts if retry timer expired
 4.  Evaluate liveness
 5.  Emit edge-triggered signals
 
 No background activity exists outside `poll()`.
+
+---
+
+## Data-Plane Model
+
+Incoming messages are delivered via a bounded SPSC ring owned by the
+WebSocket transport.
+
+``` cpp
+websocket::DataBlock* block = conn.peek_message();
+```
+
+When a message is observed:
+
+-   `rx_messages_` increments
+-   `last_message_ts_` updates
+
+The caller must release the slot explicitly:
+
+``` cpp
+conn.release_message();
+```
+
+This model guarantees:
+
+-   Zero-copy delivery
+-   Deterministic liveness updates
+-   Explicit ownership boundaries
 
 ---
 
@@ -170,10 +224,7 @@ Liveness expires only if **both** exceed their configured timeouts.
 
 ### Warning Phase
 
-When remaining time falls below:
-
-    liveness_danger_window_
-
+When remaining time falls below the configured danger window,
 `LivenessThreatened` is emitted once per silence window.
 
 ### Expiration Phase
@@ -190,11 +241,11 @@ When both signals are stale:
 
 Retry is permitted only for transient errors:
 
--   ConnectionFailed
--   HandshakeFailed
--   Timeout
--   RemoteClosed
--   TransportFailure
+-   `ConnectionFailed`
+-   `HandshakeFailed`
+-   `Timeout`
+-   `RemoteClosed`
+-   `TransportFailure`
 
 Retry behavior:
 
@@ -241,7 +292,7 @@ Returns true if:
 -   No reconnect timer ready to fire
 -   No internal work pending
 
-Does not call poll().
+Does not call `poll()`.
 
 ---
 
@@ -260,9 +311,9 @@ No transport reuse occurs.
 
 ## Determinism Guarantees
 
--   No implicit reconnection outside poll()
+-   No implicit reconnection outside `poll()`
 -   No hidden timers
--   No hidden threads
+-   No hidden threads inside `Connection`
 -   No callback-based state mutation
 -   All transitions logged
 -   All retries explicit
@@ -284,6 +335,11 @@ while (running) {
     connection::Signal sig;
     while (conn.poll_signal(sig)) {
         // Optional reaction
+    }
+
+    while (auto* block = conn.peek_message()) {
+        // Process message
+        conn.release_message();
     }
 }
 ```

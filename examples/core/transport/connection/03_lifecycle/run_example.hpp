@@ -1,9 +1,7 @@
-#pragma once
-
 /*
 ===============================================================================
-Example 3 - Error & Close Lifecycle
-(Learning Step 4: Correctness under failure)
+Example 3 - Failure, Disconnect & Close Ordering
+(Learning Step 4: Deterministic correctness under failure)
 ===============================================================================
 
 This example is the **fourth learning step** in the Wirekrak connection model.
@@ -11,13 +9,13 @@ This example is the **fourth learning step** in the Wirekrak connection model.
 After learning how to:
   - open and run a connection            (Example 0)
   - observe wire-level message reality   (Example 1)
-  - separate observation from delivery   (Example 2)
+  - separate observation from consumption (Example 2)
 
 This example teaches the hardest rule in networking systems:
 
 > **Failure must be observable, ordered, and unambiguous.**
 
-Wirekrak treats errors and closure as **first-class events** -
+Wirekrak treats errors, disconnects, and closure as **first-class lifecycle facts** —
 not side effects, not logs, and not guesses.
 
 -------------------------------------------------------------------------------
@@ -30,6 +28,7 @@ In real systems, failures are messy:
   - Connections close locally or remotely
   - Retries are scheduled
   - Resources are torn down
+  - Messages may still be in flight
 
 Most systems blur these events together.
 
@@ -37,8 +36,10 @@ Wirekrak does not.
 
 It enforces **strict lifecycle invariants** so that:
   - Every failure has a cause
-  - Every close happens exactly once
-  - Every event is observable and ordered
+  - Logical disconnect happens exactly once
+  - Physical close is idempotent
+  - Retry follows disconnect — never precedes it
+  - All transitions are observable and ordered
 
 -------------------------------------------------------------------------------
 What this example demonstrates
@@ -50,10 +51,11 @@ This example validates how Wirekrak handles:
   • Logical connection shutdown  
   • Physical WebSocket closure  
   • Retry scheduling  
+  • Explicit data-plane consumption  
 
 And, most importantly:
 
-> **How these events are ordered and counted.**
+> **How these events are ordered, counted, and verified.**
 
 -------------------------------------------------------------------------------
 Scenario
@@ -62,33 +64,37 @@ Scenario
   1) Connect to a WebSocket endpoint
   2) Optionally send a raw payload (protocol-agnostic)
   3) Allow a transport error or remote close to occur
-  4) Observe connection::Signal ordering
-  5) Trigger a local close()
-  6) Dump connection and transport telemetry
+  4) Explicitly pull data-plane messages (peek_message / release_message)
+  5) Observe connection::Signal ordering
+  6) Trigger a local close()
+  7) Drain until idle
+  8) Dump connection and transport telemetry
 
-The goal is not to avoid failure -
-but to **observe it correctly**.
+The goal is not to avoid failure —
+but to **observe it correctly and deterministically**.
 
 -------------------------------------------------------------------------------
 What this teaches
 -------------------------------------------------------------------------------
 
   - Errors may occur before closure
-  - Errors do NOT replace closure
-  - Close is observed exactly once
-  - Retry is scheduled after failure
+  - Errors do NOT replace disconnect
+  - Logical disconnect is emitted exactly once
+  - Physical close events are idempotent
+  - Retry is scheduled only after disconnect
   - Lifecycle events are never double-counted
   - Local close() is idempotent and safe
+  - Data-plane consumption does not interfere with lifecycle correctness
 
 -------------------------------------------------------------------------------
 Key invariants validated
 -------------------------------------------------------------------------------
 
-  - Error → then Close (never reversed)
-  - Disconnected signal is emitted exactly once
-  - Transport close events are idempotent
-  - Retry logic observes real failure causes
-  - Telemetry reflects reality, not assumptions
+  - Error → then Disconnect (never reversed)
+  - Disconnect signal is emitted exactly once
+  - Physical close is counted exactly once
+  - Retry follows real failure cause
+  - Telemetry reflects observable reality
 
 If any of these invariants break,
 the system becomes untrustworthy.
@@ -97,10 +103,10 @@ the system becomes untrustworthy.
 Learning path position
 -------------------------------------------------------------------------------
 
-Example 0 → How to connect and poll  
-Example 1 → How to observe wire reality  
-Example 2 → Why observation ≠ delivery  
-Example 3 → Failure, error, and close correctness  
+Example 0 → Minimal lifecycle & polling  
+Example 1 → Message shape & fragmentation  
+Example 2 → Observation vs consumption  
+Example 3 → Failure, disconnect & close ordering  
 Example 4 → Liveness and protocol responsibility  
 
 -------------------------------------------------------------------------------
@@ -108,20 +114,21 @@ Key takeaway
 -------------------------------------------------------------------------------
 
 > Errors may happen.
-> Closures must be exact.
+> Disconnect must be singular.
+> Closure must be exact.
 > Ordering must be deterministic.
 
 Wirekrak does not hide failure.
 
-It **models it precisely**.
+It models failure **precisely and observably**.
 
 ===============================================================================
 */
 
+#pragma once
 
 #include <iostream>
 #include <string>
-#include <atomic>
 #include <chrono>
 #include <thread>
 
@@ -135,17 +142,13 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // WebSocket transport specialization
     using WS = winhttp::WebSocket;
 
-    std::cout << "=== Wirekrak Connection - Error & Close Lifecycle (" << name << ") ===\n\n" << description << "\n\n";
+    std::cout << "=== Wirekrak Connection - Error & Close Lifecycle (" << name << ") ===\n\n" << description << "\n" << std::endl;
   
     // -------------------------------------------------------------------------
     // Connection setup
     // -------------------------------------------------------------------------
     wirekrak::core::transport::telemetry::Connection telemetry;
     Connection<WS> connection(telemetry);
-
-    connection.on_message([&](std::string_view msg) {
-        std::cout << "[example] RX message (" << msg.size() << " bytes)\n";
-    });
 
     // -------------------------------------------------------------------------
     // Lambda to drain events
@@ -156,15 +159,19 @@ inline int run_example(const char* name, const char* url, const char* descriptio
         while (connection.poll_signal(sig)) {
             switch (sig) {
                 case connection::Signal::Connected:
-                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    std::cout << "[example] Connect to " << name << " observed!" << std::endl;
                     break;
 
                 case connection::Signal::Disconnected:
-                    std::cout << "[example] Disconnect from " << name << " observed! (exactly once)\n";
+                    std::cout << "[example] Disconnect from " << name << " observed! (exactly once)" << std::endl;
+                    break;
+
+                case connection::Signal::RetryImmediate:
+                    std::cout << "[example] Immediate retry observed!" << std::endl;
                     break;
 
                 case connection::Signal::RetryScheduled:
-                    std::cout << "[example] Retry schedule observed!\n";
+                    std::cout << "[example] Retry schedule observed!" << std::endl;
                     break;
 
                 // connection::Signal::LivenessThreatened intentionally ignored in this example
@@ -195,8 +202,13 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // ---------------------------------------------------------------------
     auto start = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - start < runtime) {
-        connection.poll();  // Poll driven progression
+        connection.poll();   // Poll-driven execution
         drain_signals();     // Drain any pending signals
+        // Pull data-plane messages explicitly
+        while (auto* block = connection.peek_message()) {
+            std::cout << "[example] RX message (" << block->size << " bytes)" << std::endl;
+            connection.release_message();
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -205,8 +217,9 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // ---------------------------------------------------------------------
     connection.close();
 
-    for (int i = 0; i < 20; ++i) {
-        connection.poll();  // Poll driven progression
+    // Drain remaining events until idle
+    while (!connection.is_idle()) {
+        connection.poll();   // Poll-driven execution
         drain_signals();     // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -214,72 +227,46 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // ---------------------------------------------------------------------
     // Dump telemetry
     // ---------------------------------------------------------------------
-    std::cout << "\n=== Connection Telemetry ===\n";
+    std::cout << "\n=== Connection Telemetry ===" << std::endl;
     telemetry.debug_dump(std::cout);
 
-    std::cout << "\n=== WebSocket Telemetry ===\n";
+    std::cout << "\n=== WebSocket Telemetry ===" << std::endl;
     telemetry.websocket.debug_dump(std::cout);
 
     // ---------------------------------------------------------------------
     // Interpretation guide
     // ---------------------------------------------------------------------
 
-    // ---------------------------------------------------------------------
-// How to read this
-// ---------------------------------------------------------------------
+    std::cout << "\n=== How to read this ===\n\n"
+        << "This example validates lifecycle correctness under failure.\n\n"
 
-std::cout << "\n=== How to read this ===\n\n"
+        << "Event ordering must always follow logical causality:\n\n"
 
-        << "This example is about **failure correctness**, not success.\n"
-        << "You are expected to see errors, closes, and retries.\n\n"
+        << "1) Transport error (optional)\n"
+        << "2) Logical Disconnected (exactly once)\n"
+        << "3) Physical WebSocket close\n"
+        << "4) Retry scheduling (if retryable)\n\n"
 
-        << "Start with the order of events printed above.\n"
-        << "They must always follow the same logical sequence.\n\n"
-
-        << "1) Errors\n"
-        << "   Transport-level errors may occur while receiving data.\n"
-        << "   These represent *what went wrong*.\n"
-        << "   Errors do NOT close the connection by themselves.\n\n"
-
-        << "2) Disconnect event\n"
-        << "   The Connection reports a logical disconnect exactly once.\n"
-        << "   This is the moment the connection is considered dead.\n"
-        << "   It must never fire twice.\n\n"
-
-        << "3) Close events (WebSocket)\n"
-        << "   Physical WebSocket closure may occur after an error\n"
-        << "   or as part of a local shutdown.\n"
-        << "   Close events are idempotent and never double-counted.\n\n"
-
-        << "4) Retry scheduling\n"
-        << "   If the failure is retryable, a retry is scheduled *after* disconnect.\n"
-        << "   Retries are driven by cause, not by timing accidents.\n\n"
-
-        << "Now inspect the telemetry below:\n\n"
+        << "Inspect telemetry carefully:\n\n"
 
         << "Connection telemetry:\n"
-        << "  Disconnect events\n"
-        << "    Must always be exactly 1 per shutdown.\n\n"
+        << "  Disconnect events → must be exactly 1 per shutdown.\n\n"
 
         << "WebSocket telemetry:\n"
-        << "  Receive errors\n"
-        << "    May be zero or more.\n"
-        << "    Errors explain *why* the connection closed.\n\n"
+        << "  Receive errors → explain WHY failure occurred.\n"
+        << "  Close events   → physical socket closure.\n\n"
 
-        << "  Close events\n"
-        << "    Physical socket closures.\n"
-        << "    These are expected and may be triggered by errors or by close().\n\n"
-
-        << "Key invariant:\n"
+        << "Invariant summary:\n"
         << "  Errors may happen.\n"
-        << "  Close always happens.\n"
-        << "  Close happens exactly once.\n\n"
+        << "  Disconnect happens once.\n"
+        << "  Close happens once.\n"
+        << "  Retry follows cause.\n\n"
 
-        << "If these counts or orders ever disagree,\n"
-        << "the system is lying to you.\n\n"
+        << "If ordering or counts ever disagree,\n"
+        << "the system is lying.\n\n"
 
-        << "Wirekrak enforces lifecycle correctness so that\n"
-        << "failures are observable, ordered, and debuggable.\n";
+        << "Wirekrak guarantees ordered, observable failure."
+        << std::endl;
 
     return 0;
 }

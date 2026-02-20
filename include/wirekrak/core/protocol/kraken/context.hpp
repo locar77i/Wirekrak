@@ -1,6 +1,5 @@
 #pragma once
 
-#include <atomic>
 #include <chrono>
 
 #include "wirekrak/core/config/ring_sizes.hpp"
@@ -36,9 +35,8 @@ Parsers NEVER own this object — they only receive ContextView.
 */
 struct Context {
     // Heartbeat statistics
-    // Heartbeat statistics
-    std::atomic<uint64_t>& heartbeat_total;
-    std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts;
+    std::uint64_t& heartbeat_total;
+    std::chrono::steady_clock::time_point& last_heartbeat_ts;
 
     // Output rings for pong messages
     lcr::lockfree::slot::last_value_snapshot<schema::system::Pong> pong_slot{};
@@ -62,7 +60,7 @@ struct Context {
     // ------------------------------------------------------------
     // Construction from owning Context
     // ------------------------------------------------------------
-    explicit Context(std::atomic<uint64_t>& hb_total, std::atomic<std::chrono::steady_clock::time_point>& last_hb_ts) noexcept
+    explicit Context(std::uint64_t& hb_total, std::chrono::steady_clock::time_point& last_hb_ts) noexcept
         : heartbeat_total(hb_total)
         , last_heartbeat_ts(last_hb_ts)
     {}
@@ -99,8 +97,8 @@ Passed to parsers and routers.
 */
 struct ContextView {
     // Heartbeat statistics
-    std::atomic<uint64_t>& heartbeat_total;
-    std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts;
+    std::uint64_t& heartbeat_total;
+    std::chrono::steady_clock::time_point& last_heartbeat_ts;
 
     // Output rings for pong messages
     lcr::lockfree::slot::last_value_snapshot<schema::system::Pong>& pong_slot;

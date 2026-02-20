@@ -59,29 +59,35 @@ void test_message_dispatch_updates_liveness() {
     telemetry::Connection telemetry;
     Connection<test::MockWebSocket> connection{telemetry};
 
-    std::string received;
-    connection.on_message([&](std::string_view msg) {
-        received = msg;
-    });
-
     // Open connection (does not run script yet)
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
     // Capture timestamp before message
-    const auto before =
-        connection.get_last_message_ts().load(std::memory_order_relaxed);
+    const auto before = connection.last_message_ts();
 
     // Step connect_ok
     script.step(connection.ws());
 
-    // Step message
+    // Step message (MockWebSocket pushes DataBlock into transport ring)
     script.step(connection.ws());
+
+    // Poll connection to advance state
+    connection.poll();
+
+    // Pull message from transport data-plane
+    auto* block = connection.peek_message();
+    TEST_CHECK(block != nullptr);
+
+    std::string received{block->data, block->size};
+
+    // Release slot (mandatory)
+    connection.release_message();
 
     // Payload must be forwarded exactly
     TEST_CHECK(received == "hello-world");
 
     // Liveness must be updated
-    const auto after = connection.get_last_message_ts().load(std::memory_order_relaxed);
+    const auto after = connection.last_message_ts();
     TEST_CHECK(after > before);
 
     std::cout << "[TEST] OK\n";
@@ -108,7 +114,7 @@ void test_message_dispatch_without_handler() {
 
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
-    const auto before = connection.get_last_message_ts().load(std::memory_order_relaxed);
+    const auto before = connection.last_message_ts();
 
     // Step connect_ok
     script.step(connection.ws());
@@ -116,8 +122,18 @@ void test_message_dispatch_without_handler() {
     // Step message — must not crash
     script.step(connection.ws());
 
+    // Advance state
+    connection.poll();
+
+    // Consume message (even if user has no handler)
+    auto* block = connection.peek_message();
+    TEST_CHECK(block != nullptr);
+
+    // Release slot
+    connection.release_message();
+
     // Liveness must still be updated
-    const auto after = connection.get_last_message_ts().load(std::memory_order_relaxed);
+    const auto after = connection.last_message_ts();
     TEST_CHECK(after > before);
 
     std::cout << "[TEST] OK\n";

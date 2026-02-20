@@ -87,7 +87,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // WebSocket transport specialization
     using WS = winhttp::WebSocket;
 
-    std::cout << "=== Wirekrak Connection - Minimal Lifecycle (" << name << ") ===\n\n" << description << "\n\n";
+    std::cout << "=== Wirekrak Connection - Minimal Lifecycle (" << name << ") ===\n\n" << description << "\n" << std::endl;
 
     // -------------------------------------------------------------------------
     // Signal handling (explicit termination)
@@ -106,21 +106,29 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     // Lambda to drain events
     // -------------------------------------------------------------------------
-    auto drain_events = [&]() {
+    auto drain_signals = [&]() {
         connection::Signal sig;
 
         while (connection.poll_signal(sig)) {
             switch (sig) {
                 case connection::Signal::Connected:
-                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    std::cout << "[example] Connect to " << name << " observed!" << std::endl;
                     break;
 
                 case connection::Signal::Disconnected:
-                    std::cout << "[example] Disconnect from " << name << " observed!\n";
+                    std::cout << "[example] Disconnect from " << name << " observed!" << std::endl;
+                    break;
+
+                case connection::Signal::RetryImmediate:
+                    std::cout << "[example] Immediate retry observed!" << std::endl;
                     break;
 
                 case connection::Signal::RetryScheduled:
-                    std::cout << "[example] Retry schedule observed!\n";
+                    std::cout << "[example] Retry schedule observed!" << std::endl;
+                    break;
+
+                case connection::Signal::LivenessThreatened:
+                    std::cout << "[example] Liveness warning observed!" << std::endl;
                     break;
         
                 default:
@@ -130,8 +138,8 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     };
 
     // Note:
-    // No message callback is installed on purpose.
-    // This example is about lifecycle, not data.
+    // No data-plane consumption is performed on purpose.
+    // This example focuses on lifecycle, not message handling.
 
     // -------------------------------------------------------------------------
     // Open connection
@@ -148,8 +156,8 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     auto start = std::chrono::steady_clock::now();
 
     while (running.load(std::memory_order_relaxed) && std::chrono::steady_clock::now() - start < runtime) {
-        connection.poll(); // Poll driven progression
-        drain_events();    // Drain any pending events
+        connection.poll();  // Poll-driven execution
+        drain_signals();    // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -158,31 +166,32 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     connection.close();
 
-    // Drain remaining events (~200 ms)
-    for (int i = 0; i < 20; ++i) {
-        connection.poll();
-        drain_events();
+    // Drain remaining events until idle
+    while (!connection.is_idle()) {
+        connection.poll();   // Poll-driven execution
+        drain_signals();     // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
     // Dump telemetry
     // -------------------------------------------------------------------------
-    std::cout << "\n=== Connection Telemetry ===\n";
+    std::cout << "\n=== Connection Telemetry ===" << std::endl;
     telemetry.debug_dump(std::cout);
 
-    std::cout << "\n=== WebSocket Telemetry ===\n";
+    std::cout << "\n=== WebSocket Telemetry ===" << std::endl;
     telemetry.websocket.debug_dump(std::cout);
 
     // -------------------------------------------------------------------------
     // Interpretation guide
     // -------------------------------------------------------------------------
     std::cout << "\n=== How to read this ===\n"
-        << "- Connect success should be exactly 1\n"
+        << "- In a stable network, connect success should be 1\n"
         << "- Disconnect events should be exactly 1\n"
-        << "- No messages forwarded (by design)\n"
+        << "- No messages forwarded (no peek_message() calls)\n"
         << "- Telemetry reflects facts, not guesses\n\n"
-        << "This is the smallest correct Connection program.\n";
+        << "This is the smallest correct poll-driven Connection program."
+        << std::endl;
 
     return 0;
 }

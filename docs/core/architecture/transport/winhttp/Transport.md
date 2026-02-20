@@ -17,7 +17,8 @@ used by `core::transport::Connection`.
 
 ## Design Philosophy
 
-The WinHTTP transport is intentionally minimal and deterministic.
+The WinHTTP transport is intentionally minimal, deterministic, and
+**ultra‑low‑latency (ULL) oriented**.
 
 It is responsible only for:
 
@@ -26,6 +27,7 @@ It is responsible only for:
 - Receiving frames on a dedicated receive thread
 - Translating OS-level errors into semantic `transport::Error`
 - Publishing control-plane events (Close / Error) via SPSC queue
+- Publishing data-plane messages via zero-copy SPSC ring
 
 It does **NOT**:
 
@@ -52,7 +54,6 @@ transport::winhttp::WebSocketImpl<RealApi>
         │
 transport::winhttp::RealApi (WinHTTP)
 ```
-
 The transport is a thin OS adapter.
 
 ---
@@ -73,22 +74,80 @@ Control-plane events are published through:
 lcr::lockfree::spsc_ring<websocket::Event, 16>
 ```
 
-Producer:
-- Receive thread only
+Producer: - Receive thread only
 
-Consumer:
-- `core::transport::Connection::poll()`
+Consumer: - `core::transport::Connection::poll()`
 
-This guarantees:
-- Single producer
-- Single consumer
-- No locks
-- Deterministic event ordering
+This guarantees: - Single producer - Single consumer - No locks -
+Deterministic event ordering
 
 Only two event types exist:
 
 - `Event::Close`
 - `Event::Error(Error)`
+
+---
+
+## Data Plane: Zero-Copy Message Ring
+
+Message delivery is implemented via a **single-producer /
+single-consumer** ring of fixed-size blocks.
+
+```
+lcr::lockfree::spsc_ring<DataBlock, N>
+```
+
+### DataBlock Structure
+
+```
+struct DataBlock {
+    std::uint32_t size;
+    char data[RX_BUFFER_SIZE];
+};
+```
+
+Properties:
+
+- Fixed-size blocks (compile-time capacity)
+- No dynamic allocation
+- No std::string buffering
+- No intermediate copies
+- Deterministic memory layout
+
+### Producer (Receive Thread)
+
+The receive thread:
+
+1. Lazily acquires a producer slot
+2. Writes WebSocket fragments directly into the block
+3. Accumulates size across fragments
+4. Commits the slot only on final frame
+
+No temporary buffer is used.
+
+If backpressure occurs (ring full):
+
+- Transport logs fatal condition
+- Connection is force-closed
+- No silent message loss occurs
+
+### Consumer (Connection Layer)
+
+The Connection layer pulls messages explicitly:
+
+```
+while (auto* block = ws.peek_message()) {
+    process(block->data, block->size);
+    ws.release_message();
+}
+```
+
+This ensures:
+
+- Zero-copy handoff
+- Deterministic ownership
+- Explicit lifetime control
+- No callback execution on receive thread
 
 ---
 
@@ -124,28 +183,25 @@ Errors are surfaced asynchronously via control events.
 - Joins receive thread
 - Guarantees exactly one Close event is emitted
 
+Uncommitted DataBlocks are abandoned safely.
+
 ---
 
-## Receive Loop
+## Receive Loop (Zero-Copy Model)
 
 `receive_loop_()`:
 
-- Blocks on `WinHttpWebSocketReceive`
-- Handles:
-  - Complete messages
-  - Fragmented messages
-  - Close frames
-  - WinHTTP errors
+- Acquires a ring slot lazily at message start
+- Writes fragments directly into slot memory
+- Guards against overflow
+- Commits slot only on final frame
+- Abandons slot safely on error
 - Emits control events via SPSC ring
 - Ensures `signal_close_()` runs exactly once
 
-Message delivery occurs via registered callback:
+There is **no message callback**.
 
-```
-set_message_callback(std::function<void(std::string_view)>)
-```
-
-This callback runs on the receive thread.
+All message consumption is pull-based.
 
 ---
 
@@ -161,7 +217,7 @@ WinHTTP error codes are translated into semantic `transport::Error`:
 | CANNOT_CONNECT | ConnectionFailed |
 | Other | TransportFailure |
 
-The transport **classifies**, but never retries.
+The transport classifies, but never retries.
 
 ---
 
@@ -182,6 +238,8 @@ The transport **classifies**, but never retries.
 - No hidden timers
 - Close event emitted exactly once
 - Error surfaced exactly once per failure
+- Zero-copy message delivery
+- No hidden allocations in receive path
 
 All behavior is explicit and poll-driven at the Connection layer.
 
@@ -213,6 +271,7 @@ The WinHTTP WebSocket transport is:
 - Single-connection
 - Failure-signaling only
 - Thread-safe via SPSC event queue
+- Zero-copy data-plane delivery
 - Fully testable via API abstraction
 
 All connection lifecycle management lives above this layer.

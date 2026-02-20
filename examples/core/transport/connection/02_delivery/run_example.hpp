@@ -1,24 +1,31 @@
-#pragma once
-
 /*
 ===============================================================================
 Example 2 - Connection vs Transport Semantics
-(Learning Step 3: Observation ≠ Delivery)
+(Learning Step 3: Observation ≠ Consumption)
 ===============================================================================
 
 This example is the **third learning step** in the Wirekrak connection model.
 
 After learning how to:
-  - open and run a connection        (Example 0)
+  - open and poll a connection       (Example 0)
   - observe wire-level message shape (Example 1)
 
 This example teaches a critical distinction:
 
-> **Receiving data is not the same as delivering data.**
+> **Receiving data is not the same as consuming data.**
 
 Wirekrak intentionally separates:
+
   - what arrives on the wire
-  - from what is delivered to user code
+  - from what the application explicitly pulls
+
+There is no automatic delivery.
+There are no callbacks.
+There is no implicit consumption.
+
+Delivery occurs only when the application calls:
+
+    peek_message() + release_message()
 
 -------------------------------------------------------------------------------
 What this example demonstrates
@@ -28,13 +35,15 @@ This example shows the semantic boundary between:
 
   • WebSocket transport
       → What physically arrives from the network
+      → Counted as RX messages
 
-  • Connection layer
-      → What is intentionally forwarded to the application
+  • Connection data-plane
+      → Messages made available by the transport
+      → Counted as forwarded only when the application pulls them
 
 It proves that:
 
-> **messages_rx_total != messages_forwarded_total is correct behavior**
+> **RX messages != messages_forwarded_total is correct behavior**
 
 -------------------------------------------------------------------------------
 Scenario
@@ -45,26 +54,26 @@ The example runs in two explicit phases:
 Phase A - Transport-only observation
   - A connection is opened
   - A subscription is sent
-  - NO message callback is installed
+  - The application DOES NOT call peek_message()
   - The transport receives messages
-  - The connection forwards NOTHING to user code
+  - Nothing is consumed
 
-Phase B - Explicit delivery opt-in
-  - A message callback is installed
-  - The same incoming messages are now forwarded
-  - Delivery becomes visible to the application
+Phase B - Explicit consumption
+  - The application begins calling peek_message()
+  - Messages are now observed and released
+  - Forwarded counter increases
 
-Nothing else changes - only intent.
+Nothing else changes - only application behavior.
 
 -------------------------------------------------------------------------------
 What this teaches
 -------------------------------------------------------------------------------
 
-  - Receiving ≠ delivering
-  - Observation does not imply consumption
-  - Applications must opt-in to message delivery
-  - Telemetry distinguishes transport activity from application handoff
-  - Silent dropping is not a bug - it is policy
+  - Receiving ≠ consuming
+  - Observation requires explicit pull
+  - Applications must actively drain the data-plane
+  - Telemetry distinguishes transport activity from consumption
+  - Lack of consumption is not a bug - it is policy
 
 -------------------------------------------------------------------------------
 Learning path position
@@ -72,7 +81,7 @@ Learning path position
 
 Example 0 → How to connect and poll  
 Example 1 → How to observe wire reality  
-Example 2 → Why observation ≠ delivery  
+Example 2 → Why observation ≠ consumption  
 Example 3 → Error & close lifecycle correctness  
 Example 4 → Liveness and protocol responsibility  
 
@@ -81,14 +90,15 @@ Key takeaway
 -------------------------------------------------------------------------------
 
 > Transport reports what happened.
-> Connection decides what matters.
-> Applications receive only what they ask for.
+> Connection exposes what is available.
+> Applications consume only what they explicitly pull.
 
-Wirekrak separates **fact**, **policy**, and **intent** - on purpose.
+Wirekrak separates **fact**, **availability**, and **consumption** - on purpose.
 
 ===============================================================================
 */
 
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -118,7 +128,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // WebSocket transport specialization
     using WS = winhttp::WebSocket;
 
-    std::cout << "=== Wirekrak Connection - Transport vs Delivery (" << name << ") ===\n\n" << description << "\n\n"; 
+    std::cout << "=== Wirekrak Connection - Observation vs Consumption (" << name << ") ===\n\n" << description << "\n" << std::endl;
 
     // -------------------------------------------------------------------------
     // Signal handling (explicit termination)
@@ -134,23 +144,31 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     // Lambda to drain events
     // -------------------------------------------------------------------------
-    auto drain_events = [&]() {
+    auto drain_signals = [&]() {
         connection::Signal sig;
 
         while (connection.poll_signal(sig)) {
             switch (sig) {
                 case connection::Signal::Connected:
-                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    std::cout << "[example] Connect to " << name << " observed!" << std::endl;
                     break;
 
                 case connection::Signal::Disconnected:
-                    std::cout << "[example] Disconnect from " << name << " observed!\n";
+                    std::cout << "[example] Disconnect from " << name << " observed!" << std::endl;
+                    break;
+
+                case connection::Signal::RetryImmediate:
+                    std::cout << "[example] Immediate retry observed!" << std::endl;
                     break;
 
                 case connection::Signal::RetryScheduled:
-                    std::cout << "[example] Retry schedule observed!\n";
+                    std::cout << "[example] Retry schedule observed!" << std::endl;
                     break;
-        
+
+                case connection::Signal::LivenessThreatened:
+                    std::cout << "[example] Liveness threatened observed!" << std::endl;
+                    break;
+
                 default:
                     break;
             }
@@ -170,30 +188,31 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     (void)connection.send(subscribe_payload);
 
     // -------------------------------------------------------------------------
-    // Phase A - no message hook
+    // Phase A - Do NOT pull messages
     // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase A - transport receives, connection does NOT forward\n";
+    std::cout << "\n[example] Phase A - transport receives, application does NOT pull" << std::endl;
 
     auto phase_a_start = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - phase_a_start < std::chrono::seconds(10) && running.load(std::memory_order_relaxed)) {
-        connection.poll();
+        connection.poll();    //Poll-driven execution
+        drain_signals();      // signals drained
+        // No peek_message() here
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
-    // Phase B - install message hook
+    // Phase B - Explicit delivery (pull messages)
     // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase B - installing message callback\n";
-
-    std::atomic<uint64_t> forwarded{0};
-    connection.on_message([&](std::string_view msg) {
-        ++forwarded;
-        std::cout << "[example] Forwarded message (" << msg.size() << " bytes)\n";
-    });
+    std::cout << "\n[example] Phase B - application begins pulling messages" << std::endl;
 
     while (running.load(std::memory_order_relaxed)) {
-        connection.poll();  // Poll driven progression
-        drain_events();     // Drain any pending events
+        connection.poll();   // Poll-driven execution
+        drain_signals();     // Drain any pending signals
+        // Pull data-plane messages explicitly
+        while (auto* block = connection.peek_message()) {
+            std::cout << "[example] Delivered message (" << block->size << " bytes)" << std::endl;
+            connection.release_message();
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -202,30 +221,33 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     connection.close();
 
-    // Drain remaining events (~200 ms)
-    for (int i = 0; i < 20; ++i) {
-        connection.poll();  // Poll driven progression
-        drain_events();     // Drain any pending events
+    // Drain remaining events until idle
+    while (!connection.is_idle()) {
+        connection.poll();   // Poll-driven execution
+        drain_signals();     // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
     // Dump telemetry
     // -------------------------------------------------------------------------
-    std::cout << "\n=== Connection Telemetry ===\n";
+    std::cout << "\n=== Connection Telemetry ===" << std::endl;
     telemetry.debug_dump(std::cout);
 
-    std::cout << "\n=== WebSocket Telemetry ===\n";
+    std::cout << "\n=== WebSocket Telemetry ===" << std::endl;
     telemetry.websocket.debug_dump(std::cout);
 
     // -------------------------------------------------------------------------
     // How to read this
     // -------------------------------------------------------------------------
-    std::cout << "\n=== key insights ===\n"
-        << "[RX messages]---------  observed arriving messages on the wire, regardless of application interest.\n"
-        << "[Messages forwarded]--  messages intentionally delivered to user code. Only counted after a message callback exists.\n"
-        << "It is expected and correct that:  [Messages forwarded] <= [RX messages]\n\n"
-        << "Wirekrak separates observation (transport) from policy and delivery (connection).\n";
+    std::cout << "\n=== Key Insights ===\n\n"
+              << "[RX messages] -------- observed arriving messages on the wire.\n"
+              << "[Messages forwarded] -- incremented only when peek_message() is called.\n\n"
+              << "It is expected and correct that:\n"
+              << "  Messages forwarded <= RX messages\n\n"
+              << "Transport reports what happened.\n"
+              << "Connection exposes what is pulled.\n"
+              << "Applications receive only what they explicitly consume." << std::endl;
 
     return 0;
 }

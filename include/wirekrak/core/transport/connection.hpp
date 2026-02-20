@@ -3,7 +3,6 @@
 #include <string>
 #include <string_view>
 #include <functional>
-#include <atomic>
 #include <chrono>
 #include <memory>
 
@@ -13,6 +12,7 @@
 #include "wirekrak/core/transport/state.hpp"
 #include "wirekrak/core/transport/connection/signal.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
+#include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/optional.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
@@ -116,10 +116,6 @@ constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of
 
 template <transport::WebSocketConcept WS>
 class Connection {
-
-public:
-    using message_handler_t          = std::function<void(std::string_view)>;
-
 public:
     Connection(telemetry::Connection& telemetry,
                std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT,
@@ -208,7 +204,7 @@ public:
         if (ws_->send(std::string(text))) {
             // Update tx message count and timestamp
             ++tx_messages_;
-            last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+            last_message_ts_ = std::chrono::steady_clock::now();
             return true;
         }
         return false;
@@ -267,11 +263,6 @@ public:
         return events_.pop(out);
     }
 
-    // Callbacks
-    void on_message(message_handler_t cb) noexcept {
-        hooks_.on_message_cb_ = std::move(cb);
-    }
-
     // Accessors
     [[nodiscard]]
     inline State get_state() const noexcept {
@@ -284,33 +275,33 @@ public:
     }
 
     [[nodiscard]]
-    inline std::atomic<std::uint64_t>& heartbeat_total() noexcept {
-        return heartbeat_total_;
-    }
-
-    [[nodiscard]]
-    inline const std::atomic<std::uint64_t>& heartbeat_total() const noexcept {
-        return heartbeat_total_;
-    }
-
-    [[nodiscard]]
     inline std::uint64_t hb_messages() const noexcept {
-        return heartbeat_total_.load(std::memory_order_relaxed);
+        return heartbeat_total_;
     }
 
     [[nodiscard]]
-    inline std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts() noexcept {
+    inline std::uint64_t& heartbeat_total() noexcept {
+        return heartbeat_total_;
+    }
+
+    [[nodiscard]]
+    inline const std::uint64_t& heartbeat_total() const noexcept {
+        return heartbeat_total_;
+    }
+
+    [[nodiscard]]
+    inline std::chrono::steady_clock::time_point& last_heartbeat_ts() noexcept {
         return last_heartbeat_ts_;
     }
 
     [[nodiscard]]
-    inline const std::atomic<std::chrono::steady_clock::time_point>& last_heartbeat_ts() const noexcept {
+    inline const std::chrono::steady_clock::time_point& last_heartbeat_ts() const noexcept {
         return last_heartbeat_ts_;
     }
 
     [[nodiscard]]
     inline std::uint64_t rx_messages() const noexcept {
-        return rx_messages_.load(std::memory_order_relaxed);
+        return rx_messages_;
     }
 
     [[nodiscard]]
@@ -320,7 +311,7 @@ public:
 
     [[nodiscard]]
     inline const std::chrono::steady_clock::time_point last_message_ts() const noexcept {
-        return last_message_ts_.load(std::memory_order_relaxed);
+        return last_message_ts_;
     }
 
     // Mutators
@@ -366,22 +357,31 @@ public:
         return true;
     }
 
+    [[nodiscard]]
+    inline websocket::DataBlock* peek_message() noexcept {
+        assert(ws_ && "Transport not initialized");
+        websocket::DataBlock* block = ws_->peek_message();
+        if (block) { // Update rx message count and timestamp
+            WK_TL1( telemetry_.messages_forwarded_total.inc() );
+            ++rx_messages_;
+            last_message_ts_ = std::chrono::steady_clock::now();
+        }
+        return block;
+    }
+
+    inline void release_message() noexcept {
+        assert(ws_ && "Transport not initialized");
+        ws_->release_message();
+    }
+
 #ifdef WK_UNIT_TEST
 public:
     inline void force_last_message(std::chrono::steady_clock::time_point ts) noexcept{
-        last_message_ts_.store(ts, std::memory_order_relaxed);
+        last_message_ts_ = ts;
     }
 
     inline void force_last_heartbeat(std::chrono::steady_clock::time_point ts) noexcept {
-        last_heartbeat_ts_.store(ts, std::memory_order_relaxed);
-    }
-
-    inline const std::atomic<std::chrono::steady_clock::time_point>& get_last_message_ts() const noexcept {
-        return last_message_ts_;
-    }
-
-    inline const std::atomic<std::chrono::steady_clock::time_point>& get_last_heartbeat_ts() const noexcept {
-        return last_heartbeat_ts_;
+        last_heartbeat_ts_ = ts;
     }
 
     WS& ws() {
@@ -390,51 +390,37 @@ public:
 #endif // WK_UNIT_TEST
 
 private:
-    std::string last_url_;                 // for logging / retry callbacks
-    lcr::optional<ParsedUrl> parsed_url_;  // Invariant: parsed_url_.has() == true -> Valid endpoint
+    std::string last_url_;                          // for logging / retry callbacks
+    lcr::optional<ParsedUrl> parsed_url_;           // Invariant: parsed_url_.has() == true -> Valid endpoint
 
-    transport::telemetry::Connection& telemetry_;
-    std::unique_ptr<WS> ws_;
+    transport::telemetry::Connection& telemetry_;   // Telemetry reference (not owned)
+    std::unique_ptr<WS> ws_;                        // WebSocket instance (owned by Connection)
 
     // Current transport epoch (incremented on each websocket connection: exposed progress signal.)
     std::uint64_t epoch_{0};
 
-    // Heartbeat messages are used as a deterministic liveness signal that drives reconnection.
-    // If no heartbeat is received for N seconds:
-    // - Assume the connection is unhealthy (even if TCP is still “up”)
-    // - Force-close the WebSocket
-    // - Let the existing reconnection state machine recover
-    // - Replay subscriptions automatically
-    //
-    // Benefits:
-    // - Simple liveness detection
-    // - Decouples transport health from protocol health
-    // - No threads. No timers. Poll-driven.
-    std::atomic<std::uint64_t> heartbeat_total_{0};
-    std::atomic<std::chrono::steady_clock::time_point> last_heartbeat_ts_;
-    // TODO: remove atomicity if not needed
-    std::atomic<std::uint64_t> rx_messages_{0};
-    std::uint64_t tx_messages_{0};
-    std::atomic<std::chrono::steady_clock::time_point> last_message_ts_;
+    // Heartbeat messages tracking (for liveness monitoring)
+    std::uint64_t heartbeat_total_{0};
+    std::chrono::steady_clock::time_point last_heartbeat_ts_{std::chrono::steady_clock::now()};
 
+    // Message activity tracking (liveness and observability)
+    std::uint64_t rx_messages_{0};
+    std::uint64_t tx_messages_{0};
+    std::chrono::steady_clock::time_point last_message_ts_{std::chrono::steady_clock::now()};
+
+    // Liveness configuration
     std::chrono::milliseconds heartbeat_timeout_{10000};
     std::chrono::milliseconds message_timeout_{15000};
     double liveness_warning_ratio_;
     std::chrono::milliseconds liveness_danger_window_;
+
+    // Liveness tracking state
     bool liveness_warning_emitted_{false};
     bool liveness_timeout_emitted_{false};
 
-    // Hooks structure to store all user-defined callbacks
-    struct Hooks {
-        message_handler_t    on_message_cb_{};
-    };
-
-    // Handlers bundle
-    Hooks hooks_;
-
+    // Error tracking for reconnection logic
     Error last_error_{Error::None};
     Error retry_root_error_{Error::None};
-
     DisconnectReason disconnect_reason_{DisconnectReason::None};
 
     // State machine 
@@ -502,9 +488,7 @@ private:
                 retry_attempts_ = 0;
                 retry_root_error_ = Error::None;
                 { // Reset liveness tracking
-                    auto now = std::chrono::steady_clock::now();
-                    last_heartbeat_ts_.store(now, std::memory_order_relaxed);
-                    last_message_ts_.store(now, std::memory_order_relaxed);
+                    last_message_ts_ = last_heartbeat_ts_ = std::chrono::steady_clock::now();
                     liveness_warning_emitted_ = false;
                     liveness_timeout_emitted_ = false;
                 }
@@ -640,11 +624,9 @@ private:
     inline std::chrono::milliseconds liveness_remaining_() const noexcept {
         auto now = std::chrono::steady_clock::now();
         // last message liveness remaining
-        auto last_msg = last_message_ts_.load(std::memory_order_relaxed);
-        auto msg_left = message_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_msg);
+        auto msg_left = message_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message_ts_);
         // last heartbeat liveness remaining
-        auto last_hb = last_heartbeat_ts_.load(std::memory_order_relaxed);
-        auto hb_left = heartbeat_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_hb);
+        auto hb_left = heartbeat_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_heartbeat_ts_);
         // return the maximum remaining time of both signals
         return std::max(msg_left, hb_left);
     }
@@ -653,11 +635,9 @@ private:
     inline bool is_liveness_stale_() noexcept {
         auto now = std::chrono::steady_clock::now();
         // last message liveness
-        auto last_msg = last_message_ts_.load(std::memory_order_relaxed);
-        bool message_stale   = (now - last_msg) > message_timeout_;
+        bool message_stale   = (now - last_message_ts_) > message_timeout_;
         // last heartbeat liveness
-        auto last_hb  = last_heartbeat_ts_.load(std::memory_order_relaxed);
-        bool heartbeat_stale = (now - last_hb) > heartbeat_timeout_;
+        bool heartbeat_stale = (now - last_heartbeat_ts_) > heartbeat_timeout_;
         // Conservative: only true if BOTH are stale
         return message_stale && heartbeat_stale;
     }
@@ -670,23 +650,6 @@ private:
         }
         // Initialize transport
         ws_ = std::make_unique<WS>(telemetry_.websocket);
-        // Set callbacks
-        ws_->set_message_callback([this](std::string_view msg) {
-            on_message_received_(msg);
-        });
-    }
-                    
-    // Placeholder for user-defined behavior on message receipt
-    // (The transport successfully received a message from the peer)
-    inline void on_message_received_(std::string_view msg) {
-        // Update rx message count and timestamp
-        rx_messages_.fetch_add(1, std::memory_order_relaxed);
-        last_message_ts_.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
-        // Invoke message callback (if any)
-        if (hooks_.on_message_cb_) {
-            WK_TL1( telemetry_.messages_forwarded_total.inc() ); // This marks handoff, not consumption
-            hooks_.on_message_cb_(msg);
-        }
     }
 
     // Placeholder for user-defined behavior on transport errors

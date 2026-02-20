@@ -3,6 +3,8 @@
 #include <queue>
 #include <thread>
 #include <iostream>
+#include <cstring>
+#include <algorithm>
 
 #include "wirekrak/core/transport/winhttp/concepts.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
@@ -45,6 +47,7 @@ namespace winhttp {
 struct FakeApi {
     std::queue<DWORD> results;
     std::queue<WINHTTP_WEB_SOCKET_BUFFER_TYPE> types;
+    std::queue<std::string> payloads;
 
     int receive_count = 0;
     int send_count = 0;
@@ -52,17 +55,31 @@ struct FakeApi {
 
     DWORD send_result = ERROR_SUCCESS;
 
-    DWORD websocket_receive(HINTERNET, void*, DWORD, DWORD* bytes, WINHTTP_WEB_SOCKET_BUFFER_TYPE* type) {
+    DWORD websocket_receive(HINTERNET, void* buffer, DWORD buffer_len, DWORD* bytes, WINHTTP_WEB_SOCKET_BUFFER_TYPE* type) {
         ++receive_count;
         if (results.empty()) {
-            return ERROR_INVALID_HANDLE;
+            std::this_thread::yield();
+            return ERROR_WINHTTP_OPERATION_CANCELLED;
         }
-        // Pop next result
         *bytes = 0;
+        // Pop next type
         *type  = types.front();
         types.pop();
+        // Pop next result
         DWORD r = results.front();
         results.pop();
+        // If result is error, return immediately without writing to buffer
+        if (r != ERROR_SUCCESS) {
+            return r;
+        }
+        //Write payload if provided
+        if (!payloads.empty()) {
+            const std::string& p = payloads.front();
+            const DWORD to_copy = static_cast<DWORD>(std::min<std::size_t>(p.size(), buffer_len));
+            std::memcpy(buffer, p.data(), to_copy);
+            *bytes = to_copy;
+            payloads.pop();
+        }
         return r;
     }
 
@@ -197,8 +214,8 @@ void test_error_triggers_close() {
 }
 
 
-void test_message_callback() {
-    std::cout << "[TEST] Running message callback test..." << std::endl;
+void test_message_delivery_to_ring() {
+    std::cout << "[TEST] Running message delivery to ring test..." << std::endl;
 
     telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
@@ -206,14 +223,10 @@ void test_message_callback() {
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
 
-    std::atomic<int> msg_count{0};
-    ws.set_message_callback([&](std::string_view) {
-        msg_count++;
-    });
-
     // Simulate one message
     ws.test_api().results.push(ERROR_SUCCESS);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
+    ws.test_api().payloads.push("test_message");
 
     //if (!ws.connect("x", "443", "/"))
     ws.test_start_receive_loop();
@@ -223,16 +236,32 @@ void test_message_callback() {
         std::this_thread::yield();
     }
 
-    // Let receive loop run if it wants to
-    std::this_thread::yield();
+    // Wait until the first receive() has happened
+    while (ws.test_api().receive_count < 1) {
+        std::this_thread::yield();
+    }
+
+    // Now message must be available
+    websocket::DataBlock* block = nullptr;
+    while ((block = ws.peek_message()) == nullptr) {
+        std::this_thread::yield();
+    }
+    
+    assert(block != nullptr);
+
+    // Assert payload
+    const char* expected = "test_message";
+    const std::size_t expected_size = std::strlen(expected);
+    assert(block->size == expected_size);
+    assert(std::memcmp(block->data, expected, expected_size) == 0);
+
+    // Release slot (mandatory)
+    ws.release_message();
 
     ws.close();
 
-    // If message was delivered, it must be exactly once
-    assert(msg_count.load() <= 1);
-    if (msg_count.load() == 1) {
-        assert(ws.test_api().receive_count >= 1);
-    }
+    // At least one receive must have occurred
+    assert(ws.test_api().receive_count >= 1);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -346,16 +375,16 @@ void test_multiple_messages() {
     telemetry::WebSocket telemetry;
     TestWebSocket ws(telemetry);
 
-    std::atomic<int> msg_count{0};
-    ws.set_message_callback([&](std::string_view) {
-        msg_count++;
-    });
+    std::atomic<bool> receive_started{false};
+    ws.set_receive_started_flag(&receive_started);
 
     ws.test_api().results.push(ERROR_SUCCESS);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
+    ws.test_api().payloads.push("msg1");
 
     ws.test_api().results.push(ERROR_SUCCESS);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
+    ws.test_api().payloads.push("msg2");
 
     ws.test_api().results.push(ERROR_SUCCESS);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE);
@@ -363,14 +392,38 @@ void test_multiple_messages() {
     //if (!ws.connect("x", "443", "/"))
     ws.test_start_receive_loop();
 
-    // Wait until both messages arrive
-    while (msg_count.load(std::memory_order_acquire) < 2) {
+    // Wait until receive loop is active
+    while (!receive_started.load(std::memory_order_acquire)) {
         std::this_thread::yield();
+    }
+
+    // Wait until both messages have been processed
+    while (ws.test_api().receive_count < 2) {
+        std::this_thread::yield();
+    }
+
+    int count = 0;
+    websocket::DataBlock* block = ws.peek_message();
+    while (block != nullptr) {
+        assert(block != nullptr);
+
+        if (count == 0) {
+            assert(block->size == 4);
+            assert(std::memcmp(block->data, "msg1", 4) == 0);
+        }
+        else if (count == 1) {
+            assert(block->size == 4);
+            assert(std::memcmp(block->data, "msg2", 4) == 0);
+        }
+        // Release slot (mandatory)
+        ws.release_message();
+        count++;
+        block = ws.peek_message();
     }
 
     ws.close();
 
-    assert(msg_count.load() == 2);
+    assert(count == 2);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -389,7 +442,7 @@ int main() {
     // implementation via a compile-time injected WinHTTP API.
     test_close_called_once();
     test_error_triggers_close();
-    test_message_callback();
+    test_message_delivery_to_ring();
     test_send_success();
     test_send_failure();
     test_error_then_close_ordering();

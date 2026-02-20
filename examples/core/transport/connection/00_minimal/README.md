@@ -2,8 +2,9 @@
 
 This example is the **starting point for Wirekrak**.
 
-It demonstrates the *smallest correct program* that opens, drives, and closes
-a Wirekrak connection — **without any protocol logic**.
+It demonstrates the *smallest correct poll-driven program* that opens,
+drives, and closes a Wirekrak connection — **without any protocol logic
+and without consuming any data-plane messages**.
 
 If this example feels boring, that is intentional.
 
@@ -15,8 +16,8 @@ Example 0 exists to answer one question clearly:
 
 > **What is the minimum I must do to use Wirekrak correctly?**
 
-Nothing more.
-Nothing hidden.
+Nothing more.  
+Nothing hidden.  
 Nothing inferred.
 
 ---
@@ -26,7 +27,8 @@ Nothing inferred.
 - Creates a `Connection`
 - Opens a WebSocket URL
 - Drives the connection via `poll()`
-- Observes lifecycle callbacks
+- Drains lifecycle signals explicitly
+- Does **not** pull from the data-plane
 - Closes the connection cleanly
 - Dumps connection and transport telemetry
 
@@ -36,8 +38,8 @@ Nothing inferred.
 
 - ❌ No subscriptions
 - ❌ No protocol messages
-- ❌ No heartbeats
-- ❌ No liveness tuning
+- ❌ No data-plane consumption (`peek_message()` is never called)
+- ❌ No heartbeat tuning
 - ❌ No retry logic demonstration
 - ❌ No exchange assumptions
 
@@ -50,9 +52,11 @@ Those concepts are introduced **incrementally** in later examples.
 Wirekrak is **explicit by design**.
 
 There is:
+
 - No background thread
 - No hidden event loop
 - No automatic progress
+- No implicit message delivery
 
 If you do not call `poll()`, **nothing happens**.
 
@@ -65,12 +69,13 @@ Example 0 makes this unmistakably clear.
 ### 1. Connection owns lifecycle
 
 The `Connection`:
+
 - Tracks logical state
-- Emits lifecycle callbacks
+- Emits lifecycle signals
 - Enforces correctness
 - Owns telemetry
 
-The transport only reports what happens on the wire.
+The transport reports only observable wire events.
 
 ---
 
@@ -79,42 +84,51 @@ The transport only reports what happens on the wire.
 Wirekrak is **poll-driven**.
 
 Calling `poll()`:
+
 - Advances the transport
 - Processes incoming frames
 - Executes state transitions
-- Delivers callbacks
+- Emits lifecycle signals
 
-If you forget to poll, the system stalls by design.
+If you forget to poll, the system stalls — by design.
 
 ---
 
-### 3. Telemetry is mandatory
+### 3. Signals are edge-triggered
+
+Lifecycle transitions are surfaced via `poll_signal()`.
+
+Signals represent **observable events**, not steady-state conditions.
+
+You must drain them explicitly.
+
+---
+
+### 4. Telemetry reflects facts
 
 Telemetry is not optional in Wirekrak.
 
 This example shows:
+
 - Connection lifecycle counters
 - WebSocket traffic statistics
 - Error and close tracking
 
-Nothing is inferred.
-Nothing is hidden.
+Telemetry reports **facts**, not interpretations.
 
 ---
 
 ## Expected output behavior
 
-When running Example 0, you should observe:
+In a stable network environment, you should observe:
 
-- Exactly one connect event
-- Exactly one disconnect event
-- No forwarded messages
+- One successful connect
+- One disconnect event
+- No messages forwarded (no `peek_message()` calls)
 - Clean shutdown
 - Deterministic telemetry
 
-Any deviation indicates:
-- A misuse of the API, or
-- A real transport issue
+If retries occur, additional connect attempts may be visible — this is correct behavior.
 
 ---
 
@@ -123,14 +137,14 @@ Any deviation indicates:
 Example 0 is the foundation.
 
 | Example | Focus |
-|-------|------|
+|----------|-------|
 | Example 0 | Minimal lifecycle & polling |
 | Example 1 | Message shape & fragmentation |
-| Example 2 | Transport vs delivery |
+| Example 2 | Observation vs consumption |
 | Example 3 | Error & close invariants |
 | Example 4 | Heartbeat-driven liveness |
 
-Each example builds on the previous one.
+Each example builds on the previous one.  
 None of them invalidate Example 0.
 
 ---
@@ -143,6 +157,7 @@ If you understand Example 0, you understand:
 - Where responsibility lives
 - How control flows
 - Why behavior is deterministic
+- Why consumption is explicit
 
 Everything else is layered on top.
 

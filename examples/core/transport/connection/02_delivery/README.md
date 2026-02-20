@@ -1,69 +1,82 @@
-# Example 2 — Connection vs Transport Semantics
+# Example 2 - Connection vs Transport Semantics
 
 This example demonstrates a **fundamental design boundary in Wirekrak**:
 
-> Receiving data on the wire is not the same as delivering data to the application.
+> Receiving data on the wire is not the same as consuming data in the
+> application.
 
 Wirekrak makes this distinction explicit, observable, and measurable.
+
+There are no callbacks. There is no implicit delivery. Messages are only
+consumed when explicitly pulled.
 
 ---
 
 ## What this example proves
 
-- WebSocket **transport** may receive messages continuously.
-- The **Connection layer** only forwards messages when explicitly instructed.
-- Message delivery is a **policy decision**, not an automatic side effect.
-- Telemetry correctly reflects this separation.
+-   The WebSocket **transport** may receive messages continuously.
+
+-   The **Connection layer** exposes messages via a pull-based
+    data-plane.
+
+-   Messages are only counted as forwarded when the application calls:
+
+        peek_message() + release_message()
+
+-   Telemetry correctly reflects the separation between arrival and
+    consumption.
 
 In short:
 
-> **Observation ≠ Delivery**
+> **Observation ≠ Consumption**
 
 ---
 
 ## What this example is NOT
 
-- ❌ It is not a subscription tutorial  
-- ❌ It does not guarantee message delivery  
-- ❌ It does not auto-install callbacks  
-- ❌ It does not infer user intent  
+-   ❌ It is not a subscription tutorial\
+-   ❌ It does not guarantee message consumption\
+-   ❌ It does not auto-install callbacks\
+-   ❌ It does not infer user intent
 
-If you expect messages to be delivered just because they arrive on the wire,
-this example exists to correct that assumption.
+If you expect messages to be consumed automatically just because they
+arrive on the wire, this example exists to correct that assumption.
 
 ---
 
 ## Phases explained
 
-### Phase A — Transport receives, Connection forwards nothing
+### Phase A - Transport receives, application does NOT consume
 
-- A WebSocket connection is opened.
-- A valid subscription is sent.
-- **No message callback is installed**.
-- The transport receives messages.
-- The Connection intentionally forwards **zero** messages.
+-   A WebSocket connection is opened.
+-   A valid subscription is sent.
+-   The application does NOT call `peek_message()`.
+-   The transport receives messages.
+-   The Connection exposes them, but they are not consumed.
 
 Expected outcome:
-- `RX messages > 0`
-- `Messages forwarded == 0`
+
+-   `RX messages > 0`
+-   `Messages forwarded == 0`
 
 This is correct behavior.
 
 ---
 
-### Phase B — Explicit delivery enabled
+### Phase B - Explicit consumption enabled
 
-- A message callback is installed.
-- The same incoming messages are now:
-  - Observed by the transport
-  - Forwarded by the Connection
-  - Delivered to user code
+-   The application begins calling `peek_message()`.
+-   Messages are now:
+    -   Observed on the wire
+    -   Made available by the Connection
+    -   Explicitly consumed by user code
 
 Expected outcome:
-- `Messages forwarded` starts increasing
-- Forwarded messages are visible in logs
 
-Delivery is now intentional.
+-   `Messages forwarded` starts increasing
+-   Consumed messages appear in logs
+
+Consumption is intentional and observable.
 
 ---
 
@@ -71,24 +84,23 @@ Delivery is now intentional.
 
 | Metric | Meaning |
 |------|--------|
-| RX messages | Frames received from the network |
-| Messages forwarded | Messages delivered to user code |
+| RX messages | Messages reassembled from frames and received from the network |
+| Messages forwarded | Messages explicitly consumed via `peek_message()` |
 | RX ≥ Forwarded | Always true, by design |
 
-If these numbers were equal by default,
-the Connection layer would be leaking policy.
+If these numbers were equal by default, the Connection layer would be
+leaking policy.
 
 ---
 
 ## Design contract demonstrated
 
-- Transport reports **facts**
-- Connection enforces **policy**
-- Delivery requires **explicit intent**
-- Telemetry reflects reality, not assumptions
+-   Transport reports **facts**
+-   Connection exposes **availability**
+-   Applications perform **consumption**
+-   Telemetry reflects observable reality
 
-Nothing is hidden.
-Nothing is inferred.
+Nothing is hidden. Nothing is inferred. Nothing is auto-delivered.
 
 ---
 
@@ -96,31 +108,31 @@ Nothing is inferred.
 
 This separation enables:
 
-- Passive observation
-- Late-binding consumers
-- Deterministic replay
-- Precise telemetry
-- Testable behavior
+-   Passive observation
+-   Late-binding consumers
+-   Deterministic replay
+-   Precise telemetry
+-   Testable behavior
 
 And prevents:
 
-- Accidental message handling
-- Implicit side effects
-- Double counting
-- Hidden coupling
+-   Accidental message handling
+-   Implicit side effects
+-   Double counting
+-   Hidden coupling
 
 ---
 
 ## TL;DR
 
-If no one is listening,  
-**messages are not delivered — by design.**
+If no one calls `peek_message()`,\
+**messages are not consumed - by design.**
 
 Wirekrak separates transport from intent.
 
 ---
 
-Wirekrak enforces correctness —  
+Wirekrak enforces correctness -\
 it does not hide responsibility.
 
 ---

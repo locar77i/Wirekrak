@@ -1,73 +1,112 @@
-#pragma once
-
 /*
 ===============================================================================
-Example 4 - Heartbeat-driven Liveness (Protocol-managed)
+Example 4 - Heartbeat & Liveness Responsibility
+(Learning Step 5: Health is enforced, not assumed)
 ===============================================================================
 
 This example demonstrates Wirekrak’s liveness model and the strict separation
 of responsibilities between the Connection layer and protocol logic.
 
-It also introduces **liveness warnings** as a cooperative mechanism between
-the Connection and the Protocol.
+After learning:
+  - Example 0 → Minimal lifecycle & polling
+  - Example 1 → Wire-level message reality
+  - Example 2 → Observation vs consumption
+  - Example 3 → Failure, disconnect & close ordering
+
+This final step teaches:
+
+> **Liveness is not automatic. It is enforced.**
+> **Health must be maintained by the protocol.**
+
+Wirekrak does not guess health.
+It measures observable traffic and enforces invariants deterministically.
 
 -------------------------------------------------------------------------------
-Responsibilities
+Core responsibility split
 -------------------------------------------------------------------------------
 
-The Connection enforces liveness:
-  - It requires observable application-level traffic to consider a connection
-    healthy.
-  - In the absence of such traffic, it deterministically forces a reconnect.
-  - It emits an early warning when liveness is about to expire.
+Connection enforces liveness:
+  - Requires observable traffic (messages or heartbeats)
+  - Emits LivenessThreatened before expiration
+  - Force-closes deterministically if silence continues
+  - Schedules reconnect according to retry policy
 
-The Protocol satisfies liveness:
-  - By reacting to liveness warnings and emitting protocol-specific messages
-    (e.g. pings), it provides the signals required to keep the connection alive.
-  - The protocol decides *if* and *when* to act — never the Connection.
+Protocol maintains liveness:
+  - Reacts to LivenessThreatened signals
+  - Emits protocol-specific pings or heartbeats
+  - Decides if and when to respond
+  - Never relies on implicit transport behavior
+
+The Connection never invents traffic.
+The Protocol never bypasses enforcement.
 
 -------------------------------------------------------------------------------
 Execution phases
 -------------------------------------------------------------------------------
 
-Phase A - Passive observation
-  - A WebSocket connection is opened without subscriptions or pings.
-  - The exchange may emit initial system messages, then become silent.
-  - Once no traffic is observed within the liveness window,
-    the Connection force-closes and reconnects.
+Phase A - Passive silence
+  - A WebSocket connection is opened.
+  - No subscriptions or pings are sent.
+  - Once traffic ceases within the configured window,
+    the Connection emits LivenessThreatened.
+  - Continued silence leads to forced reconnect.
 
-Phase B - Message observation without protocol support
-  - A message callback is registered to observe incoming messages.
-  - Initial system messages are now forwarded and visible to the application.
-  - Despite observability, the absence of ongoing traffic still triggers
-    forced reconnects when liveness expires.
+Phase B - Protocol-managed heartbeat
+  - The protocol reacts to LivenessThreatened.
+  - A ping payload is sent explicitly.
+  - Observable traffic resumes.
+  - Forced reconnects are avoided.
 
-Phase C - Protocol-managed liveness (reactive)
-  - A liveness warning hook is installed.
-  - When the Connection signals that liveness is nearing expiration,
-    the protocol reacts by sending a ping.
-  - The server responds, observable traffic resumes,
-    and forced reconnects are avoided.
+Nothing is inferred.
+Nothing is hidden.
+Only observable traffic resets liveness.
 
 -------------------------------------------------------------------------------
 Key lessons
 -------------------------------------------------------------------------------
 
-  - Liveness is not automatic and is never inferred.
-  - Passive WebSocket connections are not guaranteed to remain healthy.
-  - Observability alone does not imply liveness.
-  - The Connection enforces health invariants.
-  - Protocols are responsible for producing liveness signals.
-  - Early warning enables reactive, just-in-time protocol behavior.
-  - Forced reconnects are intentional, observable, and recoverable.
+  - Liveness is never inferred.
+  - Silence is treated as failure.
+  - Warnings precede expiration.
+  - Reconnects are intentional and observable.
+  - Protocol logic is responsible for producing health signals.
+  - Data-plane consumption does not imply liveness.
+  - Enforcement and maintenance are strictly separated.
 
-This example intentionally makes no assumptions about exchange behavior.
-It reports exactly what happens on the wire.
+-------------------------------------------------------------------------------
+Key invariant
+-------------------------------------------------------------------------------
 
-Wirekrak enforces correctness — it does not hide responsibility.
+No observable traffic → warning → expiration → reconnect.
+
+If traffic resumes before expiration,
+the connection remains stable.
+
+-------------------------------------------------------------------------------
+Learning path position
+-------------------------------------------------------------------------------
+
+Example 0 → Minimal lifecycle  
+Example 1 → Wire-level reality  
+Example 2 → Observation vs consumption  
+Example 3 → Failure ordering  
+Example 4 → Liveness enforcement & protocol responsibility  
+
+-------------------------------------------------------------------------------
+Key takeaway
+-------------------------------------------------------------------------------
+
+> Transport enforces.
+> Protocol maintains.
+> Application observes.
+
+Wirekrak enforces correctness.
+It does not hide responsibility.
+
 ===============================================================================
 */
 
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -93,13 +132,12 @@ inline void on_signal(int) {
 // Runner
 // -----------------------------------------------------------------------------
 
-inline int run_example(const char* name, const char* url, const char* description, const char* ping_payload = nullptr,
-                       int enable_ping_after_failures = 0, std::chrono::seconds observe_for = std::chrono::seconds(10)) {
+inline int run_example(const char* name, const char* url, const char* description, const char* ping_payload = nullptr, int enable_ping_after_failures = 0) {
     using namespace wirekrak::core::transport;
     // WebSocket transport specialization
     using WS = winhttp::WebSocket;
 
-    std::cout << "=== Wirekrak Connection - Heartbeat-driven Liveness (" << name << ") ===\n\n" << description << "\n\n";
+    std::cout << "=== Wirekrak Connection - Heartbeat-driven Liveness (" << name << ") ===\n\n" << description << "\n" << std::endl;
 
     // -------------------------------------------------------------------------
     // Signal handling (explicit termination)
@@ -112,46 +150,48 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     telemetry::Connection telemetry;
     Connection<WS> connection(telemetry);
 
-    std::atomic<uint64_t> forwarded{0};
-    std::atomic<int> disconnects{0};
-    std::atomic<bool> ping_enabled{false};
-    std::atomic<bool> connected{false};
+    int disconnects{0};
+    bool ping_enabled{false};
+    bool connected{false};
 
     // -------------------------------------------------------------------------
     // Lambda to drain events
     // -------------------------------------------------------------------------
-    auto drain_events = [&]() {
+    auto drain_signals = [&]() {
         connection::Signal sig;
 
         while (connection.poll_signal(sig)) {
             switch (sig) {
                 case connection::Signal::Connected:
-                    connected.store(true, std::memory_order_relaxed);
-                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    connected = true;
+                    std::cout << "[example] Connect to " << name << " observed!" << std::endl;
                     break;
 
                 case connection::Signal::Disconnected:
-                    connected.store(false, std::memory_order_relaxed);
-                    std::cout << "[example] Disconnect from " << name << " observed! (exactly once)\n";
+                    connected = false;
+                    std::cout << "[example] Disconnect from " << name << " observed! (exactly once)" << std::endl;
                     {
                         const int d = ++disconnects;
                         if (d >= enable_ping_after_failures) {
-                            ping_enabled.store(true);
+                            ping_enabled = true;
                         }
                     }
                     break;
 
+                case connection::Signal::RetryImmediate:
+                    std::cout << "[example] Immediate retry observed!" << std::endl;
+                    break;
+
                 case connection::Signal::RetryScheduled:
-                    std::cout << "[example] Retry schedule observed!\n";
+                    std::cout << "[example] Retry schedule observed!" << std::endl;
                     break;
         
                 case connection::Signal::LivenessThreatened:
-                    std::cout << "[example] Liveness warning observed!\n";
-                    if (!ping_enabled.load(std::memory_order_relaxed)) return;
-                    if (!connected.load(std::memory_order_relaxed)) return;
-                    if (!ping_payload) return;
-                    std::cout << "[example] Liveness warning -> sending protocol ping\n";
-                    (void)connection.send(ping_payload);
+                    std::cout << "[example] Liveness warning observed!" << std::endl;
+                    if (connected && ping_enabled && ping_payload) {
+                        std::cout << "[example] Liveness warning -> sending protocol ping" << std::endl;
+                        (void)connection.send(ping_payload);
+                    }
                     break;
                 default:
                     break;
@@ -169,42 +209,28 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     // Phase A - passive observation
     // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase A - passive observation\n";
+    std::cout << "\n[example] Phase A - passive observation" << std::endl;
 
     auto start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start < observe_for && running.load(std::memory_order_relaxed)) {
-        connection.poll();
+    while (!ping_enabled && running.load(std::memory_order_relaxed)) {
+        connection.poll();   // Poll-driven execution
+        drain_signals();     // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
-    // Phase B - install message callback
+    // Phase B - protocol-managed heartbeat
     // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase B - installing message callback\n";
-
-    connection.on_message([&](std::string_view msg) {
-        ++forwarded;
-        std::cout << "[example] Forwarded message: " << msg << " (" << msg.size() << " bytes)\n";
-    });
-
-    while (!ping_enabled.load(std::memory_order_relaxed) && running.load(std::memory_order_relaxed)) {
-        connection.poll();
-        drain_events();     // Drain any pending events
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
-    // -------------------------------------------------------------------------
-    // Phase C - protocol-managed heartbeat
-    // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase C - protocol-managed heartbeat\n";
-
-    auto on_liveness_warning = [&](std::chrono::milliseconds remaining) {
-        
-    };
+    std::cout << "\n[example] Phase B - protocol-managed heartbeat" << std::endl;
 
     while (running.load(std::memory_order_relaxed)) {
-        connection.poll();  // Poll driven progression
-        drain_events();     // Drain any pending events
+        connection.poll();   // Poll-driven execution
+        drain_signals();     // Drain any pending signals
+        // Pull data-plane messages (explicit consumption)
+        while (auto* block = connection.peek_message()) {
+            std::cout << "[example] RX message (" << block->size << " bytes)" << std::endl;
+            connection.release_message();
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -213,19 +239,20 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     connection.close();
 
-    for (int i = 0; i < 20; ++i) {
-        connection.poll();  // Poll driven progression
-        drain_events();     // Drain any pending events
+    // Drain remaining events until idle
+    while (!connection.is_idle()) {
+        connection.poll();   // Poll-driven execution
+        drain_signals();     // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
     // Dump telemetry
     // -------------------------------------------------------------------------
-    std::cout << "\n=== Connection Telemetry ===\n";
+    std::cout << "\n=== Connection Telemetry ===" << std::endl;
     telemetry.debug_dump(std::cout);
 
-    std::cout << "\n=== WebSocket Telemetry ===\n";
+    std::cout << "\n=== WebSocket Telemetry ===" << std::endl;
     telemetry.websocket.debug_dump(std::cout);
 
     // -------------------------------------------------------------------------
@@ -236,7 +263,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
         << "- Forced reconnects are intentional and observable.\n"
         << "- Protocol pings restore liveness stability.\n"
         << "- Connection enforces health; protocol provides signals.\n\n"
-        << "Wirekrak reports reality - it does not hide responsibility.\n";
+        << "Wirekrak reports reality - it does not hide responsibility." << std::endl;
 
     return 0;
 }

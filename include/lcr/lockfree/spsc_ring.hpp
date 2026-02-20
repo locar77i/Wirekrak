@@ -115,6 +115,48 @@ public:
         };
     }
 
+    // -----------------------------------------------------------------------------
+    // Zero-copy producer API (two-phase commit)
+    // -----------------------------------------------------------------------------
+
+    // Acquire writable slot (producer only)
+    [[nodiscard]] inline T* acquire_producer_slot() noexcept {
+        const size_t head = head_.index.load(std::memory_order_relaxed);
+        const size_t next = (head + 1) & MASK;
+
+        if (next == tail_.index.load(std::memory_order_acquire))
+            return nullptr; // full
+
+        return &buffer_[head];
+    }
+
+    // Commit previously acquired producer slot
+    inline void commit_producer_slot() noexcept {
+        const size_t head = head_.index.load(std::memory_order_relaxed);
+        head_.index.store((head + 1) & MASK, std::memory_order_release);
+    }
+
+
+    // -----------------------------------------------------------------------------
+    // Zero-copy consumer API (two-phase release)
+    // -----------------------------------------------------------------------------
+
+    // Peek readable slot (consumer only)
+    [[nodiscard]] inline T* peek_consumer_slot() noexcept {
+        const size_t tail = tail_.index.load(std::memory_order_relaxed);
+
+        if (tail == head_.index.load(std::memory_order_acquire))
+            return nullptr; // empty
+
+        return &buffer_[tail];
+    }
+
+    // Release previously consumed slot
+    inline void release_consumer_slot() noexcept {
+        const size_t tail = tail_.index.load(std::memory_order_relaxed);
+        tail_.index.store((tail + 1) & MASK, std::memory_order_release);
+    }
+
 private:
     struct alignas(64) PaddedAtomic {
         std::atomic<size_t> index{0};

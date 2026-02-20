@@ -314,8 +314,8 @@ private:
             case Channel::Book:
                 return parse_book_(root);
             case Channel::Heartbeat:
-                ctx_view_.heartbeat_total.fetch_add(1, std::memory_order_relaxed);
-                ctx_view_.last_heartbeat_ts.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+                ctx_view_.heartbeat_total++;
+                ctx_view_.last_heartbeat_ts = std::chrono::steady_clock::now();
                 return Result::Delivered;
             case Channel::Status: {
                 return parse_status_(root);

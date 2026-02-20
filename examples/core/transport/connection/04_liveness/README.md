@@ -1,79 +1,75 @@
-# Example 4 — Heartbeat-driven Liveness (Protocol-managed)
+# Example 4 — Heartbeat & Liveness Responsibility
 
-This example demonstrates Wirekrak’s **liveness model** and the strict
-separation of responsibilities between the **Connection layer** and
+This example demonstrates Wirekrak’s **deterministic liveness model** and the
+strict separation of responsibilities between the **Connection layer** and
 **protocol logic**.
 
-It also demonstrates **cooperative liveness**, where the Connection
-*signals* impending failure and the Protocol decides how to react.
+It showcases **cooperative liveness**, where the Connection enforces health
+invariants and the Protocol decides how to maintain them.
 
 > **Core truth:**  
 > Wirekrak enforces liveness.  
-> Protocols must *earn* it.
+> Protocols must *maintain* it.
 
 ---
 
 ## What this example proves
 
-- A WebSocket connection is **not** considered healthy unless
-  *observable protocol traffic* is present.
+- A WebSocket connection is **not considered healthy** without
+  observable protocol traffic.
 - Passive connections may be closed **intentionally and deterministically**.
-- Reconnects are **not errors** — they are enforcement.
+- Reconnects are enforcement, not failures.
+- Liveness warnings provide early visibility before expiration.
 - Protocols may satisfy liveness **reactively**, not just periodically.
-- Early liveness warnings enable *just-in-time* protocol intervention.
+- Explicit data-plane consumption does not imply health.
 
 ---
 
 ## What this example is NOT
 
-- ❌ It does not subscribe to market data
-- ❌ It does not assume exchange-specific behavior
-- ❌ It does not auto-ping or hide reconnects
-- ❌ It does not infer liveness from TCP state
+This example intentionally does **not**:
 
-If you expect a passive WebSocket to stay alive forever,
-this example is designed to surprise you.
+- ❌ Subscribe to market data
+- ❌ Assume exchange-specific heartbeat behavior
+- ❌ Auto-ping or hide reconnects
+- ❌ Infer liveness from TCP state
+- ❌ Suppress inactivity
+
+If you expect a passive WebSocket to remain healthy indefinitely,
+this example is designed to challenge that assumption.
 
 ---
 
-## Phases explained
+## Phase breakdown
 
-### Phase A — Passive connection (no protocol traffic)
+### Phase A — Passive silence
 
 - A WebSocket connection is opened.
-- No subscriptions, no pings.
-- Some exchanges emit initial system messages, then go silent.
-- Once no traffic is observed within the liveness window:
-  - The Connection **forces a disconnect**
-  - A reconnect is scheduled
+- No protocol pings or subscriptions are sent.
+- The exchange may emit initial messages and then go silent.
+- If no traffic is observed within the configured window:
+  - `LivenessThreatened` is emitted.
+  - Continued silence triggers forced disconnect.
+  - Retry is scheduled deterministically.
 
 This behavior is intentional.
 
 ---
 
-### Phase B — Observable traffic, but no keepalive
+### Phase B — Protocol-managed heartbeat (reactive)
 
-- A message callback is installed.
-- Incoming messages (if any) are now forwarded and visible.
-- However, if traffic stops:
-  - Liveness still fails
-  - Forced reconnects still occur
-
-Observation alone does **not** imply health.
-
----
-
-### Phase C — Protocol-managed liveness (reactive)
-
-- A **liveness warning hook** is installed.
-- When the Connection detects that liveness is *about to expire*:
-  - It emits a warning with the remaining time budget.
-- The protocol reacts by sending a **ping** only when warned.
+- The protocol listens for `LivenessThreatened`.
+- Upon warning, it sends an explicit ping payload.
 - The server responds.
 - Observable traffic resumes.
-- Forced reconnects are avoided.
+- Liveness expiration is avoided.
+- Reconnect cycles stop.
 
-The protocol now satisfies the liveness contract **just-in-time**.
+The protocol now satisfies the liveness contract just-in-time.
+
+Nothing is inferred.  
+Nothing is automatic.  
+Only observable traffic resets liveness.
 
 ---
 
@@ -83,40 +79,49 @@ The protocol now satisfies the liveness contract **just-in-time**.
   → Connection signaling impending enforcement
 
 - `Sending protocol ping`  
-  → Protocol reacting to the warning
+  → Protocol reacting to warning
 
-- `Forcing reconnect`  
-  → Missing or ignored liveness signals (expected)
-
-- `Retry context`  
-  → Deterministic recovery, not failure
+- `Disconnected` followed by retry  
+  → Silence exceeded the liveness window
 
 - Stable connection after warnings  
-  → Correct cooperative behavior achieved
+  → Correct cooperative behavior
 
 ---
 
-## How to interpret the outcome
+## Interpreting the outcome
 
 | Observation | Meaning |
 |------------|--------|
 | Repeated reconnects | Protocol emits no keepalive |
 | Warnings followed by pings | Protocol reacting correctly |
 | Reconnects stop after warnings | Liveness satisfied |
-| No warnings or reconnects | Exchange emits implicit heartbeats |
-| Reconnects despite warnings | Ping format or timing is incorrect |
+| No warnings or reconnects | Exchange emits implicit traffic |
+| Reconnects despite pings | Ping format/timing incorrect |
 
 ---
 
 ## Design contract demonstrated
 
-- Connection enforces health invariants
-- Connection *signals*, but never acts on behalf of the protocol
-- Protocols decide **if**, **when**, and **how** to emit traffic
-- Forced reconnects are intentional, observable, and recoverable
-- Wirekrak never invents keepalive behavior
+- Connection enforces health invariants.
+- Connection emits warnings before expiration.
+- Connection never invents keepalive traffic.
+- Protocols decide **if**, **when**, and **how** to send heartbeats.
+- Forced reconnects are observable and deterministic.
 
-This contract is **intentional and non-negotiable**.
+This contract is intentional and explicit.
+
+---
+
+## Liveness invariant
+
+No observable traffic  
+→ LivenessThreatened  
+→ Expiration  
+→ Forced reconnect
+
+Observable traffic before expiration  
+→ Stability maintained
 
 ---
 
@@ -126,11 +131,12 @@ If your protocol stays silent,
 **Wirekrak will disconnect — by design.**
 
 If your protocol listens and reacts,  
-**Wirekrak will stay out of the way.**
+**Wirekrak remains stable.**
 
 Wirekrak enforces correctness.  
 It does not hide responsibility.
 
 ---
+
 
 ⬅️ [Back to Connection Examples](../Examples.md#liveness)

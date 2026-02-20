@@ -14,8 +14,9 @@ If you are new to Wirekrak, **follow them in order**.
 
 - Open a WebSocket connection
 - Drive it with `poll()`
-- Observe connect, message, and disconnect events
+- Observe connect and disconnect signals
 - Close cleanly and deterministically
+- Inspect connection and transport telemetry
 
 ➡️ [Minimal Connection](./00_minimal/README.md)
 
@@ -29,51 +30,53 @@ If you are new to Wirekrak, **follow them in order**.
 - Messages vs frames
 - Fragmentation behavior
 - Message size as an observed property
-- Why sender intent does not matter
+- Transport reports facts, not sender intent
 
 ➡️ [Message Shape & Fragmentation](./01_fragmentation/README.md)
 
 ---
 
-### 🟠 Example 2 — Transport vs Delivery Semantics <a name="delivery"></a>
-*(Learning Step 3: Observation ≠ delivery)*
+### 🟠 Example 2 — Observation vs Consumption <a name="delivery"></a>
+*(Learning Step 3: Observation ≠ consumption)*
 
-**Goal:** Learn the boundary between transport and application logic.
+**Goal:** Learn the boundary between transport observation and application consumption.
 
-- Messages may arrive without being delivered
-- Delivery requires an explicit message callback
-- `messages_rx_total ≠ messages_forwarded_total` is correct behavior
+- Messages may arrive without being consumed
+- Consumption requires explicit `peek_message()` + `release_message()`
+- `RX messages ≠ messages_forwarded_total` is correct behavior
+- Transport observation does not imply application interest
 
-➡️ [Transport vs Delivery Semantics](./02_delivery/README.md)
+➡️ [Observation vs Consumption](./02_delivery/README.md)
 
 ---
 
-### 🔴 Example 3 — Error & Close Lifecycle <a name="lifecycle"></a>
+### 🔴 Example 3 — Failure, Disconnect & Close Ordering <a name="lifecycle"></a>
 *(Learning Step 4: Failure correctness)*
 
 **Goal:** Understand Wirekrak’s deterministic lifecycle guarantees.
 
 - Error-before-close ordering
 - Exactly-once disconnect semantics
-- No double counting of lifecycle events
-- Retry behavior driven by cause, not timing
+- Idempotent physical closure
+- Retry scheduling driven by cause, not timing
+- Observable and ordered failure propagation
 
-➡️ [Error & Close Lifecycle](./03_lifecycle/README.md)
+➡️ [Failure, Disconnect & Close Ordering](./03_lifecycle/README.md)
 
 ---
 
-### 🔵 Example 4 — Heartbeat-Driven Liveness <a name="liveness"></a>
+### 🔵 Example 4 — Heartbeat & Liveness Responsibility <a name="liveness"></a>
 *(Learning Step 5: Protocol responsibility)*
 
-**Goal:** Understand Wirekrak’s strict liveness model.
+**Goal:** Understand Wirekrak’s strict liveness model and responsibility split.
 
 - Silence is unhealthy
-- Passive connections are recycled
-- The Connection enforces liveness
-- Protocols must emit keepalive traffic
-- **Liveness warning hooks enable proactive protocol action**
+- Passive connections are intentionally recycled
+- The Connection enforces health invariants
+- Protocols must emit observable keepalive traffic
+- `LivenessThreatened` enables reactive protocol intervention
 
-➡️ [Heartbeat-Driven Liveness](./04_liveness/README.md)
+➡️ [Heartbeat & Liveness Responsibility](./04_liveness/README.md)
 
 ---
 
@@ -85,6 +88,7 @@ If you are new to Wirekrak, **follow them in order**.
   - Runtime explanations
   - Telemetry interpretation guidance
 - The intended loop is:
+
   **run → observe logs → inspect telemetry → reason about behavior**
 
 Do not skim. These examples are designed to be *experienced*.
@@ -97,6 +101,7 @@ Do not skim. These examples are designed to be *experienced*.
 - No silent behavior
 - No hidden recovery
 - Clear responsibility boundaries
+- Deterministic lifecycle transitions
 - Telemetry reflects **what happened**, not what was intended
 
 ---

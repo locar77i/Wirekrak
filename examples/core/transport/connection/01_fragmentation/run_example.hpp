@@ -1,5 +1,3 @@
-#pragma once
-
 /*
 ===============================================================================
 Example 1 - Message Shape & Fragmentation
@@ -11,12 +9,12 @@ This example is the **second learning step after Example 0 (Minimal Connection)*
 After learning how to:
   - open a connection
   - poll the connection
-  - receive messages
+  - pull messages from the data-plane
   - close cleanly
 
 This example teaches a deeper truth:
 
-> **What you receive is not what was sent.**
+> **What you pull is not what was sent.**
 > **What you observe is not what was intended.**
 
 Wirekrak reports **observable wire reality**, not sender intent.
@@ -35,13 +33,16 @@ framing behavior:
 
 All telemetry is derived from **wire behavior**, not protocol semantics.
 
+This example intentionally pulls all available messages in order to observe
+their reconstructed size and fragmentation characteristics.
+
 -------------------------------------------------------------------------------
 Scenario
 -------------------------------------------------------------------------------
 
   1) Connect to a WebSocket endpoint
   2) Send a subscription message
-  3) Receive messages of varying sizes
+  3) Pull messages from the connection data-plane
   4) Observe framing behavior
   5) Dump transport and connection telemetry
 
@@ -49,19 +50,20 @@ Scenario
 What this teaches
 -------------------------------------------------------------------------------
 
-  - RX messages and frames are different concepts
-  - “One message” does not imply “one frame”
+  - Transport RX messages and frames are different concepts
+  - “One logical message” does not imply “one frame”
   - Fragmentation is transport-level reality
   - Message size is an observed property, not a protocol promise
-  - Telemetry reflects **delivery mechanics**, not protocol meaning
+  - Pulling (consumption) is separate from transport observation
+  - Telemetry reflects **wire mechanics**, not protocol meaning
 
 -------------------------------------------------------------------------------
 Learning path position
 -------------------------------------------------------------------------------
 
-Example 0 → How to connect and run a connection  
+Example 0 → How to connect and poll  
 Example 1 → How to observe wire reality (this example)  
-Example 2 → Transport vs delivery semantics  
+Example 2 → Observation vs consumption semantics  
 Example 3 → Error & close lifecycle correctness  
 Example 4 → Liveness and protocol responsibility  
 
@@ -69,14 +71,19 @@ Example 4 → Liveness and protocol responsibility
 Key takeaway
 -------------------------------------------------------------------------------
 
-> Wirekrak does not model intent.  
+> Wirekrak does not model intent.
 > Wirekrak models reality.
 
-Telemetry reflects **what happened**, not what was meant.
+Transport exposes facts.
+Connection exposes availability.
+Applications explicitly consume what they pull.
+
+Telemetry reflects **what happened on the wire**, not what was meant.
 
 ===============================================================================
 */
 
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -107,7 +114,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // WebSocket transport specialization
     using WS = winhttp::WebSocket;
 
-    std::cout << "=== Wirekrak Connection - Message Shape & Fragmentation (" << name << ") ===\n\n" << description << "\n\n";
+    std::cout << "=== Wirekrak Connection - Message Shape & Fragmentation (" << name << ") ===\n\n" << description << "\n" << std::endl;
 
     // -------------------------------------------------------------------------
     // Signal handling (explicit termination)
@@ -120,30 +127,32 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     telemetry::Connection telemetry;
     Connection<WS> connection(telemetry);
 
-    connection.on_message([&](std::string_view msg) {
-        std::cout << "[example] RX message (" << msg.size() << " bytes)\n";
-        // Uncomment for raw payload inspection:
-        //std::cout << msg << "\n";
-    });
-
     // -------------------------------------------------------------------------
     // Lambda to drain events
     // -------------------------------------------------------------------------
-    auto drain_events = [&]() {
+    auto drain_signals = [&]() {
         connection::Signal sig;
 
         while (connection.poll_signal(sig)) {
             switch (sig) {
                 case connection::Signal::Connected:
-                    std::cout << "[example] Connect to " << name << " observed!\n";
+                    std::cout << "[example] Connect to " << name << " observed!" << std::endl;
                     break;
 
                 case connection::Signal::Disconnected:
-                    std::cout << "[example] Disconnect from " << name << " observed!\n";
+                    std::cout << "[example] Disconnect from " << name << " observed!" << std::endl;
+                    break;
+
+                case connection::Signal::RetryImmediate:
+                    std::cout << "[example] Immediate retry observed!" << std::endl;
                     break;
 
                 case connection::Signal::RetryScheduled:
-                    std::cout << "[example] Retry schedule observed!\n";
+                    std::cout << "[example] Retry schedule observed!" << std::endl;
+                    break;
+
+                case connection::Signal::LivenessThreatened:
+                    std::cout << "[example] Liveness warning observed!" << std::endl;
                     break;
         
                 default:
@@ -168,8 +177,16 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // Main polling loop (runs until Ctrl+C)
     // -------------------------------------------------------------------------
     while (running.load(std::memory_order_relaxed)) {
-        connection.poll(); // Poll driven progression
-        drain_events();    // Drain any pending events
+        connection.poll();  // Poll-driven execution
+        drain_signals();    // Drain any pending signals
+        // Pull data-plane messages explicitly
+        while (auto* block = connection.peek_message()) {
+            std::cout << "[example] RX message (" << block->size << " bytes)" << std::endl;
+            // Uncomment to inspect raw payload
+            // std::cout.write(block->data, block->size);
+            // std::cout << "" << std::endl;
+            connection.release_message();
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -178,20 +195,20 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     connection.close();
 
-    // Drain any remaining messages (~200 ms)
-    for (int i = 0; i < 20; ++i) {
-        connection.poll(); // Poll driven progression
-        drain_events();    // Drain any pending events
+    // Drain remaining events until idle
+    while (!connection.is_idle()) {
+        connection.poll();   // Poll-driven execution
+        drain_signals();     // Drain any pending signals
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // -------------------------------------------------------------------------
     // Dump telemetry
     // -------------------------------------------------------------------------
-    std::cout << "\n=== Connection Telemetry ===\n";
+    std::cout << "\n=== Connection Telemetry ===" << std::endl;
     telemetry.debug_dump(std::cout);
 
-    std::cout << "\n=== WebSocket Telemetry ===\n";
+    std::cout << "\n=== WebSocket Telemetry ===" << std::endl;
     telemetry.websocket.debug_dump(std::cout);
 
     // -------------------------------------------------------------------------
@@ -199,33 +216,32 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     std::cout << "\n=== How to read this ===\n\n"
 
-          << "This example is about observing reality on the wire.\n"
-          << "The numbers you see describe how data actually moved,\n"
-          << "not what the exchange or protocol intended.\n\n"
+        << "This example is about observing reality on the wire.\n"
+        << "The numbers describe how data actually moved,\n"
+        << "not what the exchange intended.\n\n"
 
-          << "Start with [RX messages]:\n"
-          << "  This is the number of complete messages delivered to user code.\n"
-          << "  Each one represents a fully reassembled WebSocket message.\n\n"
+        << "Start with [WebSocket RX messages]:\n"
+        << "  These are fully reassembled messages observed at the transport layer.\n"
+        << "  They reflect what arrived on the wire.\n\n"
 
-          << "Next, look at [RX message bytes]:\n"
-          << "  This shows the distribution of message sizes after reassembly.\n"
-          << "  These sizes are observed facts, not promised payload sizes.\n\n"
+        << "Next, look at [Messages forwarded]:\n"
+        << "  This increments only when the application calls peek_message().\n"
+        << "  It reflects explicit consumption of available messages.\n\n"
 
-          << "Then examine [Fragments/msg]:\n"
-          << "  A value of 1 means messages arrived in a single frame.\n"
-          << "  Values greater than 1 mean the message was fragmented\n"
-          << "  across multiple WebSocket frames on the wire.\n\n"
+        << "Then examine [Fragments/msg]:\n"
+        << "  A value of 1 means a message arrived in a single frame.\n"
+        << "  Values greater than 1 indicate transport-level fragmentation.\n\n"
 
-          << "Finally, check [RX fragments (total)]:\n"
-          << "  This is the total number of frames observed.\n"
-          << "  It tells you how much framing work the transport performed.\n\n"
+        << "Finally, check [RX fragments (total)]:\n"
+        << "  This is the total number of frames observed on the wire.\n\n"
 
-          << "Key insight:\n"
-          << "  A single logical message may arrive in multiple frames,\n"
-          << "  and Wirekrak reports that distinction explicitly.\n\n"
+        << "Key insight:\n"
+        << "  One logical message may span multiple frames,\n"
+        << "  and consumption is separate from observation.\n\n"
 
-          << "Wirekrak does not guess, normalize, or reinterpret.\n"
-          << "It reports exactly what happened on the wire.\n";
+        << "Wirekrak does not guess or normalize.\n"
+        << "It exposes facts, availability, and explicit consumption."
+        << std::endl;
 
     return 0;
 }

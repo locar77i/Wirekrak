@@ -59,7 +59,6 @@ Data-plane model:
 #include <functional>
 #include <chrono>
 #include <utility>
-#include <atomic>
 
 #include "wirekrak/core/config/ring_sizes.hpp"
 #include "wirekrak/core/transport/connection.hpp"
@@ -96,11 +95,7 @@ public:
         : ctx_{connection_.heartbeat_total(), connection_.last_heartbeat_ts()}
         , ctx_view_{ctx_}
         , parser_(ctx_view_)
-    {
-        connection_.on_message([this](std::string_view msg) {
-            handle_message_(msg);
-        });
-    }
+    {}
 
     // open connection
     [[nodiscard]]
@@ -367,13 +362,27 @@ public:
     //   - ACKs and rejections are handled before user-visible messages are drained
     [[nodiscard]]
     inline std::uint64_t poll() {
-        // === Heartbeat liveness & reconnection logic ===
+        // === Advance transport state - Heartbeat liveness & reconnection logic ===
         connection_.poll();
+        // === Drain transport control-plane signals ===
         transport::connection::Signal sig;
         while (connection_.poll_signal(sig)) {
             handle_connection_signal_(sig);
         }
-        
+        // === Drain transport data-plane (zero-copy) ===
+        transport::websocket::DataBlock* block = nullptr;
+        while ((block = connection_.peek_message()) != nullptr) {
+            // The message slot remains valid until release_message() is called
+            std::string_view sv{ block->data, block->size };
+            // Handle the message (parsing & routing)
+            auto r = parser_.parse_and_route(sv);
+            if (r == parser::Result::Backpressure) {
+                WK_WARN("[SESSION] Failed to deliver message (backpressure) — protocol correctness compromised (user is not draining fast enough)");
+                backpressure_violation_ = true;
+            }
+            // Release the message slot back to the transport regardless of parsing outcome to maintain flow.
+            connection_.release_message();
+        }
         // ===============================================================================
         // PROCESS REJECTION NOTICES (lossless, semantic errors)
         // ===============================================================================
@@ -392,7 +401,7 @@ public:
             // 2) Forward to user-visible rejection buffer (lossless)
             if (!user_rejection_buffer_.push(notice)) [[unlikely]] { // This is a hard failure: we cannot report semantic errors reliably
                 WK_WARN("[SESSION] Failed to deliver rejection notice (backpressure) — protocol correctness compromised (user is not draining fast enough)");
-                backpressure_violation_.store(true, std::memory_order_release);
+                backpressure_violation_ = true;
                 break;
             }
         }}
@@ -458,10 +467,10 @@ public:
         // Future backpresusre policy (default:strict)
         // Wirekrak should never lie to the user or perform magic without explicit user instruction
         // Defensive action: close the connection to prevent further damage
-        if (backpressure_violation_.load(std::memory_order_acquire)) {
+        if (backpressure_violation_) {
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees.");
             connection_.close();
-            backpressure_violation_.store(false, std::memory_order_release);
+            backpressure_violation_ = false;
         }
 
         return connection_.epoch();
@@ -475,7 +484,7 @@ public:
     // Accessor to the heartbeat counter
     [[nodiscard]]
     inline std::uint64_t heartbeat_total() const noexcept {
-        return connection_.heartbeat_total().load(std::memory_order_relaxed);
+        return connection_.heartbeat_total();
     }
 
     // Accessor to the trade subscription manager
@@ -630,7 +639,7 @@ private:
     replay::Database replay_db_;
 
     // Backpressure violation flag
-    std::atomic<bool> backpressure_violation_{false};
+    bool backpressure_violation_{false};
 
 private:
     inline void handle_connect_() {
@@ -688,14 +697,6 @@ private:
         // Clear runtime state
         trade_channel_manager_.clear_all();
         book_channel_manager_.clear_all();
-    }
-
-    inline void handle_message_(std::string_view sv) {
-        auto r = parser_.parse_and_route(sv);
-        if (r == parser::Result::Backpressure) {
-            WK_WARN("[SESSION] Failed to deliver message (backpressure) — protocol correctness compromised (user is not draining fast enough)");
-            backpressure_violation_.store(true, std::memory_order_release);
-        }
     }
 
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
