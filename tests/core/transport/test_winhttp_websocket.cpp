@@ -1,15 +1,3 @@
-#include <cassert>
-#include <atomic>
-#include <queue>
-#include <thread>
-#include <iostream>
-#include <cstring>
-#include <algorithm>
-
-#include "wirekrak/core/transport/winhttp/concepts.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
-
-using namespace wirekrak::core::transport;
 /*
 ================================================================================
 WebSocket Transport Unit Tests
@@ -38,9 +26,24 @@ avoiding timing assumptions and relying only on observable transport invariants.
 ================================================================================
 */
 
-namespace wirekrak::core {
-namespace transport {
-namespace winhttp {
+#include <cassert>
+#include <atomic>
+#include <queue>
+#include <thread>
+#include <iostream>
+#include <cstring>
+#include <algorithm>
+
+#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/winhttp/concepts.hpp"
+#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "common/test_check.hpp"
+
+using namespace wirekrak::core::transport;
+
+
+namespace wirekrak::core::transport::winhttp {
+
 // -----------------------------------------------------------------------------
 // Fake WinHTTP API (test-only)
 // -----------------------------------------------------------------------------
@@ -95,12 +98,22 @@ struct FakeApi {
 // Defensive check that FakeApi conforms to ApiConcept concept
 static_assert(ApiConcept<FakeApi>, "FakeApi must model ApiConcept");
 
-} // namespace winhttp
-} // namespace transport
-} // namespace wirekrak::core
+} // namespace wirekrak::core::transport::winhttp
 
-// Convenience alias for the templated WebSocket
-using TestWebSocket = winhttp::WebSocketImpl<winhttp::FakeApi>;
+
+// -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core::transport;
+
+using MessageRingUnderTest = lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY>;
+using WebSocketUnderTest = winhttp::WebSocketImpl<MessageRingUnderTest, winhttp::FakeApi>;
+
+// Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
+static_assert(WebSocketConcept<WebSocketUnderTest>);
+
+static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → session)
+
 
 // -----------------------------------------------------------------------------
 // Tests
@@ -108,8 +121,9 @@ using TestWebSocket = winhttp::WebSocketImpl<winhttp::FakeApi>;
 
 void test_close_called_once() {
     std::cout << "[TEST] Running close() called once test..." << std::endl;
+
     telemetry::WebSocket telemetry;
-    TestWebSocket ws(telemetry);
+    WebSocketUnderTest ws(g_ring, telemetry);
 
     // Flag to detect when receive loop has started
     std::atomic<bool> receive_started{false};
@@ -153,7 +167,7 @@ void test_error_triggers_close() {
     std::cout << "[TEST] Running error triggers close test..." << std::endl;
 
     telemetry::WebSocket telemetry;
-    TestWebSocket ws(telemetry);
+    WebSocketUnderTest ws(g_ring, telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
@@ -218,7 +232,7 @@ void test_message_delivery_to_ring() {
     std::cout << "[TEST] Running message delivery to ring test..." << std::endl;
 
     telemetry::WebSocket telemetry;
-    TestWebSocket ws(telemetry);
+    WebSocketUnderTest ws(g_ring, telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
@@ -271,7 +285,7 @@ void test_send_success() {
     std::cout << "[TEST] Running send success test..." << std::endl;
 
     telemetry::WebSocket telemetry;
-    TestWebSocket ws(telemetry);
+    WebSocketUnderTest ws(g_ring, telemetry);
 
     // Establish fake connection (sets hWebSocket_)
     ws.test_start_receive_loop();
@@ -290,7 +304,7 @@ void test_send_failure() {
     std::cout << "[TEST] Running send failure test..." << std::endl;
 
     telemetry::WebSocket telemetry;
-    TestWebSocket ws(telemetry);
+    WebSocketUnderTest ws(g_ring, telemetry);
 
     ws.test_api().send_result = ERROR_WINHTTP_CONNECTION_ERROR;
 
@@ -311,7 +325,7 @@ void test_error_then_close_ordering() {
     std::cout << "[TEST] Running error -> close ordering test..." << std::endl;
 
     telemetry::WebSocket telemetry;
-    TestWebSocket ws(telemetry);
+    WebSocketUnderTest ws(g_ring, telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
@@ -369,11 +383,13 @@ void test_error_then_close_ordering() {
     std::cout << "[TEST] Done." << std::endl;
 }
 
+
+// TODO: review in depth (non deterministic)
 void test_multiple_messages() {
     std::cout << "[TEST] Running multiple message test..." << std::endl;
 
     telemetry::WebSocket telemetry;
-    TestWebSocket ws(telemetry);
+    WebSocketUnderTest ws(g_ring, telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
@@ -417,12 +433,14 @@ void test_multiple_messages() {
         }
         // Release slot (mandatory)
         ws.release_message();
+        std::cout << " -> Message " << count + 1 << ": " << std::string(block->data, block->size) << "\n";
         count++;
         block = ws.peek_message();
     }
 
     ws.close();
 
+    std::cout << "Total messages received: " << count << std::endl;
     assert(count == 2);
 
     std::cout << "[TEST] Done." << std::endl;
@@ -440,12 +458,12 @@ int main() {
     // and send behavior.
     // Tests are deterministic, OS-independent, and exercise the real transport
     // implementation via a compile-time injected WinHTTP API.
-    //test_close_called_once();
-    //test_error_triggers_close();
-    //test_message_delivery_to_ring();
-    //test_send_success();
-    //test_send_failure();
-    //test_error_then_close_ordering();
+    test_close_called_once();
+    test_error_triggers_close();
+    test_message_delivery_to_ring();
+    test_send_success();
+    test_send_failure();
+    test_error_then_close_ordering();
     test_multiple_messages();
 
     std::cout << "[TEST] ALL TRANSPORT TESTS PASSED!" << std::endl;

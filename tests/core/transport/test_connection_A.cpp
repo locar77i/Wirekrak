@@ -47,11 +47,7 @@ Non-Goals:
 #include <iostream>
 #include <string>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
+#include "common/connection_harness.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -59,10 +55,10 @@ using namespace wirekrak::core::transport;
 // -----------------------------------------------------------------------------
 void test_default_construction() {
     std::cout << "[TEST] Group A1: default construction\n";
-    test::MockWebSocket::reset();
+    WebSocketUnderTest::reset();
 
     telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    ConnectionUnderTest connection{g_ring, telemetry};
 
     // Cannot send while disconnected
     TEST_CHECK(connection.send("ping") == false);
@@ -71,8 +67,8 @@ void test_default_construction() {
     connection.close();
 
     // No transport should have been created implicitly
-    TEST_CHECK(test::MockWebSocket::close_count() == 0);
-    TEST_CHECK(test::MockWebSocket::error_count() == 0);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 0);
+    TEST_CHECK(WebSocketUnderTest::error_count() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -82,11 +78,11 @@ void test_default_construction() {
 // -----------------------------------------------------------------------------
 void test_destructor_closes_transport() {
     std::cout << "[TEST] Group A2: destructor closes transport\n";
-    test::MockWebSocket::reset();
+    WebSocketUnderTest::reset();
 
     {
         telemetry::Connection telemetry;
-        Connection<test::MockWebSocket> connection{telemetry};
+        ConnectionUnderTest connection{g_ring, telemetry};
 
         // Open connection successfully
         TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
@@ -96,7 +92,7 @@ void test_destructor_closes_transport() {
     } // Destructor must run here
 
     // Transport close must be invoked exactly once
-    TEST_CHECK(test::MockWebSocket::close_count() == 1);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }

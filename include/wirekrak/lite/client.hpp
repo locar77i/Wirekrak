@@ -162,7 +162,7 @@ public:
     //   - This does NOT imply the connection is closed
     //
     // -----------------------------------------------------------------------------
-    void run_until_idle(std::chrono::milliseconds tick = std::chrono::milliseconds{1});
+    void run_until_idle(unsigned spins = 100);
 
     // -----------------------------------------------------------------------------
     // Run loop with external stop intent
@@ -188,13 +188,17 @@ public:
     //
     // -----------------------------------------------------------------------------
     template<class StopFn>
-    void run_while(StopFn&& should_continue, std::chrono::milliseconds tick = std::chrono::milliseconds{1}) {
-        const bool cooperative = (tick.count() > 0);
+    void run_while(StopFn&& should_continue, unsigned spins = 100) {
+        const bool cooperative = (spins > 0);
         // Loop while the user condition indicates to continue
+        unsigned spin_count = 0;
         while (should_continue()) [[likely]] {
             poll();
             if (cooperative) [[likely]] {
-                std::this_thread::sleep_for(tick);
+                if (++spin_count >= spins) [[unlikely]] {
+                    std::this_thread::yield(); // Yield to prevent starvation
+                    spin_count = 0;
+                }
             }
         }
     }
@@ -225,13 +229,17 @@ public:
     //
     // -----------------------------------------------------------------------------
     template<class StopFn>
-    void run_until(StopFn&& should_stop, std::chrono::milliseconds tick = std::chrono::milliseconds{1}) {
-        const bool cooperative = (tick.count() > 0);
+    void run_until(StopFn&& should_stop, unsigned spins = 100) {
+        const bool cooperative = (spins > 0);
+        unsigned spin_count = 0;
         // Loop until either stop intent is observed
         while (!should_stop()) [[likely]] {
             poll();
             if (cooperative) [[likely]] {
-                std::this_thread::sleep_for(tick);
+                if (++spin_count >= spins) [[unlikely]] {
+                    std::this_thread::yield(); // Yield to prevent starvation
+                    spin_count = 0;
+                }
             }
         }
     }

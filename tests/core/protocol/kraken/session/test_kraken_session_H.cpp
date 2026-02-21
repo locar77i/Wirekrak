@@ -618,7 +618,7 @@ void test_hard_limit_enforcement() {
         5, 5, 8
     >;
 
-    kraken::test::harness::Session<test::MockWebSocket, Hard5> h;
+    kraken::test::harness::Session<WebSocketUnderTest, MessageRingUnderTest, Hard5> h;
     h.connect();
 
     constexpr std::size_t MAX_SYMBOLS = 5;

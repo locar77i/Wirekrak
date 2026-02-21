@@ -64,11 +64,7 @@ F4. Liveness state transitions
 #include <iostream>
 #include <chrono>
 
-#include "common/mock_websocket_script.hpp"
 #include "common/connection_harness.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
 
 
 // -----------------------------------------------------------------------------
@@ -119,7 +115,7 @@ void test_liveness_both_stale() {
     TEST_CHECK(h.signals[4] == connection::Signal::Connected);
 
     // Transport must be force-closed to enter reconnect path
-    TEST_CHECK(test::MockWebSocket::close_count() == 1);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -154,7 +150,7 @@ void test_liveness_only_heartbeat_stale() {
     TEST_CHECK(h.liveness_warning_signals == 0);  // No liveness warning
 
     // Transport must not be closed
-    TEST_CHECK(test::MockWebSocket::close_count() == 0);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -191,7 +187,7 @@ void test_liveness_only_message_stale() {
     TEST_CHECK(h.liveness_warning_signals == 0); // No liveness warning
 
     // Transport must not be closed
-    TEST_CHECK(test::MockWebSocket::close_count() == 0);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -260,7 +256,7 @@ void test_connection_liveness_edges()
     h.drain_signals();
 
     TEST_CHECK(h.disconnect_signals == 1);
-    TEST_CHECK(test::MockWebSocket::close_count() == 1);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 1);
 
     // -------------------------------------------------------------------------
     // Reconnect resets liveness window

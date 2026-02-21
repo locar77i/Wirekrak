@@ -115,8 +115,7 @@ It does not hide responsibility.
 #include <thread>
 #include <csignal>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -129,13 +128,18 @@ inline void on_signal(int) {
 }
 
 // -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
+
+static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
+
+
+// -----------------------------------------------------------------------------
 // Runner
 // -----------------------------------------------------------------------------
-
 inline int run_example(const char* name, const char* url, const char* description, const char* ping_payload = nullptr, int enable_ping_after_failures = 0) {
-    using namespace wirekrak::core::transport;
-    // WebSocket transport specialization
-    using WS = winhttp::WebSocket;
 
     std::cout << "=== Wirekrak Connection - Heartbeat-driven Liveness (" << name << ") ===\n\n" << description << "\n" << std::endl;
 
@@ -148,7 +152,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // Connection setup
     // -------------------------------------------------------------------------
     telemetry::Connection telemetry;
-    Connection<WS> connection(telemetry);
+    ConnectionT connection(g_ring, telemetry);
 
     int disconnects{0};
     bool ping_enabled{false};

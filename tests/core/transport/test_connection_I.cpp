@@ -38,11 +38,8 @@ They validate only what a consumer can **observe** via poll_signal().
 #include <string>
 #include <iostream>
 
-#include "common/mock_websocket_script.hpp"
 #include "common/connection_harness.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
+#include "common/mock_websocket_script.hpp"
 
 // -----------------------------------------------------------------------------
 // I1. Disconnected signal is observed before reconnect Connected signal

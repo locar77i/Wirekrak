@@ -6,11 +6,15 @@ The **Wirekrak Transport WebSocket Connection** is a deterministic,
 transport-agnostic, poll-driven abstraction responsible for managing the
 full lifecycle of a logical WebSocket connection.
 
-A `Connection<WS>` instance represents a *stable logical identity*
-across transient transport failures and automatic reconnections. While
-the underlying WebSocket instance may be destroyed and recreated
-multiple times, the `Connection` object remains stable and exposes
-monotonic progress signals.
+A `Connection<WS, MessageRing>` instance represents a *stable logical
+identity* across transient transport failures and automatic
+reconnections. While the underlying WebSocket instance may be destroyed
+and recreated multiple times, the `Connection` object remains stable and
+exposes monotonic progress signals.
+
+The message ring used for zero-copy delivery is **owned by the upper
+layer** (e.g. Session) and injected into both `Connection` and
+`WebSocket`.
 
 This component is intentionally protocol-agnostic and reusable across
 exchanges (Kraken, future venues, custom feeds).
@@ -29,6 +33,42 @@ exchanges (Kraken, future venues, custom feeds).
 -   Deterministic state transitions
 -   Unit-testable with mock transports
 -   Ultra-low-latency friendly
+-   Zero-copy data-plane via externally owned ring
+
+---
+
+## Memory & Ownership Model
+
+### Message Ring Injection
+
+The message ring is owned by the upper layer (typically `Session`).
+
+    Session (owns MessageRing)
+        ↓
+    Connection (holds MessageRing&)
+        ↓
+    WebSocket (constructed with MessageRing&)
+
+Properties:
+
+-   No dynamic allocation of ring
+-   No hidden buffering
+-   No ownership ambiguity
+-   Deterministic memory lifetime
+-   Ring always outlives WebSocket
+
+### Ring Reset on Reconnect
+
+Before constructing a fresh transport instance, the ring **must be
+cleared**.
+
+This guarantees:
+
+-   No cross-epoch message contamination
+-   No ghost messages after reconnect
+-   Deterministic epoch boundaries
+
+Each transport lifetime begins with an empty ring.
 
 ---
 
@@ -62,6 +102,7 @@ The transport may reconnect multiple times internally.
 Each successful WebSocket establishment:
 
 -   Creates a fresh `WS` instance
+-   Reuses the injected ring (cleared beforehand)
 -   Increments `epoch()` exactly once
 -   Emits `connection::Signal::Connected`
 
@@ -126,7 +167,7 @@ Internal states:
 
 Transitions are driven exclusively through `transition_()`.
 
-State is not externally exposed - it would turns the FSM into public contract.
+State is not externally exposed to preserve deterministic FSM semantics.
 
 ---
 
@@ -142,7 +183,7 @@ Preconditions:
 Behavior:
 
 1.  Transition to `Connecting`
-2.  Create new transport
+2.  Create new transport (clearing ring first)
 3.  Attempt connect
 4.  On success → `Connected`
 5.  On failure → retry cycle may begin
@@ -187,8 +228,7 @@ No background activity exists outside `poll()`.
 
 ## Data-Plane Model
 
-Incoming messages are delivered via a bounded SPSC ring owned by the
-WebSocket transport.
+Incoming messages are delivered via the injected bounded SPSC ring.
 
 ``` cpp
 websocket::DataBlock* block = conn.peek_message();
@@ -210,6 +250,7 @@ This model guarantees:
 -   Zero-copy delivery
 -   Deterministic liveness updates
 -   Explicit ownership boundaries
+-   No receive-thread callbacks
 
 ---
 
@@ -246,6 +287,7 @@ Retry is permitted only for transient errors:
 -   `Timeout`
 -   `RemoteClosed`
 -   `TransportFailure`
+-   `Backpressure`
 
 Retry behavior:
 
@@ -253,6 +295,7 @@ Retry behavior:
 2.  Subsequent retries use exponential backoff
 3.  Backoff capped per error category
 4.  Fresh transport instance created each attempt
+5.  Ring cleared before each attempt
 
 Backoff is deterministic and bounded.
 
@@ -296,53 +339,17 @@ Does not call `poll()`.
 
 ---
 
-## Transport Recreation
-
-Each reconnect:
-
--   Closes old transport
--   Destroys instance
--   Constructs new `WS`
--   Re-registers message callback
-
-No transport reuse occurs.
-
----
-
 ## Determinism Guarantees
 
 -   No implicit reconnection outside `poll()`
 -   No hidden timers
 -   No hidden threads inside `Connection`
 -   No callback-based state mutation
--   All transitions logged
+-   All transitions explicit
 -   All retries explicit
 -   Epoch strictly monotonic
-
----
-
-## Usage Example
-
-``` cpp
-transport::telemetry::Connection telemetry;
-transport::Connection<MyWebSocket> conn(telemetry);
-
-conn.open("wss://example.com/ws");
-
-while (running) {
-    conn.poll();
-
-    connection::Signal sig;
-    while (conn.poll_signal(sig)) {
-        // Optional reaction
-    }
-
-    while (auto* block = conn.peek_message()) {
-        // Process message
-        conn.release_message();
-    }
-}
-```
+-   No cross-epoch message leakage
+-   Zero-copy data path
 
 ---
 

@@ -64,8 +64,7 @@ Everything else builds on this.
 #include <thread>
 #include <csignal>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -78,14 +77,19 @@ inline void on_signal(int) {
 }
 
 // -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
+
+static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
+
+
+// -----------------------------------------------------------------------------
 // Runner
 // -----------------------------------------------------------------------------
-
 inline int run_example(const char* name, const char* url, const char* description,
                        std::chrono::seconds runtime = std::chrono::seconds(10)) {
-    using namespace wirekrak::core::transport;
-    // WebSocket transport specialization
-    using WS = winhttp::WebSocket;
 
     std::cout << "=== Wirekrak Connection - Minimal Lifecycle (" << name << ") ===\n\n" << description << "\n" << std::endl;
 
@@ -101,7 +105,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     telemetry::Connection telemetry;
 
     // Connection owns the logical lifecycle, retries, and liveness.
-    Connection<WS> connection(telemetry);
+    ConnectionT connection(g_ring, telemetry);
 
     // -------------------------------------------------------------------------
     // Lambda to drain events

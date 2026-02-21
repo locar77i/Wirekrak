@@ -132,23 +132,30 @@ It models failure **precisely and observably**.
 #include <chrono>
 #include <thread>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core.hpp"
+
+// -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
+
+static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 
+// -----------------------------------------------------------------------------
+// Runner
+// -----------------------------------------------------------------------------
 inline int run_example(const char* name, const char* url, const char* description, const char* subscribe_payload,
                        std::chrono::seconds runtime = std::chrono::seconds(5)) {
-    using namespace wirekrak::core::transport;
-    // WebSocket transport specialization
-    using WS = winhttp::WebSocket;
 
     std::cout << "=== Wirekrak Connection - Error & Close Lifecycle (" << name << ") ===\n\n" << description << "\n" << std::endl;
   
     // -------------------------------------------------------------------------
     // Connection setup
     // -------------------------------------------------------------------------
-    wirekrak::core::transport::telemetry::Connection telemetry;
-    Connection<WS> connection(telemetry);
+    telemetry::Connection telemetry;
+    ConnectionT connection(g_ring, telemetry);
 
     // -------------------------------------------------------------------------
     // Lambda to drain events

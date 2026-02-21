@@ -61,13 +61,13 @@ Data-plane model:
 #include <utility>
 
 #include "wirekrak/core/config/ring_sizes.hpp"
+#include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/policy/liveness.hpp"
 #include "wirekrak/core/protocol/policy/symbol_limit.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
-#include "wirekrak/core/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/core/protocol/kraken/request/concepts.hpp"
@@ -86,13 +86,15 @@ namespace kraken {
 
 template<
     transport::WebSocketConcept WS,
+    typename MessageRing,
     policy::SymbolLimitConcept LimitPolicy = policy::NoSymbolLimits
 >
 class Session {
 
 public:
-    Session()
-        : ctx_{connection_.heartbeat_total(), connection_.last_heartbeat_ts()}
+    Session(MessageRing& ring)
+        : message_ring_(ring)
+        , ctx_{connection_.heartbeat_total(), connection_.last_heartbeat_ts()}
         , ctx_view_{ctx_}
         , parser_(ctx_view_)
     {}
@@ -604,7 +606,7 @@ public:
 
 #ifdef WK_UNIT_TEST
 public:
-        transport::Connection<WS>& connection() {
+        transport::Connection<WS, MessageRing>& connection() {
             return connection_;
         }
 
@@ -617,9 +619,12 @@ private:
     // Sequence generator for request IDs
     lcr::sequence req_id_seq_{ctrl::PROTOCOL_BASE};
 
+    // Data message queue (transport → connection/session)
+    MessageRing& message_ring_;
+
     // Underlying streaming client (and telemetry)
     transport::telemetry::Connection telemetry_;
-    transport::Connection<WS> connection_{telemetry_};
+    transport::Connection<WS, MessageRing> connection_{message_ring_, telemetry_};
 
     // Liveness policy
     policy::Liveness liveness_policy_{policy::Liveness::Passive};

@@ -22,11 +22,8 @@ These tests MUST NOT involve reconnection scripts beyond initial setup.
 #include <iostream>
 #include <memory>
 
-#include "common/mock_websocket_script.hpp"
 #include "common/connection_harness.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
+#include "common/mock_websocket_script.hpp"
 
 // -----------------------------------------------------------------------------
 // J1. close() performs graceful shutdown
@@ -82,7 +79,7 @@ void test_destructor_closes_transport() {
     TEST_CHECK(h.retry_schedule_signals == 0); // IMPOSSIBLE to observe side effects of an object after its storage has been destroyed.
 
     // Destructor must have closed transport
-    TEST_CHECK(test::MockWebSocket::close_count() == 1);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -170,7 +167,7 @@ void test_destructor_no_reconnect() {
     TEST_CHECK(h.disconnect_signals == 0);       // destructor is not a semantic transition
 
     // Transport must have been closed
-    TEST_CHECK(test::MockWebSocket::close_count() == 1);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }

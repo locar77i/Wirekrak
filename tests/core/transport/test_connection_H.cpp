@@ -30,11 +30,8 @@ and observes whether the connection enters WaitingReconnect or Disconnected.
 #include <iostream>
 #include <vector>
 
-#include "common/mock_websocket_script.hpp"
 #include "common/connection_harness.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
+#include "common/mock_websocket_script.hpp"
 
 
 // -----------------------------------------------------------------------------

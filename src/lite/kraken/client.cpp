@@ -4,7 +4,9 @@
 #include "wirekrak/lite/channel/dispatcher.hpp"
 
 // ---- Core includes (PRIVATE) ----
+#include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/response_view.hpp"
@@ -13,14 +15,29 @@
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
 #include "wirekrak/core/protocol/kraken/response/partitioner.hpp"
+#include "lcr/lockfree/spsc_ring.hpp"
 
 
 namespace wirekrak::lite {
 
+// -----------------------------------------------------------------------------
+// Setup environment for Lite client implementation
+// -----------------------------------------------------------------------------
+namespace transport = wirekrak::core::transport;
 namespace kraken = wirekrak::core::protocol::kraken;
 namespace schema = kraken::schema;
 
-using WS = wirekrak::core::transport::winhttp::WebSocket;
+using MessageRingT = lcr::lockfree::spsc_ring<transport::websocket::DataBlock, transport::RX_RING_CAPACITY>;
+using WebSocketT   = transport::winhttp::WebSocketImpl<MessageRingT>;
+using SessionT     = kraken::Session<WebSocketT, MessageRingT>;
+
+// Defensive check that WebSocketT conforms to the WebSocketConcept concept
+static_assert(transport::WebSocketConcept<WebSocketT>);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static MessageRingT g_ring;
 
 // -----------------------------
 // Impl
@@ -30,7 +47,7 @@ struct Client::Impl {
     client_config cfg;
 
     // Core session (owning)
-    kraken::Session<WS> session;
+    SessionT session;
 
     // Partitioner for trade responses: 1 trade::Response -> N trade::ResponseView (one per symbol)
     kraken::response::Partitioner<schema::trade::Response> trade_partitioner_;
@@ -49,7 +66,7 @@ struct Client::Impl {
 
     Impl(client_config cfg)
         : cfg(cfg)
-        , session()
+        , session(g_ring)
     {
     }
 
@@ -151,8 +168,9 @@ void Client::poll() {
 // -----------------------------------------------------------------------------
 // Convenience execution loop — run until protocol quiescence
 // -----------------------------------------------------------------------------
-void Client::run_until_idle(std::chrono::milliseconds tick) {
-    const bool cooperative = (tick.count() > 0);
+void Client::run_until_idle(unsigned spins) {
+    const bool cooperative = (spins > 0);
+    unsigned spin_count = 0;
     while (true) {
         // Drive client progress
         poll();
@@ -162,7 +180,10 @@ void Client::run_until_idle(std::chrono::milliseconds tick) {
         }
         // If tick > 0, sleep to avoid busy-waiting. Otherwise, immediately poll again to drive progress.
         if (cooperative) [[likely]] {
-            std::this_thread::sleep_for(tick);
+            if (++spin_count >= spins) [[unlikely]] {
+                std::this_thread::yield(); // Yield to prevent starvation
+                spin_count = 0;
+            }
         }
     }
 }

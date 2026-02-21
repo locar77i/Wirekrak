@@ -34,12 +34,8 @@ D2. Message dispatch ignored when no handler
 #include <string>
 #include <chrono>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
+#include "common/connection_harness.hpp"
 #include "common/mock_websocket_script.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
 
 
 // -----------------------------------------------------------------------------
@@ -47,7 +43,7 @@ using namespace wirekrak::core::transport;
 // -----------------------------------------------------------------------------
 void test_message_dispatch_updates_liveness() {
     std::cout << "[TEST] Group D1: message dispatch updates liveness\n";
-    test::MockWebSocket::reset();
+    WebSocketUnderTest::reset();
 
     using clock = std::chrono::steady_clock;
 
@@ -57,7 +53,7 @@ void test_message_dispatch_updates_liveness() {
         .message("hello-world");
 
     telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    ConnectionUnderTest connection{g_ring, telemetry};
 
     // Open connection (does not run script yet)
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
@@ -98,7 +94,7 @@ void test_message_dispatch_updates_liveness() {
 // -----------------------------------------------------------------------------
 void test_message_dispatch_without_handler() {
     std::cout << "[TEST] Group D2: message dispatch without handler\n";
-    test::MockWebSocket::reset();
+    WebSocketUnderTest::reset();
 
     using clock = std::chrono::steady_clock;
 
@@ -108,7 +104,7 @@ void test_message_dispatch_without_handler() {
         .message("no-listener");
 
     telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    ConnectionUnderTest connection{g_ring, telemetry};
 
     // No on_message handler registered
 

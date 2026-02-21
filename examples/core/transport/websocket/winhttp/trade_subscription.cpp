@@ -5,8 +5,16 @@
 #include <locale>
 #include <csignal>
 
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core.hpp"
+
+
+// -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
 using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
+
+static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -18,13 +26,16 @@ void on_signal(int) {
 }
 
 
+// -----------------------------------------------------------------------------
+// Main
+// -----------------------------------------------------------------------------
 int main() {
     std::signal(SIGINT, on_signal);  // Handle Ctrl+C
 
-    transport::telemetry::WebSocket telemetry;
-    transport::winhttp::WebSocket ws(telemetry);
+    telemetry::WebSocket telemetry;
+    WebSocketT ws(g_ring, telemetry);
 
-    if (ws.connect("ws.kraken.com", "443", "/v2") != transport::Error::None) {
+    if (ws.connect("ws.kraken.com", "443", "/v2") != Error::None) {
         std::cerr << "Connect failed" << std::endl;
         return 1;
     }
@@ -53,7 +64,7 @@ int main() {
     std::cout << "Subscribed. Waiting for messages... (Ctrl+C to exit)" << std::endl;
     while (running.load(std::memory_order_relaxed)) {
         // Drain control-plane events
-        transport::websocket::Event ev;
+        websocket::Event ev;
         while (ws.poll_event(ev)) {
             std::cout << "[example] Event received: " << static_cast<int>(ev.type) << std::endl;
         }

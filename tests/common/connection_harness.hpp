@@ -1,14 +1,3 @@
-#pragma once
-
-#include <cstdint>
-#include <vector>
-#include <memory>
-
-#include "wirekrak/core/transport/telemetry/connection.hpp"
-#include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/transport/connection/signal.hpp"
-#include "common/mock_websocket.hpp"
-
 /*
 ===============================================================================
  Connection Test Harness
@@ -33,8 +22,38 @@ This enables:
 
 ===============================================================================
 */
+#pragma once
+
+#include <cstdint>
+#include <vector>
+#include <memory>
+
+#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/connection.hpp"
+#include "wirekrak/core/transport/connection/signal.hpp"
+#include "wirekrak/core/transport/telemetry/connection.hpp"
+#include "common/mock_websocket.hpp"
+#include "common/test_check.hpp"
+
+// -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
+
+using MessageRingUnderTest = lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY>;
+using WebSocketUnderTest = test::MockWebSocket<MessageRingUnderTest>;
+
+// Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
+static_assert(WebSocketConcept<WebSocketUnderTest>);
+
+using ConnectionUnderTest = Connection<WebSocketUnderTest, MessageRingUnderTest>;
+
+static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → session)
+
 
 namespace wirekrak::core::transport::test {
+
 
 struct ConnectionHarness {
     // -------------------------------------------------------------------------
@@ -45,7 +64,7 @@ struct ConnectionHarness {
     // -------------------------------------------------------------------------
     // Connection under test (explicit lifetime)
     // -------------------------------------------------------------------------
-    std::unique_ptr<Connection<MockWebSocket>> connection;
+    std::unique_ptr<ConnectionUnderTest> connection;
 
     // -------------------------------------------------------------------------
     // Event counters
@@ -68,7 +87,7 @@ struct ConnectionHarness {
         double liveness_warning_ratio = LIVENESS_WARNING_RATIO
     )
     {
-        test::MockWebSocket::reset();
+        WebSocketUnderTest::reset();
         make_connection(heartbeat_timeout,  message_timeout, liveness_warning_ratio);
     }
 
@@ -81,7 +100,7 @@ struct ConnectionHarness {
         double liveness_warning_ratio = LIVENESS_WARNING_RATIO
     )
     {
-        connection = std::make_unique<Connection<MockWebSocket>>(telemetry, heartbeat_timeout, message_timeout, liveness_warning_ratio);
+        connection = std::make_unique<ConnectionUnderTest>(g_ring, telemetry, heartbeat_timeout, message_timeout, liveness_warning_ratio);
     }
 
     // -------------------------------------------------------------------------

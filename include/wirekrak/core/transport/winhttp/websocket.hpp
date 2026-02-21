@@ -8,7 +8,6 @@
 #include <vector>
 #include <cassert>
 
-#include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
@@ -61,12 +60,15 @@ inline std::wstring to_wide(const std::string& utf8) {
 
 namespace wirekrak::core::transport::winhttp {
 
-template<ApiConcept Api = RealApi>
+template<
+    typename MessageRing,
+    ApiConcept Api = RealApi
+>
 class WebSocketImpl {
-
 public:
-    explicit WebSocketImpl(telemetry::WebSocket& telemetry) noexcept
-        : telemetry_(telemetry) {
+    explicit WebSocketImpl(MessageRing& ring, telemetry::WebSocket& telemetry) noexcept
+        : message_ring_(ring)
+        , telemetry_(telemetry) {
     }
 
     ~WebSocketImpl() {
@@ -133,6 +135,7 @@ public:
         }
 
         running_.store(true, std::memory_order_relaxed);
+        closed_.store(false, std::memory_order_relaxed);
         recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
         return Error::None;
     }
@@ -389,7 +392,7 @@ private:
     lcr::lockfree::spsc_ring<websocket::Event, 16> control_events_;
 
     // Data message queue (transport → connection/session)
-    lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY> message_ring_;
+    MessageRing& message_ring_;
 
 #ifdef WK_UNIT_TEST
 public:
@@ -428,8 +431,5 @@ private:
 #endif // WK_UNIT_TEST
 
 };
-// Defensive check that WebSocket conforms to the WebSocketConcept concept
-using WebSocket = WebSocketImpl<RealApi>;
-static_assert(WebSocketConcept<WebSocket>);
 
 } // namespace wirekrak::core::transport::winhttp

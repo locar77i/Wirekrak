@@ -28,11 +28,8 @@ All transport outcomes MUST be scripted via MockWebSocketScript
 #include <cassert>
 #include <iostream>
 
-#include "common/mock_websocket_script.hpp"
 #include "common/connection_harness.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
+#include "common/mock_websocket_script.hpp"
 
 
 // -----------------------------------------------------------------------------

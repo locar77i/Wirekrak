@@ -2,7 +2,7 @@
 
 #include <thread>
 
-#include "wirekrak/core/protocol/kraken/session.hpp"
+#include "wirekrak/core.hpp"
 
 
 namespace wirekrak::core::loop {
@@ -34,7 +34,7 @@ inline void manage_idle_spins(bool& did_work, int& idle_spins, int max_idle_spin
 // -----------------------------------------------------------------------------
 // Helper to drain all available messages
 // -----------------------------------------------------------------------------
-inline bool drain_messages(wirekrak::core::kraken::Session& session) {
+inline bool drain_messages(wirekrak::core::protocol::kraken::SessionT& session) {
     using namespace wirekrak::core::protocol::kraken::schema;
 
     bool did_work = false;

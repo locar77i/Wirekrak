@@ -1,14 +1,11 @@
-
 # WinHTTP WebSocket Transport
 
-This document describes the **WinHTTP-based WebSocket transport** used by Wirekrak
-as the production Windows transport backend.
+This document describes the **WinHTTP-based WebSocket transport** used
+by Wirekrak as the production Windows transport backend.
 
 The implementation lives in:
 
-```
-wirekrak::core::transport::winhttp::WebSocketImpl<Api>
-```
+    wirekrak::core::transport::winhttp::WebSocketImpl<MessageRing, Api>
 
 It provides a **policy-free, single-connection WebSocket primitive**
 used by `core::transport::Connection`.
@@ -27,7 +24,8 @@ It is responsible only for:
 - Receiving frames on a dedicated receive thread
 - Translating OS-level errors into semantic `transport::Error`
 - Publishing control-plane events (Close / Error) via SPSC queue
-- Publishing data-plane messages via zero-copy SPSC ring
+- Writing data-plane messages into an externally owned zero-copy SPSC
+    ring
 
 It does **NOT**:
 
@@ -36,25 +34,62 @@ It does **NOT**:
 - Track liveness
 - Interpret protocol messages
 - Maintain logical session state
+- Own message memory
 
-All policy decisions are handled by `core::transport::Connection`.
+All policy decisions and memory ownership live above this layer.
 
 ---
 
 ## Architectural Layering
 
+    core::protocol::kraken::Session
+            ▲
+            │ owns MessageRing
+            │
+    core::transport::Connection
+            ▲
+            │ WebSocketConcept
+            │
+    transport::winhttp::WebSocketImpl<MessageRing, RealApi>
+            ▲
+            │ ApiConcept
+            │
+    transport::winhttp::RealApi (WinHTTP)
+
+The transport is a thin OS adapter writing directly into externally
+owned memory.
+
+---
+
+## Message Ring Ownership Model
+
+The message ring is **injected into the WebSocket**:
+
+``` cpp
+template<typename MessageRing, ApiConcept Api = RealApi>
+class WebSocketImpl;
 ```
-core::transport::Connection
-        ▲
-        │ WebSocketConcept
-        │
-transport::winhttp::WebSocketImpl<RealApi>
-        ▲
-        │ ApiConcept
-        │
-transport::winhttp::RealApi (WinHTTP)
+
+The constructor receives a reference:
+
+``` cpp
+WebSocketImpl(MessageRing& ring, telemetry::WebSocket& telemetry);
 ```
-The transport is a thin OS adapter.
+
+### Ownership Rules
+
+- The ring is owned by the Session layer
+- The WebSocket only writes into it
+- The WebSocket never allocates message memory
+- The WebSocket never destroys the ring
+- The ring must outlive the WebSocket
+
+This guarantees:
+
+- Deterministic memory layout
+- No hidden allocations
+- Stable memory across reconnects
+- Clear destruction order
 
 ---
 
@@ -70,16 +105,17 @@ The transport uses **one dedicated receive thread**.
 
 Control-plane events are published through:
 
-```
-lcr::lockfree::spsc_ring<websocket::Event, 16>
-```
+    lcr::lockfree::spsc_ring<websocket::Event, 16>
 
-Producer: - Receive thread only
+Producer: Receive thread\
+Consumer: `core::transport::Connection::poll()`
 
-Consumer: - `core::transport::Connection::poll()`
+Properties:
 
-This guarantees: - Single producer - Single consumer - No locks -
-Deterministic event ordering
+- Single producer
+- Single consumer
+- Lock-free
+- Deterministic ordering
 
 Only two event types exist:
 
@@ -90,64 +126,59 @@ Only two event types exist:
 
 ## Data Plane: Zero-Copy Message Ring
 
-Message delivery is implemented via a **single-producer /
-single-consumer** ring of fixed-size blocks.
+Message delivery uses a **single-producer / single-consumer** ring:
 
-```
-lcr::lockfree::spsc_ring<DataBlock, N>
-```
+    lcr::lockfree::spsc_ring<DataBlock, N>
 
 ### DataBlock Structure
 
-```
-struct DataBlock {
-    std::uint32_t size;
-    char data[RX_BUFFER_SIZE];
-};
-```
+    struct DataBlock {
+        std::uint32_t size;
+        char data[RX_BUFFER_SIZE];
+    };
 
 Properties:
 
-- Fixed-size blocks (compile-time capacity)
+- Fixed-size blocks
 - No dynamic allocation
 - No std::string buffering
 - No intermediate copies
-- Deterministic memory layout
+- Deterministic layout
 
 ### Producer (Receive Thread)
 
 The receive thread:
 
-1. Lazily acquires a producer slot
-2. Writes WebSocket fragments directly into the block
-3. Accumulates size across fragments
-4. Commits the slot only on final frame
-
-No temporary buffer is used.
+1.  Lazily acquires a producer slot
+2.  Writes fragments directly into slot memory
+3.  Accumulates size across fragments
+4.  Commits slot only on final frame
 
 If backpressure occurs (ring full):
 
-- Transport logs fatal condition
-- Connection is force-closed
-- No silent message loss occurs
+- A fatal transport error is emitted
+- The connection is force-closed
+- No silent data loss occurs
+
+Strict correctness \> availability.
 
 ### Consumer (Connection Layer)
 
-The Connection layer pulls messages explicitly:
+The Connection layer explicitly pulls messages:
 
-```
+``` cpp
 while (auto* block = ws.peek_message()) {
     process(block->data, block->size);
     ws.release_message();
 }
 ```
 
-This ensures:
+Guarantees:
 
 - Zero-copy handoff
-- Deterministic ownership
-- Explicit lifetime control
+- Explicit lifetime management
 - No callback execution on receive thread
+- Deterministic consumption
 
 ---
 
@@ -155,23 +186,21 @@ This ensures:
 
 ### connect(host, port, path)
 
-1. Creates WinHTTP session
-2. Performs HTTP upgrade
-3. Completes WebSocket handshake
-4. Spawns receive thread
-5. Returns `Error::None` on success
+1.  Creates WinHTTP session
+2.  Performs HTTP upgrade
+3.  Completes WebSocket handshake
+4.  Resets close state
+5.  Spawns receive thread
 
-No reconnection is attempted at this level.
+No reconnection logic exists here.
 
 ---
 
 ### send(message)
 
-- Synchronously calls `WinHttpWebSocketSend`
+- Calls `WinHttpWebSocketSend`
 - Returns `true` if accepted by OS
-- Returns `false` if not connected or send failed
-
-Errors are surfaced asynchronously via control events.
+- Errors surface asynchronously via control events
 
 ---
 
@@ -179,35 +208,32 @@ Errors are surfaced asynchronously via control events.
 
 - Idempotent
 - Signals receive loop to stop
-- Closes WinHTTP handles
+- Cancels blocking receive
 - Joins receive thread
-- Guarantees exactly one Close event is emitted
+- Closes WinHTTP handles
+- Emits exactly one Close event
 
-Uncommitted DataBlocks are abandoned safely.
+Uncommitted DataBlocks are safely abandoned.
 
 ---
 
-## Receive Loop (Zero-Copy Model)
+## Receive Loop Model
 
 `receive_loop_()`:
 
-- Acquires a ring slot lazily at message start
-- Writes fragments directly into slot memory
-- Guards against overflow
-- Commits slot only on final frame
-- Abandons slot safely on error
-- Emits control events via SPSC ring
-- Ensures `signal_close_()` runs exactly once
+- Acquires ring slot lazily
+- Writes fragments directly into final memory
+- Guards against buffer overflow
+- Commits only complete messages
+- Abandons slot on error
+- Emits control events
+- Ensures close signaling exactly once
 
-There is **no message callback**.
-
-All message consumption is pull-based.
+There are no callbacks and no hidden copies.
 
 ---
 
-## Error Handling
-
-WinHTTP error codes are translated into semantic `transport::Error`:
+## Error Translation
 
 | WinHTTP Code | transport::Error |
 |--------------|------------------|
@@ -217,31 +243,22 @@ WinHTTP error codes are translated into semantic `transport::Error`:
 | CANNOT_CONNECT | ConnectionFailed |
 | Other | TransportFailure |
 
-The transport classifies, but never retries.
-
----
-
-## TLS & Security
-
-- TLS handled by Windows SChannel
-- System certificate validation
-- No OpenSSL dependency
-- No external networking libraries
+The transport classifies but never retries.
 
 ---
 
 ## Determinism Guarantees
 
-- No virtual functions
+- No virtual dispatch
 - No dynamic polymorphism
-- No retry policy
+- No retry logic
 - No hidden timers
-- Close event emitted exactly once
-- Error surfaced exactly once per failure
+- Exactly-once close signaling
+- Exactly-once error signaling
 - Zero-copy message delivery
-- No hidden allocations in receive path
+- No allocation in receive path
 
-All behavior is explicit and poll-driven at the Connection layer.
+All lifecycle policy lives above this layer.
 
 ---
 
@@ -249,17 +266,16 @@ All behavior is explicit and poll-driven at the Connection layer.
 
 The transport is templated on `ApiConcept`:
 
-```
-template<ApiConcept Api = RealApi>
-class WebSocketImpl;
-```
+    template<typename MessageRing, ApiConcept Api = RealApi>
+    class WebSocketImpl;
 
-This allows:
+This enables:
 
-- Injection of fake WinHTTP APIs
+- Fake WinHTTP injection
 - Deterministic error simulation
 - No real network dependency
-- Full unit test coverage
+- Full unit-test coverage
+- Deterministic backpressure testing
 
 ---
 
@@ -270,11 +286,13 @@ The WinHTTP WebSocket transport is:
 - A deterministic OS adapter
 - Single-connection
 - Failure-signaling only
-- Thread-safe via SPSC event queue
-- Zero-copy data-plane delivery
-- Fully testable via API abstraction
+- Memory-injection based
+- Zero-copy
+- Ultra-low-latency oriented
+- Fully testable
 
-All connection lifecycle management lives above this layer.
+All connection policy, memory ownership, and lifecycle management live
+above this layer.
 
 ---
 

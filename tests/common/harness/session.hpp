@@ -1,9 +1,15 @@
+/*
+===============================================================================
+ Session Test Harness
+===============================================================================
+*/
 #pragma once
 
 #include <memory>
 #include <cstdint>
 #include <cassert>
 
+#include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
@@ -11,21 +17,40 @@
 #include "common/json_helpers.hpp"
 #include "common/test_check.hpp"
 
-namespace ctrl = wirekrak::core::protocol::ctrl;
+
+// -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
+using namespace wirekrak::core::protocol;
+using namespace wirekrak::core::protocol::kraken;
+
+using MessageRingUnderTest = lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY>;
+using WebSocketUnderTest = test::MockWebSocket<MessageRingUnderTest>;
+
+// Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
+static_assert(WebSocketConcept<WebSocketUnderTest>);
+
+static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 
 namespace wirekrak::core::protocol::kraken::test::harness {
 
+
 template<
-    transport::WebSocketConcept WS = transport::test::MockWebSocket,
+    WebSocketConcept WS,
+    typename MessageRing,
     policy::SymbolLimitConcept LimitPolicy = policy::NoSymbolLimits
 >
 struct Session {
 
-    kraken::Session<WS, LimitPolicy> session;
+    using SessionUnderTest = kraken::Session<WS, MessageRing, LimitPolicy>;
+    SessionUnderTest session;
 
-    Session() {
-        wirekrak::core::transport::test::MockWebSocket::reset();
+    Session()
+        : session(g_ring) {
+        WS::reset();
     }
 
     // -------------------------------------------------------------------------
@@ -173,4 +198,4 @@ struct Session {
 } // namespace wirekrak::core::protocol::kraken::test::harness
 
 
-using SessionHarness = wirekrak::core::protocol::kraken::test::harness::Session<>;
+using SessionHarness = wirekrak::core::protocol::kraken::test::harness::Session<WebSocketUnderTest, MessageRingUnderTest>;

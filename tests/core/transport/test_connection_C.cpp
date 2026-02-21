@@ -30,11 +30,7 @@ C2. send() fails when not connected
 #include <iostream>
 #include <string>
 
-#include "wirekrak/core/transport/connection.hpp"
-#include "common/mock_websocket.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
+#include "common/connection_harness.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -42,10 +38,10 @@ using namespace wirekrak::core::transport;
 // -----------------------------------------------------------------------------
 void test_send_when_connected() {
     std::cout << "[TEST] Group C1: send() succeeds when connected\n";
-    test::MockWebSocket::reset();
+    WebSocketUnderTest::reset();
 
     telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    ConnectionUnderTest connection{g_ring, telemetry};
 
     // Establish connection
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
@@ -62,10 +58,10 @@ void test_send_when_connected() {
 // -----------------------------------------------------------------------------
 void test_send_when_disconnected() {
     std::cout << "[TEST] Group C2a: send() fails when Disconnected\n";
-    test::MockWebSocket::reset();
+    WebSocketUnderTest::reset();
 
     telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    ConnectionUnderTest connection{g_ring, telemetry};
 
     TEST_CHECK(connection.send("ping") == false);
 
@@ -77,13 +73,13 @@ void test_send_when_disconnected() {
 // -----------------------------------------------------------------------------
 void test_send_when_waiting_reconnect() {
     std::cout << "[TEST] Group C2b: send() fails when WaitingReconnect\n";
-    test::MockWebSocket::reset();
+    WebSocketUnderTest::reset();
 
     // Force retriable failure
-    test::MockWebSocket::set_next_connect_result(Error::ConnectionFailed);
+    WebSocketUnderTest::set_next_connect_result(Error::ConnectionFailed);
 
     telemetry::Connection telemetry;
-    Connection<test::MockWebSocket> connection{telemetry};
+    ConnectionUnderTest connection{g_ring, telemetry};
 
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::ConnectionFailed);
 

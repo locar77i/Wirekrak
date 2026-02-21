@@ -36,6 +36,14 @@
 // -----------------------------------------------------------------------------
 std::atomic<bool> pong_received{false};
 
+// -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::protocol::kraken;
+
+static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
+
 
 // -------------------------------------------------------------------------
 // Helper to manage pong responses
@@ -66,8 +74,7 @@ void on_pong(const wirekrak::core::protocol::kraken::schema::system::Pong& pong,
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
-    using namespace wirekrak::core;
-    using namespace protocol::kraken::schema;
+    using namespace schema;
 
     // -------------------------------------------------------------------------
     // Runtime configuration (no hard-coded behavior)
@@ -84,7 +91,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    kraken::Session session;
+    SessionT session(g_ring);
 
     // -------------------------------------------------------------------------
     // Connect

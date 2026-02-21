@@ -6,7 +6,6 @@
 #include <concepts>
 #include <cstring>
 
-#include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
@@ -25,9 +24,11 @@ constexpr static std::size_t RX_RING_CAPACITY = 8; // Capacity of the message ri
 // This is intentional: transport::Connection owns a single-shot
 // WebSocket instance internally and tests are strictly single-threaded.
 // Each test MUST call MockWebSocket::reset() before constructing Connection.
+template<typename MessageRing>
 class MockWebSocket {
 public:
-    MockWebSocket(telemetry::WebSocket& telemetry) noexcept {
+    MockWebSocket(MessageRing& ring, telemetry::WebSocket& telemetry) noexcept
+        : message_ring_(ring) {
         (void)telemetry;
         WK_DEBUG("[MockWebSocket] constructed");
     }
@@ -112,9 +113,6 @@ public:
         next_connect_result_ = Error::None;
         websocket::Event tmp;
         while (control_ring_.pop(tmp)) {}
-        while (message_ring_.peek_consumer_slot() != nullptr) {
-            message_ring_.release_consumer_slot();
-        }
     }
 
      [[nodiscard]]
@@ -142,10 +140,7 @@ private:
     static inline lcr::lockfree::spsc_ring<websocket::Event, 16> control_ring_;
 
     // Data message queue (transport → connection/session)
-    static inline lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY> message_ring_;
+    MessageRing& message_ring_;
 };
-// Assert that MockWebSocket conforms to transport::WebSocketConcept concept
-static_assert(WebSocketConcept<MockWebSocket>);
 
-// ininitialize static members
 } // namespace wirekrak::core::transport::test

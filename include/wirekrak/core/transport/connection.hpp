@@ -19,8 +19,7 @@
 #include "lcr/log/logger.hpp"
 
 
-namespace wirekrak::core {
-namespace transport {
+namespace wirekrak::core::transport {
 
 /*
 ===============================================================================
@@ -114,14 +113,19 @@ constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15); // default heartbea
 constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15); // default message timeout
 constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of liveness window is elapsed
 
-template <transport::WebSocketConcept WS>
+template <
+    transport::WebSocketConcept WS,
+    typename MessageRing
+>
 class Connection {
 public:
-    Connection(telemetry::Connection& telemetry,
+    Connection(MessageRing& ring,
+               telemetry::Connection& telemetry,
                std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT,
                std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
                double liveness_warning_ratio = LIVENESS_WARNING_RATIO) noexcept
-        : telemetry_(telemetry)
+        : message_ring_(ring)
+        , telemetry_(telemetry)
         , heartbeat_timeout_(heartbeat_timeout)
         , message_timeout_(message_timeout)
         , liveness_warning_ratio_(liveness_warning_ratio)
@@ -398,6 +402,9 @@ private:
     std::string last_url_;                          // for logging / retry callbacks
     lcr::optional<ParsedUrl> parsed_url_;           // Invariant: parsed_url_.has() == true -> Valid endpoint
 
+    // Data message queue (transport → connection/session)
+    MessageRing& message_ring_;
+
     transport::telemetry::Connection& telemetry_;   // Telemetry reference (not owned)
     std::unique_ptr<WS> ws_;                        // WebSocket instance (owned by Connection)
 
@@ -653,8 +660,10 @@ private:
             ws_->close();
             ws_.reset();
         }
+        // Clear the message ring for the new epoch
+        message_ring_.clear();
         // Initialize transport
-        ws_ = std::make_unique<WS>(telemetry_.websocket);
+        ws_ = std::make_unique<WS>(message_ring_, telemetry_.websocket);
     }
 
     // Placeholder for user-defined behavior on transport errors
@@ -813,5 +822,4 @@ private:
     }
 };
 
-} // namespace transport
-} // namespace wirekrak::core
+} // namespace wirekrak::core::transport

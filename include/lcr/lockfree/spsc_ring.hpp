@@ -157,6 +157,37 @@ public:
         tail_.index.store((tail + 1) & MASK, std::memory_order_release);
     }
 
+    // -----------------------------------------------------------------------------
+    // Clear the ring (lifecycle operation)
+    // -----------------------------------------------------------------------------
+    //
+    // Drops all unread elements by resetting head and tail to the same value.
+    //
+    // IMPORTANT:
+    //   • Must NOT be called concurrently with push/pop/acquire/peek.
+    //   • Safe only when producer thread is stopped OR externally synchronized.
+    //   • O(1) operation (no element destruction loop).
+    //   • Intended for lifecycle transitions (e.g., reconnect boundary).
+    //
+    // Typical usage:
+    //
+    //   // Stop producer thread first
+    //   ws.close();
+    //   ring.clear();
+    //
+    // After clear():
+    //   empty() == true
+    //   used()  == 0
+    //
+    // -----------------------------------------------------------------------------
+    inline void clear() noexcept {
+        // Reset tail first (consumer side)
+        tail_.index.store(0, std::memory_order_relaxed);
+
+        // Reset head after (producer side)
+        head_.index.store(0, std::memory_order_release);
+    }
+
 private:
     struct alignas(64) PaddedAtomic {
         std::atomic<size_t> index{0};

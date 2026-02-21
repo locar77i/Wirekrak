@@ -68,9 +68,6 @@ Non-Goals
 #include <string>
 
 #include "common/connection_harness.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
 
 
 // -----------------------------------------------------------------------------
@@ -104,7 +101,7 @@ void test_open_retriable_failure() {
     test::ConnectionHarness h;
 
     // Force next connect attempt to fail with a retriable error
-    test::MockWebSocket::set_next_connect_result(Error::ConnectionFailed);
+    WebSocketUnderTest::set_next_connect_result(Error::ConnectionFailed);
 
     // open() must return the transport error
     TEST_CHECK(h.connection->open("wss://example.com/ws") == Error::ConnectionFailed);
@@ -158,7 +155,7 @@ void test_open_non_retriable_failure() {
     TEST_CHECK(h.retry_schedule_signals == 0);       // No retries scheduled
 
     // Transport should never have been connected
-    TEST_CHECK(test::MockWebSocket::close_count() == 0);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 0);
 
     std::cout << "[TEST] OK\n";
 }

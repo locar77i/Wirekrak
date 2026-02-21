@@ -47,11 +47,8 @@ Tests MUST NOT expect poll() to stall or idle before the first retry.
 #include <chrono>
 #include <thread>
 
-#include "common/mock_websocket_script.hpp"
 #include "common/connection_harness.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::transport;
+#include "common/mock_websocket_script.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -370,7 +367,7 @@ void test_retry_aborts_on_non_retriable_reconnect_failure() {
     TEST_CHECK(h.retry_schedule_signals == 0);     // MUST NOT schedule backoff
 
     TEST_CHECK(!h.connection->is_active());
-    TEST_CHECK(test::MockWebSocket::is_connected() == false);
+    TEST_CHECK(WebSocketUnderTest::is_connected() == false);
 
     std::cout << "[TEST] OK\n";
 }
@@ -550,7 +547,7 @@ void test_poll_is_noop_while_connected() {
     TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Websocket remains connected
-    TEST_CHECK(test::MockWebSocket::is_connected());
+    TEST_CHECK(WebSocketUnderTest::is_connected());
 
     std::cout << "[TEST] OK\n";
 }

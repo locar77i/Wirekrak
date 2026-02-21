@@ -40,11 +40,19 @@ void on_signal(int) {
 }
 
 // -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::protocol::kraken;
+
+static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
+
+
+// -----------------------------------------------------------------------------
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
-    using namespace wirekrak::core;
-    using namespace protocol::kraken::schema;
+    using namespace schema;
 
     // -------------------------------------------------------------------------
     // Signal handling (explicit lifecycle control)
@@ -68,7 +76,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    kraken::Session session;
+    SessionT session(g_ring);
 
     // -------------------------------------------------------------------------
     // Connect
