@@ -197,7 +197,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
         connection.poll();    //Poll-driven execution
         drain_signals();      // signals drained
         // No peek_message() here
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::yield();
     }
 
     // -------------------------------------------------------------------------
@@ -213,7 +213,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
             std::cout << "[example] Delivered message (" << block->size << " bytes)" << std::endl;
             connection.release_message();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::yield();
     }
 
     // -------------------------------------------------------------------------
@@ -225,7 +225,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     while (!connection.is_idle()) {
         connection.poll();   // Poll-driven execution
         drain_signals();     // Drain any pending signals
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::yield();
     }
 
     // -------------------------------------------------------------------------

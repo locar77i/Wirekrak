@@ -29,6 +29,7 @@
 
 #include "wirekrak/core.hpp"
 #include "common/cli/trade.hpp"
+#include "common/loop/helpers.hpp"
 
 // -----------------------------------------------------------------------------
 // Lifecycle control
@@ -37,35 +38,6 @@ std::atomic<bool> running{true};
 
 void on_signal(int) {
     running.store(false);
-}
-
-// -----------------------------------------------------------------------------
-// Helper to drain all available messages
-// -----------------------------------------------------------------------------
-inline void drain_messages(wirekrak::core::kraken::Session& session) {
-    using namespace wirekrak::core::protocol::kraken::schema;
-
-    // Observe latest pong (liveness signal)
-    static system::Pong last_pong;
-    if (session.try_load_pong(last_pong)) {
-        std::cout << " -> " << last_pong << std::endl;
-    }
-
-    // Observe latest status
-    static status::Update last_status;
-    if (session.try_load_status(last_status)) {
-        std::cout << " -> " << last_status << std::endl;
-    }
-
-    // Drain protocol errors (required)
-    session.drain_rejection_messages([](const rejection::Notice& msg) {
-        std::cout << " -> " << msg << std::endl;
-    });
-
-    // Drain data-plane messages (required)
-    session.drain_trade_messages([](const trade::Response& msg) {
-        std::cout << " -> " << msg << std::endl;
-    });
 }
 
 
@@ -117,10 +89,13 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
+    int idle_spins = 0;
+    bool did_work = false;
     while (running.load(std::memory_order_relaxed)) {
         (void)session.poll();
-        drain_messages(session);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        did_work = loop::drain_messages(session);
+        // Yield to avoid busy-waiting when idle
+        loop::manage_idle_spins(did_work, idle_spins);
     }
 
     // -------------------------------------------------------------------------
@@ -135,8 +110,8 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     while (!session.is_idle()) {
         (void)session.poll();
-        drain_messages(session);
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop::drain_messages(session);
+        std::this_thread::yield();
     }
 
     session.close();

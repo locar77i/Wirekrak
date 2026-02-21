@@ -212,7 +212,7 @@ public:
 
     // Event loop
     inline void poll() noexcept {
-        WK_TRACE("[CONN] Polling connection ... (state: " << to_string(get_state_()) << ")");
+        //WK_TRACE("[CONN] Polling connection ... (state: " << to_string(get_state_()) << ")");
         // === Drain transport events ===
         websocket::Event ev;
         while (ws_->poll_event(ev)) {
@@ -263,12 +263,17 @@ public:
         return events_.pop(out);
     }
 
-    // Accessors
+    // Returns an observable concept (not a state enum)
     [[nodiscard]]
-    inline State get_state() const noexcept {
-        return get_state_();
+    inline bool is_active() const noexcept {
+        return state_ == State::Connected
+            || state_ == State::Connecting
+            || state_ == State::Disconnecting
+            || state_ == State::WaitingReconnect
+        ;
     }
 
+    // Accessors
     [[nodiscard]]
     inline std::uint64_t epoch() const noexcept {
         return epoch_;
@@ -690,6 +695,7 @@ private:
             case Error::ConnectionFailed:
             case Error::HandshakeFailed:
             case Error::Timeout:
+            case Error::Backpressure:
             case Error::RemoteClosed:
             // “unknown but bad” failure -> retry (conservative default)
             case Error::TransportFailure:
@@ -777,7 +783,9 @@ private:
         switch (error) {
             // --- Fast retry ---------------------------------------------------
             case Error::RemoteClosed:
-            case Error::Timeout: {
+            case Error::Timeout: 
+            case Error::Backpressure: 
+            {
                 constexpr std::chrono::milliseconds base{50};
                 constexpr std::chrono::milliseconds max{1000};
                 auto delay = base * (1 << attempt);

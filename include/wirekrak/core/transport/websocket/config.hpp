@@ -96,10 +96,16 @@ Do not modify casually.
 #include <cstddef>
 
 
-namespace wirekrak::core::transport::websocket {
+namespace wirekrak::core::transport {
+
+// Capacity of the I/O message ring buffer (number of messages)
+inline constexpr static std::size_t RX_RING_CAPACITY = 8;
+
+namespace websocket {
 
 /// Maximum size (in bytes) of a single received WebSocket message.
 /// Must accommodate full message including all fragments.
-inline constexpr static std::size_t RX_BUFFER_SIZE = 8 * 1024;
+inline constexpr static std::size_t RX_BUFFER_SIZE = 128 * 1024;
 
-} // namespace wirekrak::core::transport::websocket
+} // namespace websocket
+} // namespace wirekrak::core::transport

@@ -481,6 +481,12 @@ public:
         liveness_policy_ = p;
     }
 
+    // Returns true if the current connection is active
+    [[nodiscard]]
+    inline bool is_active() const noexcept {
+        return connection_.is_active();
+    }
+
     // Accessor to the heartbeat counter
     [[nodiscard]]
     inline std::uint64_t heartbeat_total() const noexcept {

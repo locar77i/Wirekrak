@@ -28,6 +28,7 @@
 #include "wirekrak/core.hpp"
 #include "common/cli/minimal.hpp"
 
+
 int main(int argc, char** argv) {
     using namespace wirekrak::core;
     using namespace protocol::kraken::schema;
@@ -123,7 +124,8 @@ int main(int argc, char** argv) {
         last_tx        = tx;
         last_heartbeat = hb;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // Yield to avoid busy-waiting when idle
+        std::this_thread::yield();
     }
 
     // -------------------------------------------------------------------------

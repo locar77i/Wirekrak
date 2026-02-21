@@ -28,9 +28,6 @@ int main() {
         return 1;
     }
 
-    // wait a bit for messages
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
     // -------------------------------------------------------------------------
     // Subscribe to BOOK channel with SNAPSHOT
     // -------------------------------------------------------------------------
@@ -68,7 +65,7 @@ int main() {
             std::cout << "Received:\n" << msg << "\n" << std::endl;
             ws.release_message();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::yield();
     }
 
     std::cout << "Shutting down..." << std::endl;

@@ -23,6 +23,7 @@
 
 #include "wirekrak/core.hpp"
 #include "common/cli/symbol.hpp"
+#include "common/loop/helpers.hpp"
 
 // -----------------------------------------------------------------------------
 // Lifecycle control
@@ -75,6 +76,8 @@ int main(int argc, char** argv) {
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
     trade::Response trade_msg;
+    int idle_spins = 0;
+    bool did_work = false;
     while (running.load(std::memory_order_relaxed) && messages_received < 10) {
         (void)session.poll();   // REQUIRED: drives all Core behavior
         // Drain ALL trade messages produced since the last poll().
@@ -82,8 +85,10 @@ int main(int argc, char** argv) {
         session.drain_trade_messages([&](const trade::Response& msg) {
             std::cout << " -> " << msg << std::endl;
             ++messages_received;
+            did_work = true;
         });
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // Yield to avoid busy-waiting when idle
+        loop::manage_idle_spins(did_work, idle_spins);
     }
 
     // -------------------------------------------------------------------------

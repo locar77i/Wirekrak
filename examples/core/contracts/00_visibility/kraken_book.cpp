@@ -22,6 +22,7 @@
 
 #include "wirekrak/core.hpp"
 #include "common/cli/symbol.hpp"
+#include "common/loop/helpers.hpp"
 
 // -----------------------------------------------------------------------------
 // Lifecycle control
@@ -73,15 +74,18 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
-    book::Response book_msg;
-    while (running.load(std::memory_order_relaxed) && messages_received < 60) {
+    int idle_spins = 0;
+    bool did_work = false;
+    while (running.load(std::memory_order_relaxed) && messages_received < 60 && session.is_active()) {
         (void)session.poll();   // REQUIRED: drives all Core behavior
         // Drain book messages in a loop until empty, to ensure we process all messages received in this poll
         session.drain_book_messages([&](const book::Response& msg) {
             std::cout << " -> " << msg << std::endl;
             ++messages_received;
+            did_work = true;
         });
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        // Yield to avoid busy-waiting when idle
+        loop::manage_idle_spins(did_work, idle_spins);
     }
 
     // -------------------------------------------------------------------------

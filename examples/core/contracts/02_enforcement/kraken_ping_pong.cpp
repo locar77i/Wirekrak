@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
         if (session.try_load_status(last_status)) {
             std::cout << " -> " << last_status << std::endl;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::yield();
     }
 
     // -------------------------------------------------------------------------

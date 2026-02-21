@@ -47,6 +47,9 @@ enum class Error {
 
     // --- Fatal / unspecified transport failure ------------------------------
     TransportFailure, // Unclassified or unrecoverable transport failure
+
+    // --- Fatal / backpressure failure ---------------------------------------
+    Backpressure,     // User is not consuming control/data messages fast enough
 };
 
 
@@ -64,6 +67,7 @@ inline constexpr std::string_view to_string(Error err) noexcept {
     case Error::HandshakeFailed:   return "HandshakeFailed";
     case Error::ProtocolError:     return "ProtocolError";
     case Error::TransportFailure:  return "TransportFailure";
+    case Error::Backpressure:      return "Backpressure";
     default:                       return "Unknown";
     }
 }

@@ -126,7 +126,7 @@ Internal states:
 
 Transitions are driven exclusively through `transition_()`.
 
-State is not externally exposed beyond `get_state()`.
+State is not externally exposed - it would turns the FSM into public contract.
 
 ---
 

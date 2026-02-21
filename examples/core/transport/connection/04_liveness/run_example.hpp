@@ -215,7 +215,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     while (!ping_enabled && running.load(std::memory_order_relaxed)) {
         connection.poll();   // Poll-driven execution
         drain_signals();     // Drain any pending signals
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::yield();
     }
 
     // -------------------------------------------------------------------------
@@ -231,7 +231,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
             std::cout << "[example] RX message (" << block->size << " bytes)" << std::endl;
             connection.release_message();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::yield();
     }
 
     // -------------------------------------------------------------------------
@@ -243,7 +243,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     while (!connection.is_idle()) {
         connection.poll();   // Poll-driven execution
         drain_signals();     // Drain any pending signals
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::yield();
     }
 
     // -------------------------------------------------------------------------

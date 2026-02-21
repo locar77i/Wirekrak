@@ -59,12 +59,7 @@ inline std::wstring to_wide(const std::string& utf8) {
 }
 
 
-namespace wirekrak::core {
-namespace transport {
-
-constexpr static std::size_t RX_RING_CAPACITY = 64; // Capacity of the message ring buffer (number of messages)
-
-namespace winhttp {
+namespace wirekrak::core::transport::winhttp {
 
 template<ApiConcept Api = RealApi>
 class WebSocketImpl {
@@ -167,20 +162,23 @@ public:
         return ok;
     }
 
+    // Close - No guards and no early return (idempotent)
     inline void close() noexcept {
-        // Idempotent guard
-        if (!running_.exchange(false, std::memory_order_acq_rel)) {
-            return; // already closed or never started
-        }
-        // Close the WebSocket
+        // 1. Stop receive loop
+        running_.store(false, std::memory_order_release);
+
+        // 2. Cancel blocking receive (if still active)
         if (hWebSocket_) {
             WK_TRACE("[WS:API] Closing WebSocket ...");
             api_.websocket_close(hWebSocket_);
         }
-        // Join receive thread
+
+        // 3. Join thread if joinable
         if (recv_thread_.joinable()) {
             recv_thread_.join();
         }
+
+        // 4. Always release handles deterministically
         if (hWebSocket_) { WinHttpCloseHandle(hWebSocket_); hWebSocket_ = nullptr; }
         if (hRequest_)   { WinHttpCloseHandle(hRequest_);   hRequest_ = nullptr; }
         if (hConnect_)   { WinHttpCloseHandle(hConnect_);   hConnect_ = nullptr; }
@@ -231,13 +229,9 @@ private:
             // Acquire slot lazily (only when starting a message)
             if (!current_slot) {
                 current_slot = message_ring_.acquire_producer_slot();
-                if (!current_slot) {
-                    WK_WARN("[WS] Failed to prepare the next data block (backpressure) - transport correctness compromised (user is not draining fast enough)");
-                    // Future backpresusre policy (default:strict)
-                    // Wirekrak should never lie to the user or perform magic without explicit user instruction
-                    // Defensive action: close the connection to prevent further damage
-                    WK_FATAL("[WS] Forcing transport close to preserve correctness guarantees.");
-                    running_.store(false, std::memory_order_release);
+                if (!current_slot) [[unlikely]] {
+                    handle_fatal_error_("[WS] Failed to prepare the next data block (backpressure)"
+                        " - transport correctness compromised (user is not draining fast enough)", Error::Backpressure);
                     break;
                 }
                 current_size = 0;
@@ -245,6 +239,14 @@ private:
             // === Call WebSocket receive API ===
             WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
             DWORD remaining = websocket::RX_BUFFER_SIZE - current_size;
+            if (remaining == 0) [[unlikely]] {
+                handle_fatal_error_("[WS] Failed to receive incoming message (size exceeds buffer capacity)"
+                    " - transport correctness compromised (message will be truncated)", Error::ProtocolError);
+                // abandon current slot (not committed)
+                current_slot = nullptr;
+                current_size = 0;
+                break;
+            }
             DWORD result = api_.websocket_receive(
                 hWebSocket_,
                 current_slot->data + current_size,
@@ -257,13 +259,14 @@ private:
                 WK_TL1( telemetry_.receive_errors_total.inc() );
                 auto error = handle_receive_error_(result);
                 if (!control_events_.push(websocket::Event::make_error(error))) {
-                    handle_control_ring_full_();
+                    WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">  - Event lost in transport shutdown");
                 }
+                // Stop the loop and signal close
                 running_.store(false, std::memory_order_release);
-                // abandon current slot (not committed) and signal close
+                signal_close_();
+                // abandon current slot (not committed)
                 current_slot = nullptr;
                 current_size = 0;
-                signal_close_();
                 break;
             }
             else { // successful receive
@@ -274,11 +277,12 @@ private:
             // === Handle close frame ===
             if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) { // normal termination
                 WK_DEBUG("[WS] Received WebSocket close frame.");
+                // Stop the loop and signal close
                 running_.store(false, std::memory_order_release);
-                // abandon current slot (not committed) and signal close
+                signal_close_();
+                // abandon current slot (not committed)
                 current_slot = nullptr;
                 current_size = 0;
-                signal_close_();
                 break;
             }
             current_size += bytes;
@@ -346,14 +350,26 @@ private:
         }
         WK_TL1( telemetry_.close_events_total.inc() );
         if (!control_events_.push(websocket::Event::make_close())) {
-            handle_control_ring_full_();
+            WK_ERROR("[WS] Failed to emit close event (lost in transport shutdown)");
         }
     }
 
-    inline void handle_control_ring_full_() noexcept {
-        WK_WARN("[WS] Control event ring is full! Events may be lost.");
-        WK_FATAL("[WS] Forcing transport shutdown to preserve correctness guarantees.");
-        running_.store(false, std::memory_order_release);
+    inline void handle_fatal_error_(const char* message, Error error) noexcept {
+        WK_WARN(message);
+        // 1. Ensure only one thread performs fatal shutdown
+        // Future backpresusre policy (default:strict)
+        // Wirekrak should never lie to the user or perform magic without explicit user instruction
+        // Defensive action: close the connection to prevent further damage
+        if (!running_.exchange(false, std::memory_order_acq_rel)) {
+            return; // already shutting down
+        }
+        WK_FATAL("[WS] Forcing transport close to preserve correctness guarantees.");
+        // 2. Emit error event if possible
+        if (!control_events_.push(websocket::Event::make_error(error))) {
+            WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">  - Event lost in transport shutdown");
+        }
+        // 3. Signal close to ensure transport is fully closed (exactly-once guarded)
+        signal_close_();
     }
 
 private:
@@ -416,6 +432,4 @@ private:
 using WebSocket = WebSocketImpl<RealApi>;
 static_assert(WebSocketConcept<WebSocket>);
 
-} // namespace winhttp
-} // namespace transport
-} // namespace wirekrak::core
+} // namespace wirekrak::core::transport::winhttp

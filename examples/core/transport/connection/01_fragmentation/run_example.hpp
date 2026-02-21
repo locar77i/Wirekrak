@@ -126,6 +126,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     telemetry::Connection telemetry;
     Connection<WS> connection(telemetry);
+    bool disconnected = false;
 
     // -------------------------------------------------------------------------
     // Lambda to drain events
@@ -141,6 +142,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
 
                 case connection::Signal::Disconnected:
                     std::cout << "[example] Disconnect from " << name << " observed!" << std::endl;
+                    disconnected = true;
                     break;
 
                 case connection::Signal::RetryImmediate:
@@ -176,7 +178,9 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     // Main polling loop (runs until Ctrl+C)
     // -------------------------------------------------------------------------
-    while (running.load(std::memory_order_relaxed)) {
+    int idle_spins = 0;
+    bool did_work = false;
+    while (running.load(std::memory_order_relaxed) && !disconnected) {
         connection.poll();  // Poll-driven execution
         drain_signals();    // Drain any pending signals
         // Pull data-plane messages explicitly
@@ -186,8 +190,16 @@ inline int run_example(const char* name, const char* url, const char* descriptio
             // std::cout.write(block->data, block->size);
             // std::cout << "" << std::endl;
             connection.release_message();
+            did_work = true;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (did_work) {
+            idle_spins = 0;
+            did_work = false;
+        }
+        else if (++idle_spins > 100) {
+            std::this_thread::yield();
+            idle_spins = 0;
+        }
     }
 
     // -------------------------------------------------------------------------

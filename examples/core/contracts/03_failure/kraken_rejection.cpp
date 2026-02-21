@@ -21,30 +21,7 @@
 
 #include "wirekrak/core.hpp"
 #include "common/cli/minimal.hpp"
-
-
-// -----------------------------------------------------------------------------
-// Helper to drain all available messages
-// -----------------------------------------------------------------------------
-inline void drain_messages(wirekrak::core::kraken::Session& session) {
-    using namespace wirekrak::core::protocol::kraken::schema;
-
-    // Observe latest status
-    static status::Update last_status;
-    if (session.try_load_status(last_status)) {
-        std::cout << " -> " << last_status << std::endl;
-    }
-
-    // Drain protocol errors (required)
-    session.drain_rejection_messages([](const rejection::Notice& msg) {
-        std::cout << " -> " << msg << std::endl;
-    });
-
-    // Drain data-plane messages (required)
-    session.drain_trade_messages([](const trade::Response& msg) {
-        std::cout << " -> " << msg << std::endl;
-    });
-}
+#include "common/loop/helpers.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -90,12 +67,14 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     std::cout << "[example] Trade subscriptions (after subscribe): active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
 
+    int idle_spins = 0;
+    bool did_work = false;
     // Wait for a few transport lifetimes to prove rejection is not replayed
     auto epoch = session.transport_epoch();
     while (epoch < 3) {
         epoch = session.poll();
-        drain_messages(session);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        did_work = loop::drain_messages(session);
+        loop::manage_idle_spins(did_work, idle_spins);
     }
 
     // -------------------------------------------------------------------------
@@ -103,8 +82,8 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     while (!session.is_idle()) {
         (void)session.poll();
-        drain_messages(session);
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop::drain_messages(session);
+        std::this_thread::yield();
     }
 
     session.close();

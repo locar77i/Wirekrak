@@ -369,7 +369,7 @@ void test_retry_aborts_on_non_retriable_reconnect_failure() {
     TEST_CHECK(h.retry_immediate_signals == 1);    // retry cycle started
     TEST_CHECK(h.retry_schedule_signals == 0);     // MUST NOT schedule backoff
 
-    TEST_CHECK(h.connection->get_state() == State::Disconnected);
+    TEST_CHECK(!h.connection->is_active());
     TEST_CHECK(test::MockWebSocket::is_connected() == false);
 
     std::cout << "[TEST] OK\n";

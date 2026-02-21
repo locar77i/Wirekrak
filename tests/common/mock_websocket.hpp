@@ -17,7 +17,7 @@
 
 namespace wirekrak::core::transport::test {
 
-constexpr static std::size_t RX_RING_CAPACITY = 64; // Capacity of the message ring buffer (number of messages)
+constexpr static std::size_t RX_RING_CAPACITY = 8; // Capacity of the message ring buffer (number of messages)
 
 
 // NOTE:

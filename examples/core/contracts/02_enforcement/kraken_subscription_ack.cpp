@@ -23,30 +23,7 @@
 
 #include "wirekrak/core.hpp"
 #include "common/cli/symbol.hpp"
-
-
-// -----------------------------------------------------------------------------
-// Helper to drain all available messages
-// -----------------------------------------------------------------------------
-inline void drain_messages(wirekrak::core::kraken::Session& session) {
-    using namespace wirekrak::core::protocol::kraken::schema;
-
-    // Observe latest status
-    static status::Update last_status;
-    if (session.try_load_status(last_status)) {
-        std::cout << " -> " << last_status << std::endl;
-    }
-
-    // Drain protocol errors (required)
-    session.drain_rejection_messages([](const rejection::Notice& msg) {
-        std::cout << " -> " << msg << std::endl;
-    });
-
-    // Drain data-plane messages (required)
-    session.drain_trade_messages([](const trade::Response& msg) {
-        std::cout << " -> " << msg << std::endl;
-    });
-}
+#include "common/loop/helpers.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -105,13 +82,15 @@ int main(int argc, char** argv) {
     // Observe protocol ACKs and subscription state progression
     // (independent of transport reconnects or epoch changes)
     // -------------------------------------------------------------------------
+    int idle_spins = 0;
+    bool did_work = false;
     const auto& mgr = session.trade_subscriptions();
     auto observe_until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < observe_until) {
         (void)session.poll();
-        drain_messages(session);
+        did_work = loop::drain_messages(session);
         std::cout << "[example] Trade subscriptions: active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        loop::manage_idle_spins(did_work, idle_spins);
     }
 
     // -------------------------------------------------------------------------
@@ -119,8 +98,8 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     while (!session.is_idle()) {
         (void)session.poll();
-        drain_messages(session);
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        loop::drain_messages(session);
+        std::this_thread::yield();
     }
 
     session.close();

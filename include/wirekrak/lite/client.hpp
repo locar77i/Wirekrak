@@ -162,7 +162,7 @@ public:
     //   - This does NOT imply the connection is closed
     //
     // -----------------------------------------------------------------------------
-    void run_until_idle(std::chrono::milliseconds tick = std::chrono::milliseconds{10});
+    void run_until_idle(std::chrono::milliseconds tick = std::chrono::milliseconds{1});
 
     // -----------------------------------------------------------------------------
     // Run loop with external stop intent
@@ -188,7 +188,7 @@ public:
     //
     // -----------------------------------------------------------------------------
     template<class StopFn>
-    void run_while(StopFn&& should_continue, std::chrono::milliseconds tick = std::chrono::milliseconds{10}) {
+    void run_while(StopFn&& should_continue, std::chrono::milliseconds tick = std::chrono::milliseconds{1}) {
         const bool cooperative = (tick.count() > 0);
         // Loop while the user condition indicates to continue
         while (should_continue()) [[likely]] {
@@ -225,7 +225,7 @@ public:
     //
     // -----------------------------------------------------------------------------
     template<class StopFn>
-    void run_until(StopFn&& should_stop, std::chrono::milliseconds tick = std::chrono::milliseconds{10}) {
+    void run_until(StopFn&& should_stop, std::chrono::milliseconds tick = std::chrono::milliseconds{1}) {
         const bool cooperative = (tick.count() > 0);
         // Loop until either stop intent is observed
         while (!should_stop()) [[likely]] {
