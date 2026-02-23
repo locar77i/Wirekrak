@@ -173,7 +173,7 @@ Rings are sized to balance throughput vs memory footprint; the Manager uses spin
   - `segments_to_persist_` (SPMC) — ownership handoff for finished segments.
   - `segments_to_freeze_` (SPMC) — filenames to compress.
   - `segments_to_free_` (SPMC) — compressed filenames to delete.
-- **Local ring buffers** (`lcr::local::ring_buffer`) for recent WAL/LZ4 files for planning.
+- **Local ring buffers** (`lcr::local::ring`) for recent WAL/LZ4 files for planning.
 
 ---
 

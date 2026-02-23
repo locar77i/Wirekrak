@@ -131,6 +131,11 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     session.close();
 
+    // -------------------------------------------------------------------------
+    // Dump telemetry
+    // -------------------------------------------------------------------------
+    session.telemetry().debug_dump(std::cout);
+
     std::cout << "\n[SUCCESS] Control-plane interaction observed.\n";
     return 0;
 }

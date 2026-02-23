@@ -222,11 +222,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // -------------------------------------------------------------------------
     // Dump telemetry
     // -------------------------------------------------------------------------
-    std::cout << "\n=== Connection Telemetry ===" << std::endl;
-    telemetry.debug_dump(std::cout);
-
-    std::cout << "\n=== WebSocket Telemetry ===" << std::endl;
-    telemetry.websocket.debug_dump(std::cout);
+    connection.telemetry().debug_dump(std::cout);
 
     // -------------------------------------------------------------------------
     // How to read this

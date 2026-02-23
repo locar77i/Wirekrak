@@ -30,7 +30,7 @@ namespace local {
 //   - For cross-thread communication, use the SPSC variant.
 //
 // Example:
-//   ring_buffer<WalFile, 1024> wal_ring;
+//   ring<WalFile, 1024> wal_ring;
 //   wal_ring.push(WalFile{"wal_0001.log", 1024 * 1024, 1});
 //   WalFile oldest;
 //   if (wal_ring.pop(oldest)) {
@@ -46,17 +46,17 @@ namespace local {
 //   zero allocation, and cache efficiency are required (e.g. HFT, databases).
 //------------------------------------------------------------------------------
 template <typename T, size_t Capacity>
-class alignas(64) ring_buffer {
+class alignas(64) ring {
     static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0),
                   "Capacity must be power of two and >= 2");
 
 public:
-    ring_buffer() noexcept = default;
-    ~ring_buffer() noexcept = default;
+    ring() noexcept = default;
+    ~ring() noexcept = default;
 
     // Non-copyable / non-movable
-    ring_buffer(const ring_buffer&) = delete;
-    ring_buffer& operator=(const ring_buffer&) = delete;
+    ring(const ring&) = delete;
+    ring& operator=(const ring&) = delete;
 
     // Push (copy)
     inline bool push(const T& item) noexcept {

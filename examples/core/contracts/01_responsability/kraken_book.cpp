@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     int idle_spins = 0;
     bool did_work = false;
-    while (running.load(std::memory_order_relaxed)) {
+    while (running.load(std::memory_order_relaxed) && session.is_active()) {
         (void)session.poll();
         did_work = loop::drain_messages(session);
         // Yield to avoid busy-waiting when idle
@@ -107,9 +107,11 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    (void)session.unsubscribe(
-        book::Unsubscribe{ .symbols = params.symbols, .depth = params.depth }
-    );
+    if (session.is_active()) {
+        (void)session.unsubscribe(
+            book::Unsubscribe{ .symbols = params.symbols, .depth = params.depth }
+        );
+    }
 
     // -------------------------------------------------------------------------
     // Graceful shutdown: drain until protocol is idle and close session
@@ -121,6 +123,11 @@ int main(int argc, char** argv) {
     }
 
     session.close();
+
+    // -------------------------------------------------------------------------
+    // Dump telemetry
+    // -------------------------------------------------------------------------
+    session.telemetry().debug_dump(std::cout);
 
     std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
     return 0;

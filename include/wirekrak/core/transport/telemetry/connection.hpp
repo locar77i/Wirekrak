@@ -111,7 +111,9 @@ struct alignas(64) Connection final {
     }
 
     inline void debug_dump(std::ostream& os) const noexcept {
-        
+
+        os << "\n=== Connection Telemetry ===\n";
+
         // ---------------------------------------------------------------------
         // Lifecycle & state transitions
         // ---------------------------------------------------------------------
@@ -149,6 +151,11 @@ struct alignas(64) Connection final {
         os << "\nSend\n";
         os << "  Send calls            : " << lcr::format_number_exact(send_calls_total.load()) << '\n';
         os << "  Send rejected         : " << lcr::format_number_exact(send_rejected_total.load()) << '\n';
+
+        // ---------------------------------------------------------------------
+        // Sub-telemetry
+        // ---------------------------------------------------------------------
+        websocket.debug_dump(os);
     }
 
 };

@@ -374,7 +374,7 @@ private:
         auto r = system::pong::parse(root, resp);
         if (r == Result::Parsed) {
             // We intentionally overwrite the previous value: no backpressure, no queuing, freshness over history
-            ctx_view_.pong_slot.store(std::move(resp));
+            ctx_view_.pong_slot = std::move(resp);
             return Result::Delivered;
         }
         return r;
@@ -387,7 +387,7 @@ private:
         auto r = status::update::parse(root, resp);
         if (r == Result::Parsed) {
             // We intentionally overwrite the previous value: no backpressure, no queuing, freshness over history
-            ctx_view_.status_slot.store(std::move(resp));
+            ctx_view_.status_slot = std::move(resp);
             return Result::Delivered;
         }
         return r;

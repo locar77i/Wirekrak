@@ -1,26 +1,3 @@
-#pragma once
-
-#include <string>
-#include <string_view>
-#include <functional>
-#include <chrono>
-#include <memory>
-
-#include "wirekrak/core/transport/concepts.hpp"
-#include "wirekrak/core/transport/telemetry/connection.hpp"
-#include "wirekrak/core/transport/parse_url.hpp"
-#include "wirekrak/core/transport/state.hpp"
-#include "wirekrak/core/transport/connection/signal.hpp"
-#include "wirekrak/core/transport/websocket/events.hpp"
-#include "wirekrak/core/transport/websocket/data_block.hpp"
-#include "wirekrak/core/telemetry.hpp"
-#include "lcr/optional.hpp"
-#include "lcr/lockfree/spsc_ring.hpp"
-#include "lcr/log/logger.hpp"
-
-
-namespace wirekrak::core::transport {
-
 /*
 ===============================================================================
  wirekrak::core::transport::Connection
@@ -109,12 +86,35 @@ No level-based liveness or health state is exposed.
 ===============================================================================
 */
 
+#pragma once
+
+#include <string>
+#include <string_view>
+#include <functional>
+#include <chrono>
+#include <memory>
+
+#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/telemetry/connection.hpp"
+#include "wirekrak/core/transport/parse_url.hpp"
+#include "wirekrak/core/transport/state.hpp"
+#include "wirekrak/core/transport/connection/signal.hpp"
+#include "wirekrak/core/transport/websocket/events.hpp"
+#include "wirekrak/core/transport/websocket/data_block.hpp"
+#include "wirekrak/core/telemetry.hpp"
+#include "lcr/optional.hpp"
+#include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/log/logger.hpp"
+
+
+namespace wirekrak::core::transport {
+
 constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15); // default heartbeat timeout
 constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15); // default message timeout
 constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of liveness window is elapsed
 
 template <
-    transport::WebSocketConcept WS,
+    WebSocketConcept WS,
     typename MessageRing
 >
 class Connection {
@@ -386,6 +386,11 @@ public:
         ws_->release_message();
     }
 
+    [[nodiscard]]
+    inline telemetry::Connection& telemetry() noexcept {
+        return telemetry_;
+    }
+
 #ifdef WK_UNIT_TEST
 public:
     inline void force_last_message(std::chrono::steady_clock::time_point ts) noexcept{
@@ -408,7 +413,7 @@ private:
     // Data message queue (transport → connection/session)
     MessageRing& message_ring_;
 
-    transport::telemetry::Connection& telemetry_;   // Telemetry reference (not owned)
+    telemetry::Connection& telemetry_;   // Telemetry reference (not owned)
     std::unique_ptr<WS> ws_;                        // WebSocket instance (owned by Connection)
 
     // Current transport epoch (incremented on each websocket connection: exposed progress signal.)
@@ -707,7 +712,6 @@ private:
             case Error::ConnectionFailed:
             case Error::HandshakeFailed:
             case Error::Timeout:
-            case Error::Backpressure:
             case Error::RemoteClosed:
             // “unknown but bad” failure -> retry (conservative default)
             case Error::TransportFailure:
@@ -717,6 +721,7 @@ private:
             // caller or logic errors -> no retry
             case Error::InvalidUrl:
             case Error::InvalidState:
+            case Error::Backpressure:
             case Error::Cancelled:
             // protocol corruption -> no retry
             case Error::ProtocolError:

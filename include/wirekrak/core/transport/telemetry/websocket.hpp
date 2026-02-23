@@ -86,6 +86,7 @@ struct alignas(64) WebSocket final {
 
     inline void debug_dump(std::ostream& os) const noexcept {
 
+        os << "\n=== WebSocket Telemetry ===\n";
         // ---------------------------------------------------------------------
         // Traffic (cumulative)
         // ---------------------------------------------------------------------

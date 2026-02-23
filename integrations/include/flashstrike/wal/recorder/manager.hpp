@@ -25,7 +25,7 @@
 #include "flashstrike/wal/recorder/worker/meta_coordinator.hpp"
 #include "flashstrike/wal/recorder/telemetry.hpp"
 #include "flashstrike/wal/utils.hpp"
-#include "lcr/local/ring_buffer.hpp"
+#include "lcr/local/ring.hpp"
 #include "lcr/lockfree/spmc_task_ring.hpp"
 #include "lcr/system/cpu_relax.hpp"
 #include "lcr/system/monotonic_clock.hpp"
@@ -223,9 +223,9 @@ private:
     std::vector<std::string> wals_;
     std::vector<std::string> lz4s_;
 
-    lcr::local::ring_buffer<std::string, WAL_HOT_RING_BUFFER_SIZE> wal_files_{};
+    lcr::local::ring<std::string, WAL_HOT_RING_BUFFER_SIZE> wal_files_{};
 
-    lcr::local::ring_buffer<std::string, WAL_COLD_RING_BUFFER_SIZE> lz4_files_{};
+    lcr::local::ring<std::string, WAL_COLD_RING_BUFFER_SIZE> lz4_files_{};
 
     telemetry::SegmentWriter& segment_writer_metrics_;
     telemetry::ManagerUpdater metrics_updater_;

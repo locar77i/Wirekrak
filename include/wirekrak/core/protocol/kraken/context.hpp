@@ -12,8 +12,7 @@
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe_ack.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe_ack.hpp"
-#include "lcr/lockfree/spsc_ring.hpp"
-#include "lcr/lockfree/slot/last_value_snapshot.hpp"
+#include "lcr/local/ring.hpp"
 
 
 namespace wirekrak::core::protocol::kraken {
@@ -37,24 +36,24 @@ struct Context {
     std::uint64_t& heartbeat_total;
     std::chrono::steady_clock::time_point& last_heartbeat_ts;
 
-    // Output rings for pong messages
-    lcr::lockfree::slot::last_value_snapshot<schema::system::Pong> pong_slot{};
+    // Last pong message
+    lcr::optional<schema::system::Pong> pong_slot{};
 
-    // Output rings for status channel
-    lcr::lockfree::slot::last_value_snapshot<schema::status::Update> status_slot{};
+    // Last status message
+    lcr::optional<schema::status::Update> status_slot{};
 
     // Output rings for rejection notices
-    lcr::lockfree::spsc_ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY> rejection_ring{};
+    lcr::local::ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY> rejection_ring{};
 
     // Output rings for trade channel
-    lcr::lockfree::spsc_ring<schema::trade::Response, config::TRADE_RING_CAPACITY> trade_ring{};
-    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, config::ACK_RING_CAPACITY> trade_subscribe_ring{};
-    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, config::ACK_RING_CAPACITY> trade_unsubscribe_ring{};
+    lcr::local::ring<schema::trade::Response, config::TRADE_RING_CAPACITY> trade_ring{};
+    lcr::local::ring<schema::trade::SubscribeAck, config::ACK_RING_CAPACITY> trade_subscribe_ring{};
+    lcr::local::ring<schema::trade::UnsubscribeAck, config::ACK_RING_CAPACITY> trade_unsubscribe_ring{};
 
     // Output rings for book channel
-    lcr::lockfree::spsc_ring<schema::book::Response, config::BOOK_RING_CAPACITY> book_ring{};
-    lcr::lockfree::spsc_ring<schema::book::SubscribeAck, config::ACK_RING_CAPACITY> book_subscribe_ring{};
-    lcr::lockfree::spsc_ring<schema::book::UnsubscribeAck, config::ACK_RING_CAPACITY> book_unsubscribe_ring{};
+    lcr::local::ring<schema::book::Response, config::BOOK_RING_CAPACITY> book_ring{};
+    lcr::local::ring<schema::book::SubscribeAck, config::ACK_RING_CAPACITY> book_subscribe_ring{};
+    lcr::local::ring<schema::book::UnsubscribeAck, config::ACK_RING_CAPACITY> book_unsubscribe_ring{};
 
     // ------------------------------------------------------------
     // Construction from owning Context
@@ -99,24 +98,24 @@ struct ContextView {
     std::uint64_t& heartbeat_total;
     std::chrono::steady_clock::time_point& last_heartbeat_ts;
 
-    // Output rings for pong messages
-    lcr::lockfree::slot::last_value_snapshot<schema::system::Pong>& pong_slot;
+    // Last pong message
+    lcr::optional<schema::system::Pong>& pong_slot;
 
-    // Status
-    lcr::lockfree::slot::last_value_snapshot<schema::status::Update>& status_slot;
+    // Last status message
+    lcr::optional<schema::status::Update>& status_slot;
 
     // Output rings for rejection notices
-    lcr::lockfree::spsc_ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY>& rejection_ring;
+    lcr::local::ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY>& rejection_ring;
 
     // Output rings for trade channel
-    lcr::lockfree::spsc_ring<schema::trade::Response, config::TRADE_RING_CAPACITY>& trade_ring;
-    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, config::ACK_RING_CAPACITY>& trade_subscribe_ring;
-    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, config::ACK_RING_CAPACITY>& trade_unsubscribe_ring;
+    lcr::local::ring<schema::trade::Response, config::TRADE_RING_CAPACITY>& trade_ring;
+    lcr::local::ring<schema::trade::SubscribeAck, config::ACK_RING_CAPACITY>& trade_subscribe_ring;
+    lcr::local::ring<schema::trade::UnsubscribeAck, config::ACK_RING_CAPACITY>& trade_unsubscribe_ring;
 
     // Output rings for book channel
-    lcr::lockfree::spsc_ring<schema::book::Response, config::BOOK_RING_CAPACITY>& book_ring;
-    lcr::lockfree::spsc_ring<schema::book::SubscribeAck, config::ACK_RING_CAPACITY>& book_subscribe_ring;
-    lcr::lockfree::spsc_ring<schema::book::UnsubscribeAck, config::ACK_RING_CAPACITY>& book_unsubscribe_ring;
+    lcr::local::ring<schema::book::Response, config::BOOK_RING_CAPACITY>& book_ring;
+    lcr::local::ring<schema::book::SubscribeAck, config::ACK_RING_CAPACITY>& book_subscribe_ring;
+    lcr::local::ring<schema::book::UnsubscribeAck, config::ACK_RING_CAPACITY>& book_unsubscribe_ring;
 
     // ------------------------------------------------------------
     // Construction from owning Context

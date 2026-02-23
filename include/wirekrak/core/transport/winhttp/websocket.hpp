@@ -207,6 +207,11 @@ public:
         message_ring_.release_consumer_slot();
     }
 
+    [[nodiscard]]
+    inline telemetry::WebSocket& telemetry() noexcept {
+        return telemetry_;
+    }
+
 private:
     // The receive loop is the heart of the transport's receive path.
     // Key features:

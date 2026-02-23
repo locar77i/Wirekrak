@@ -78,7 +78,7 @@ Data-plane model:
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/local/raw_buffer.hpp"
-#include "lcr/local/ring_buffer.hpp"
+#include "lcr/local/ring.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/sequence.hpp"
 
@@ -134,7 +134,11 @@ public:
     // -----------------------------------------------------------------------------
     [[nodiscard]]
     inline bool try_load_pong(schema::system::Pong& out) noexcept {
-        return ctx_.pong_slot.try_load(out);
+        if (ctx_.pong_slot.has()) [[likely]] {
+            out = ctx_.pong_slot.value();
+            return true;
+        }
+        return false;
     }
 
     // -----------------------------------------------------------------------------
@@ -158,7 +162,11 @@ public:
     // -----------------------------------------------------------------------------
     [[nodiscard]]
     inline bool try_load_status(schema::status::Update& out) noexcept {
-        return ctx_.status_slot.try_load(out);
+        if (ctx_.status_slot.has()) [[likely]] {
+            out = ctx_.status_slot.value();
+            return true;
+        }
+        return false;
     }
 
     // -----------------------------------------------------------------------------
@@ -605,6 +613,11 @@ public:
         return replay_db_;
     }
 
+    [[nodiscard]]
+    inline transport::telemetry::Connection& telemetry() noexcept {
+        return connection_.telemetry();
+    }
+
 #ifdef WK_UNIT_TEST
 public:
         transport::Connection<WS, MessageRing>& connection() {
@@ -644,7 +657,7 @@ private:
 
     // User-visible rejection queue.
     // Decoupled from internal protocol processing to prevent user behavior from affecting Core correctness.
-    lcr::local::ring_buffer<schema::rejection::Notice, config::REJECTION_RING_CAPACITY> user_rejection_buffer_;
+    lcr::local::ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY> user_rejection_buffer_;
 
     // Channel subscription managers
     channel::Manager trade_channel_manager_{Channel::Trade};

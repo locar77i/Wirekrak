@@ -96,6 +96,11 @@ int main(int argc, char** argv) {
 
     session.close();
 
+    // -------------------------------------------------------------------------
+    // Dump telemetry
+    // -------------------------------------------------------------------------
+    session.telemetry().debug_dump(std::cout);
+
     std::cout << "[example] Trade subscriptions (after close): active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
 
     std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
