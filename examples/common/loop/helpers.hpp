@@ -59,7 +59,13 @@ inline bool drain_messages(wirekrak::core::protocol::kraken::SessionT& session) 
         did_work = true;
     });
 
-    // Drain data-plane messages (required)
+    // Drain data-plane trade messages (required)
+    session.drain_trade_messages([&](const trade::Response& msg) {
+        std::cout << " -> " << msg << std::endl;
+        did_work = true;
+    });
+
+    // Drain data-plane book messages (required)
     session.drain_book_messages([&](const book::Response& msg) {
         std::cout << " -> " << msg << std::endl;
         did_work = true;

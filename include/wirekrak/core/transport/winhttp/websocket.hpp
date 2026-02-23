@@ -144,25 +144,29 @@ public:
     // A boolean “accepted / not accepted” is the honest signal.
     // Errors are reported asynchronously via the error callback.
     [[nodiscard]]
-    inline bool send(const std::string& msg) noexcept {
-        if (!hWebSocket_) {
+    inline bool send(std::string_view msg) noexcept {
+        // 1. Check preconditions (connected state)
+        if (!hWebSocket_) [[unlikely]] {
             WK_ERROR("[WS] send() called on unconnected WebSocket");
             return false;
         }
+        // 2. Call WebSocket send API
         WK_TRACE("[WS:API] Sending message ... (size " << msg.size() << ")");
-        const bool ok = api_.websocket_send(
-                   hWebSocket_,
-                   WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE,
-                   (void*)msg.data(),
-                   (DWORD)msg.size()) == ERROR_SUCCESS;
-        if (!ok) [[unlikely]] {
+        const DWORD result = api_.websocket_send(
+            hWebSocket_,
+            WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE,
+            const_cast<char*>(msg.data()),
+            static_cast<DWORD>(msg.size())
+        );
+        // 3. Handle possible errors
+        if (result != ERROR_SUCCESS) [[unlikely]] {
             WK_ERROR("[WS] websocket_send() failed");
+            return false;
         }
-        else {
-            WK_TL1( telemetry_.bytes_tx_total.inc(msg.size()) );
-            WK_TL1( telemetry_.messages_tx_total.inc() );
-        }
-        return ok;
+        // 4. Update telemetry
+        WK_TL1( telemetry_.bytes_tx_total.inc(msg.size()) );
+        WK_TL1( telemetry_.messages_tx_total.inc() );
+        return true;
     }
 
     // Close - No guards and no early return (idempotent)

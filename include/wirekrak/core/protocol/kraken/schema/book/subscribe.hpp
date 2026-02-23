@@ -37,65 +37,123 @@ struct Subscribe {
     lcr::optional<bool> snapshot{};           // default: true
     lcr::optional<ctrl::req_id_t> req_id{};
 
+    // ---------------------------------------------------------------------
+    // Runtime maximum JSON size computation
+    // ---------------------------------------------------------------------
     [[nodiscard]]
-    std::string to_json() const {
+    inline std::size_t max_json_size() const noexcept {
+        // Base structure constant part
+        // {"method":"subscribe","params":{"channel":"book","symbol":[]}}
+        std::size_t size = 96;
+
+        // Symbols (worst-case escaping: 6x expansion)
+        for (const auto& s : symbols) {
+            size += 2;                 // quotes
+            size += 6 * s.size();      // worst-case escape
+            size += 1;                 // comma
+        }
+
+        // depth field
+        if (depth.has()) {
+            size += 16; // ,"depth": + number
+        }
+
+        // snapshot field
+        if (snapshot.has()) {
+            size += 20; // ,"snapshot":true/false
+        }
+
+        // req_id field
+        if (req_id.has()) {
+            size += 24; // ,"req_id":18446744073709551615
+        }
+
+        return size + 4; // closing braces safety
+    }
+
+    // ---------------------------------------------------------------------
+    // Allocation-free JSON writer
+    // ---------------------------------------------------------------------
+    [[nodiscard]]
+    inline std::size_t write_json(char* buffer) const noexcept {
 #ifndef NDEBUG
         request::validate_symbols(symbols);
         request::validate_req_id(req_id);
-        // Optional field validation
         if (depth.has()) {
-            assert(book::is_valid_depth(depth.value()) && "Invalid Kraken book depth value");
+            assert(book::is_valid_depth(depth.value()));
         }
 #endif
-        std::string j;
-        j.reserve(256);
 
-        j += "{\"method\":\"subscribe\",\"params\":{";
-        j += "\"channel\":\"book\",";
+        std::size_t pos = 0;
 
-        // -------------------------------------------
-        // symbols array (required)
-        // -------------------------------------------
-        j += "\"symbol\":[";
-        for (size_t i = 0; i < symbols.size(); ++i) {
-            j += "\"";
-            j += lcr::json::escape(symbols[i]);
-            j += "\"";
+        // Prefix
+        static constexpr char prefix[] =
+            "{\"method\":\"subscribe\",\"params\":{"
+            "\"channel\":\"book\","
+            "\"symbol\":[";
+        std::memcpy(buffer + pos, prefix, sizeof(prefix) - 1);
+        pos += sizeof(prefix) - 1;
+
+        // Symbols
+        for (std::size_t i = 0; i < symbols.size(); ++i) {
+            buffer[pos++] = '"';
+            pos += lcr::json::escape(buffer + pos, symbols[i]);
+            buffer[pos++] = '"';
+
             if (i + 1 < symbols.size())
-                j += ",";
+                buffer[pos++] = ',';
         }
-        j += "]";
 
-        // -------------------------------------------
-        // depth (optional)
-        // -------------------------------------------
+        buffer[pos++] = ']';
+
+        // depth
         if (depth.has()) {
-            j += ",\"depth\":";
-            lcr::json::append(j, depth.value());
+            static constexpr char depth_prefix[] = ",\"depth\":";
+            std::memcpy(buffer + pos, depth_prefix, sizeof(depth_prefix) - 1);
+            pos += sizeof(depth_prefix) - 1;
+            pos += lcr::json::append(buffer + pos, depth.value());
         }
 
-        // -------------------------------------------
-        // snapshot (optional)
-        // -------------------------------------------
+        // snapshot
         if (snapshot.has()) {
-            j += ",\"snapshot\":";
-            j += (snapshot.value() ? "true" : "false");
+            static constexpr char snap_prefix[] = ",\"snapshot\":";
+            std::memcpy(buffer + pos, snap_prefix, sizeof(snap_prefix) - 1);
+            pos += sizeof(snap_prefix) - 1;
+
+            if (snapshot.value()) {
+                static constexpr char t[] = "true";
+                std::memcpy(buffer + pos, t, 4);
+                pos += 4;
+            } else {
+                static constexpr char f[] = "false";
+                std::memcpy(buffer + pos, f, 5);
+                pos += 5;
+            }
         }
 
-        j += "}"; // close params
+        buffer[pos++] = '}'; // close params
 
-        // -------------------------------------------
-        // req_id (optional)
-        // -------------------------------------------
+        // req_id
         if (req_id.has()) {
-            j += ",\"req_id\":";
-            lcr::json::append(j, req_id.value());
+            static constexpr char req_prefix[] = ",\"req_id\":";
+            std::memcpy(buffer + pos, req_prefix, sizeof(req_prefix) - 1);
+            pos += sizeof(req_prefix) - 1;
+            pos += lcr::json::append(buffer + pos, req_id.value());
         }
 
-        j += "}"; // close json
+        buffer[pos++] = '}'; // close json
 
-        return j;
+        return pos;
     }
+
+#ifndef WIREKRAK_NO_ALLOCATIONS
+    // Convenience method (allocating) for tests / logging.
+    std::string to_json() const {
+        char buffer[4096]; // more than enough for any realistic subscription request
+        std::size_t size = write_json(buffer);
+        return std::string(buffer, size);
+    }
+#endif // WIREKRAK_NO_ALLOCATIONS
 };
 
 } // namespace book

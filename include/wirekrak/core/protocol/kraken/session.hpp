@@ -60,10 +60,12 @@ Data-plane model:
 #include <chrono>
 #include <utility>
 
-#include "wirekrak/core/config/ring_sizes.hpp"
+
 #include "wirekrak/core/transport/concepts.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/protocol/config.hpp"
+#include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/policy/liveness.hpp"
 #include "wirekrak/core/protocol/policy/symbol_limit.hpp"
@@ -75,6 +77,7 @@ Data-plane model:
 #include "wirekrak/core/protocol/kraken/channel/manager.hpp"
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
 #include "lcr/log/logger.hpp"
+#include "lcr/local/raw_buffer.hpp"
 #include "lcr/local/ring_buffer.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/sequence.hpp"
@@ -231,7 +234,7 @@ public:
     inline void ping() noexcept{
         schema::system::Ping req{.req_id = ctrl::PING_ID};
         WK_DEBUG("[SESSION] Sending ping message: " << req.to_json());
-        send_raw_request_(req);
+        (void)send_request_(req);
     }
 
     template <request::Subscription RequestT>
@@ -266,8 +269,7 @@ public:
         replay_db_.add(req);
         // 6) Send JSON BEFORE moving req.symbols
         WK_DEBUG("[SESSION] Sending subscribe message: " << req.to_json());
-        if (!connection_.send(req.to_json())) {
-            WK_ERROR("[SESSION] Failed to send subscription request for req_id=" << lcr::to_string(req.req_id));
+        if (!send_request_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
         return req.req_id.value();
@@ -320,8 +322,7 @@ public:
         }
         // 2) Send JSON BEFORE moving req.symbols
         WK_DEBUG("[SESSION] Sending unsubscribe message: " << req.to_json());
-        if (!connection_.send(req.to_json())) {
-            WK_ERROR("[SESSION] Failed to send unsubscription request for req_id=" << lcr::to_string(req.req_id));
+        if (!send_request_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
         // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
@@ -629,6 +630,9 @@ private:
     // Liveness policy
     policy::Liveness liveness_policy_{policy::Liveness::Passive};
 
+    // Temporary buffer for request serialization (to avoid heap allocations)
+    lcr::local::raw_buffer<config::TX_BUFFER_CAPACITY> tx_buffer_{};
+
     // Session context (owning)
     Context ctx_;
 
@@ -640,7 +644,7 @@ private:
 
     // User-visible rejection queue.
     // Decoupled from internal protocol processing to prevent user behavior from affecting Core correctness.
-    lcr::local::ring_buffer<schema::rejection::Notice, config::rejection_ring> user_rejection_buffer_;
+    lcr::local::ring_buffer<schema::rejection::Notice, config::REJECTION_RING_CAPACITY> user_rejection_buffer_;
 
     // Channel subscription managers
     channel::Manager trade_channel_manager_{Channel::Trade};
@@ -698,9 +702,7 @@ private:
         replay_db_.add(req);
         // 4) Send JSON BEFORE moving req.symbols
         WK_DEBUG("[SESSION] Sending re-subscribe message: " << req.to_json());
-        if (!connection_.send(req.to_json())) {
-            WK_ERROR("[SESSION] Failed to send re-subscription request (req_id=" << lcr::to_string(req.req_id) << ")");
-        }
+        (void)send_request_(req);
     }
 
     inline void handle_disconnect_() {
@@ -768,21 +770,99 @@ private:
         // else if constexpr (...) return ticker_handlers_;
     }    
 
-    // Send raw request (used for control messages)
-    template <request::Control RequestT>
-    inline void send_raw_request_(RequestT req) {
-        static_assert(request::ValidRequestIntent<RequestT>,
-            "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
-        );
-        // 1) Assign req_id if missing
+
+    // -----------------------------------------------------------------------------
+    // Send request (unified entry point)
+    // -----------------------------------------------------------------------------
+    // Unified send_request_ that dispatches to the appropriate implementation
+    // based on the request type's JSON writability category.
+    // - One API
+    // - Two implementations
+    // - Compile-time dispatch
+    // - Zero runtime overhead
+    // -----------------------------------------------------------------------------
+
+    template <typename RequestT>
+    requires StaticJsonWritable<RequestT> && request::ValidRequestIntent<RequestT>
+    [[nodiscard]]
+    inline bool send_request_(RequestT req)
+    {
+        return send_static_request_(std::move(req));
+    }
+
+    template <typename RequestT>
+    requires DynamicJsonWritable<RequestT> && request::ValidRequestIntent<RequestT>
+    [[nodiscard]]
+    inline bool send_request_(RequestT req)
+    {
+        return send_dynamic_request_(std::move(req));
+    }
+
+    // -----------------------------------------------------------------------------
+    // Send request with compile-time bounded JSON size
+    // -----------------------------------------------------------------------------
+    template <typename RequestT>
+    requires StaticJsonWritable<RequestT> && request::ValidRequestIntent<RequestT>
+    [[nodiscard]]
+    inline bool send_static_request_(RequestT req) {
+        // 0. Static assertions to ensure correct usage of this helper
+        static_assert(request::ValidRequestIntent<RequestT>, "Invalid request type: must define exactly one intent tag");
+        // 1. Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
         }
-        std::string json = req.to_json();
-        if (!connection_.send(json)) {
-            WK_ERROR("[SESSION] Failed to send raw message: " << json);
+        // 2. Serialize to JSON (into stack buffer to avoid heap allocation)
+        char buffer[RequestT::max_json_size()];
+        const std::size_t size = req.write_json(buffer);
+#ifndef NDEBUG
+        assert(size <= RequestT::max_json_size());
+#endif
+        // 3. Send the request
+        std::string_view msg{buffer, size};
+        WK_DEBUG("[SESSION] Sending request: " << msg);
+        if (!connection_.send(msg)) {
+            WK_ERROR("[SESSION] Failed to send request (req_id=" << lcr::to_string(req.req_id) << ") - " << msg);
+            return false;
         }
+        return true;
     }
+
+
+    // -----------------------------------------------------------------------------
+    // Send request with runtime-computed JSON size
+    // -----------------------------------------------------------------------------
+    template <typename RequestT>
+    requires DynamicJsonWritable<RequestT> && request::ValidRequestIntent<RequestT>
+    [[nodiscard]]
+    inline bool send_dynamic_request_(RequestT req) {
+        // 0. Static assertions to ensure correct usage of this helper
+        static_assert(request::ValidRequestIntent<RequestT>, "Invalid request type: must define exactly one intent tag");
+        // 1. Assign req_id if missing
+        if (!req.req_id.has()) {
+            req.req_id = req_id_seq_.next();
+        }
+        // 2. Serialize to JSON (into stack buffer to avoid heap allocation)
+        const std::size_t required = req.max_json_size();
+        if (required > config::TX_BUFFER_CAPACITY) [[unlikely]] {
+            WK_FATAL("[SESSION] JSON exceeds TX buffer capacity");
+            return false;
+        }
+        tx_buffer_.reset();
+        const std::size_t size = req.write_json(tx_buffer_.data());
+        tx_buffer_.set_size(size);
+    #ifndef NDEBUG
+        assert(size <= required);
+    #endif
+        // 3. Send the request
+        std::string_view msg{tx_buffer_.data(), tx_buffer_.size()};
+        WK_DEBUG("[SESSION] Sending request: " << msg);
+        if (!connection_.send(msg)) {
+            WK_ERROR("[SESSION] Failed to send request (req_id=" << lcr::to_string(req.req_id) << ") - " << msg);
+            return false;
+        }
+        return true;
+    }
+
 };
 
 

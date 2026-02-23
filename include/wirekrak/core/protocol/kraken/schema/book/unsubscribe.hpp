@@ -37,57 +37,104 @@ struct Unsubscribe {
     lcr::optional<std::uint32_t> depth{};
     lcr::optional<ctrl::req_id_t> req_id{};
 
+    // ---------------------------------------------------------------------
+    // Runtime maximum JSON size computation
+    // ---------------------------------------------------------------------
     [[nodiscard]]
-    std::string to_json() const {
+    inline std::size_t max_json_size() const noexcept
+    {
+        // Base:
+        // {"method":"unsubscribe","params":{"channel":"book","symbol":[]}}
+        std::size_t size = 88;
+
+        // Symbols (worst-case escape expansion 6x)
+        for (const auto& s : symbols) {
+            size += 2;               // quotes
+            size += 6 * s.size();    // worst-case escape
+            size += 1;               // comma
+        }
+
+        // depth
+        if (depth.has()) {
+            size += 16; // ,"depth": + number
+        }
+
+        // req_id
+        if (req_id.has()) {
+            size += 24; // ,"req_id":18446744073709551615
+        }
+
+        return size + 4; // closing braces safety
+    }
+
+    // ---------------------------------------------------------------------
+    // Allocation-free JSON writer
+    // ---------------------------------------------------------------------
+    [[nodiscard]]
+    inline std::size_t write_json(char* buffer) const noexcept
+    {
 #ifndef NDEBUG
         request::validate_symbols(symbols);
         request::validate_req_id(req_id);
-        // Optional field validation
         if (depth.has()) {
-            assert(book::is_valid_depth(depth.value()) && "Invalid Kraken book depth value");
+            assert(book::is_valid_depth(depth.value()));
         }
 #endif
-        std::string j;
-        j.reserve(256);
 
-        j += "{\"method\":\"unsubscribe\",\"params\":{";
-        j += "\"channel\":\"book\",";
+        std::size_t pos = 0;
 
-        // -------------------------------------------
-        // symbols array (required)
-        // -------------------------------------------
-        j += "\"symbol\":[";
-        for (size_t i = 0; i < symbols.size(); ++i) {
-            j += "\"";
-            j += lcr::json::escape(symbols[i]);
-            j += "\"";
+        // Prefix
+        static constexpr char prefix[] =
+            "{\"method\":\"unsubscribe\",\"params\":{"
+            "\"channel\":\"book\","
+            "\"symbol\":[";
+        std::memcpy(buffer + pos, prefix, sizeof(prefix) - 1);
+        pos += sizeof(prefix) - 1;
+
+        // Symbols
+        for (std::size_t i = 0; i < symbols.size(); ++i) {
+            buffer[pos++] = '"';
+            pos += lcr::json::escape(buffer + pos, symbols[i]);
+            buffer[pos++] = '"';
+
             if (i + 1 < symbols.size())
-                j += ",";
+                buffer[pos++] = ',';
         }
-        j += "]";
 
-        // -------------------------------------------
-        // depth (optional)
-        // -------------------------------------------
+        buffer[pos++] = ']';
+
+        // depth
         if (depth.has()) {
-            j += ",\"depth\":";
-            lcr::json::append(j, depth.value());
+            static constexpr char depth_prefix[] = ",\"depth\":";
+            std::memcpy(buffer + pos, depth_prefix, sizeof(depth_prefix) - 1);
+            pos += sizeof(depth_prefix) - 1;
+            pos += lcr::json::append(buffer + pos, depth.value());
         }
 
-        j += "}"; // close params
+        buffer[pos++] = '}'; // close params
 
-        // -------------------------------------------
-        // req_id (optional)
-        // -------------------------------------------
+        // req_id
         if (req_id.has()) {
-            j += ",\"req_id\":";
-            lcr::json::append(j, req_id.value());
+            static constexpr char req_prefix[] = ",\"req_id\":";
+            std::memcpy(buffer + pos, req_prefix, sizeof(req_prefix) - 1);
+            pos += sizeof(req_prefix) - 1;
+            pos += lcr::json::append(buffer + pos, req_id.value());
         }
 
-        j += "}"; // close json
+        buffer[pos++] = '}'; // close entire JSON
 
-        return j;
+        return pos;
     }
+
+#ifndef WIREKRAK_NO_ALLOCATIONS
+    // Convenience method (allocating) for tests / logging.
+    std::string to_json() const {
+        char buffer[4096]; // more than enough for any realistic subscription request
+        std::size_t size = write_json(buffer);
+        return std::string(buffer, size);
+    }
+#endif // WIREKRAK_NO_ALLOCATIONS
+
 };
 
 } // namespace book

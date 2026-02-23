@@ -198,14 +198,17 @@ public:
 
     // Sending
     [[nodiscard]]
-    inline bool send(std::string_view text) noexcept {
-        WK_TL1( telemetry_.send_calls_total.inc() ); // This represents explicit user intent
+    inline bool send(std::string_view msg) noexcept {
+        // 1. Update telemetry - this represents explicit user intent
+        WK_TL1( telemetry_.send_calls_total.inc() );
+        // 2. Check preconditions (connected state)
         if (get_state_() != State::Connected) {
             WK_WARN("[CONN] send() called while not connected (state: " << to_string(get_state_()) << "). Ignoring.");
             WK_TL1( telemetry_.send_rejected_total.inc() ); // Reflects connection-level gating
             return false;
         }
-        if (ws_->send(std::string(text))) {
+        // 3. Call WebSocket send API
+        if (ws_->send(msg)) {
             // Update tx message count and timestamp
             ++tx_messages_;
             last_message_ts_ = std::chrono::steady_clock::now();

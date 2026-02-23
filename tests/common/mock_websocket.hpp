@@ -48,8 +48,8 @@ public:
         return next_connect_result_;
     }
 
-    inline bool send(const std::string&) noexcept {
-        WK_DEBUG("[MockWebSocket] send() called");
+    inline bool send(std::string_view msg) noexcept {
+        WK_DEBUG("[MockWebSocket] send() called: " << msg);
         return connected_;
     }
 

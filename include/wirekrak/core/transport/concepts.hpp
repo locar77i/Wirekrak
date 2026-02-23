@@ -50,6 +50,7 @@ Connection / Session:
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <concepts>
 
 #include "wirekrak/core/transport/error.hpp"
@@ -66,7 +67,7 @@ concept WebSocketConcept =
         const std::string& host,
         const std::string& port,
         const std::string& path,
-        const std::string& msg,
+        const std::string_view msg,
         websocket::Event ev,
         websocket::DataBlock* block
     )

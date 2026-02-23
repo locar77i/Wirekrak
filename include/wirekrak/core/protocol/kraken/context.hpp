@@ -2,7 +2,7 @@
 
 #include <chrono>
 
-#include "wirekrak/core/config/ring_sizes.hpp"
+#include "wirekrak/core/protocol/config.hpp"
 #include "wirekrak/core/protocol/kraken/schema/rejection_notice.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/pong.hpp"
 #include "wirekrak/core/protocol/kraken/schema/status/update.hpp"
@@ -12,7 +12,6 @@
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe_ack.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe_ack.hpp"
-
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/lockfree/slot/last_value_snapshot.hpp"
 
@@ -45,17 +44,17 @@ struct Context {
     lcr::lockfree::slot::last_value_snapshot<schema::status::Update> status_slot{};
 
     // Output rings for rejection notices
-    lcr::lockfree::spsc_ring<schema::rejection::Notice, config::rejection_ring> rejection_ring{};
+    lcr::lockfree::spsc_ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY> rejection_ring{};
 
     // Output rings for trade channel
-    lcr::lockfree::spsc_ring<schema::trade::Response, config::trade_update_ring> trade_ring{};
-    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, config::subscribe_ack_ring> trade_subscribe_ring{};
-    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, config::unsubscribe_ack_ring> trade_unsubscribe_ring{};
+    lcr::lockfree::spsc_ring<schema::trade::Response, config::TRADE_RING_CAPACITY> trade_ring{};
+    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, config::ACK_RING_CAPACITY> trade_subscribe_ring{};
+    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, config::ACK_RING_CAPACITY> trade_unsubscribe_ring{};
 
     // Output rings for book channel
-    lcr::lockfree::spsc_ring<schema::book::Response, config::book_update_ring> book_ring{};
-    lcr::lockfree::spsc_ring<schema::book::SubscribeAck, config::subscribe_ack_ring> book_subscribe_ring{};
-    lcr::lockfree::spsc_ring<schema::book::UnsubscribeAck, config::unsubscribe_ack_ring> book_unsubscribe_ring{};
+    lcr::lockfree::spsc_ring<schema::book::Response, config::BOOK_RING_CAPACITY> book_ring{};
+    lcr::lockfree::spsc_ring<schema::book::SubscribeAck, config::ACK_RING_CAPACITY> book_subscribe_ring{};
+    lcr::lockfree::spsc_ring<schema::book::UnsubscribeAck, config::ACK_RING_CAPACITY> book_unsubscribe_ring{};
 
     // ------------------------------------------------------------
     // Construction from owning Context
@@ -107,17 +106,17 @@ struct ContextView {
     lcr::lockfree::slot::last_value_snapshot<schema::status::Update>& status_slot;
 
     // Output rings for rejection notices
-    lcr::lockfree::spsc_ring<schema::rejection::Notice, config::rejection_ring>& rejection_ring;
+    lcr::lockfree::spsc_ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY>& rejection_ring;
 
     // Output rings for trade channel
-    lcr::lockfree::spsc_ring<schema::trade::Response, config::trade_update_ring>& trade_ring;
-    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, config::subscribe_ack_ring>& trade_subscribe_ring;
-    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, config::unsubscribe_ack_ring>& trade_unsubscribe_ring;
+    lcr::lockfree::spsc_ring<schema::trade::Response, config::TRADE_RING_CAPACITY>& trade_ring;
+    lcr::lockfree::spsc_ring<schema::trade::SubscribeAck, config::ACK_RING_CAPACITY>& trade_subscribe_ring;
+    lcr::lockfree::spsc_ring<schema::trade::UnsubscribeAck, config::ACK_RING_CAPACITY>& trade_unsubscribe_ring;
 
     // Output rings for book channel
-    lcr::lockfree::spsc_ring<schema::book::Response, config::book_update_ring>& book_ring;
-    lcr::lockfree::spsc_ring<schema::book::SubscribeAck, config::subscribe_ack_ring>& book_subscribe_ring;
-    lcr::lockfree::spsc_ring<schema::book::UnsubscribeAck, config::unsubscribe_ack_ring>& book_unsubscribe_ring;
+    lcr::lockfree::spsc_ring<schema::book::Response, config::BOOK_RING_CAPACITY>& book_ring;
+    lcr::lockfree::spsc_ring<schema::book::SubscribeAck, config::ACK_RING_CAPACITY>& book_subscribe_ring;
+    lcr::lockfree::spsc_ring<schema::book::UnsubscribeAck, config::ACK_RING_CAPACITY>& book_unsubscribe_ring;
 
     // ------------------------------------------------------------
     // Construction from owning Context
