@@ -1,7 +1,5 @@
 #pragma once
 
-#include <chrono>
-
 #include "wirekrak/core/protocol/config.hpp"
 #include "wirekrak/core/protocol/kraken/schema/rejection_notice.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/pong.hpp"
@@ -32,10 +30,6 @@ Parsers NEVER own this object — they only receive ContextView.
 ===============================================================================
 */
 struct Context {
-    // Heartbeat statistics
-    std::uint64_t& heartbeat_total;
-    std::chrono::steady_clock::time_point& last_heartbeat_ts;
-
     // Last pong message
     lcr::optional<schema::system::Pong> pong_slot{};
 
@@ -58,9 +52,7 @@ struct Context {
     // ------------------------------------------------------------
     // Construction from owning Context
     // ------------------------------------------------------------
-    explicit Context(std::uint64_t& hb_total, std::chrono::steady_clock::time_point& last_hb_ts) noexcept
-        : heartbeat_total(hb_total)
-        , last_heartbeat_ts(last_hb_ts)
+    explicit Context() noexcept
     {}
 
     // Helper to check if all rings are empty
@@ -94,10 +86,6 @@ Passed to parsers and routers.
 ===============================================================================
 */
 struct ContextView {
-    // Heartbeat statistics
-    std::uint64_t& heartbeat_total;
-    std::chrono::steady_clock::time_point& last_heartbeat_ts;
-
     // Last pong message
     lcr::optional<schema::system::Pong>& pong_slot;
 
@@ -121,9 +109,7 @@ struct ContextView {
     // Construction from owning Context
     // ------------------------------------------------------------
     explicit ContextView(Context& ctx) noexcept
-        : heartbeat_total(ctx.heartbeat_total)
-        , last_heartbeat_ts(ctx.last_heartbeat_ts)
-        , pong_slot(ctx.pong_slot)
+        : pong_slot(ctx.pong_slot)
         , status_slot(ctx.status_slot)
         , rejection_ring(ctx.rejection_ring)
         , trade_ring(ctx.trade_ring)

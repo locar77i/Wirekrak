@@ -104,14 +104,11 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    (void)session.unsubscribe(
-        book::Unsubscribe{ .symbols = params.symbols }
-    );
-
-    // -------------------------------------------------------------------------
-    // Observability
-    // -------------------------------------------------------------------------
-    std::cout << "\n[INFO] Heartbeats observed: " << session.heartbeat_total() << std::endl;
+    if (session.is_active()) {
+        (void)session.unsubscribe(
+            book::Unsubscribe{ .symbols = params.symbols }
+        );
+    }
 
     std::cout << "[SUCCESS] Minimal stateful Core lifecycle completed.\n";
     return 0;

@@ -1,3 +1,4 @@
+
 # Connection Liveness in Wirekrak
 
 This document defines **what liveness means in Wirekrak**, how it is enforced,
@@ -17,10 +18,10 @@ model and intentionally avoids any level-based “health state” exposure.
 
 Wirekrak defines liveness **strictly** and **conservatively**:
 
-> A connection is considered *alive* **only if observable traffic is flowing**.
+> A connection is considered alive only if observable traffic is flowing.
 
 “Observable” means:
-- A message **or heartbeat** is received from the server, and
+- A message is received from the server, and
 - That traffic reaches the **Connection layer**
 
 Silence is never assumed to be healthy.
@@ -37,7 +38,7 @@ Instead, it exposes **facts**:
 - Activity via monotonic `rx_messages()` / `tx_messages()`
 - Enforcement consequences via `connection::Signal`
 
-Liveness itself is an **internal invariant**, enforced deterministically by the
+Liveness itself is an internal invariant, enforced deterministically by the
 Connection and surfaced only through observable consequences.
 
 ---
@@ -52,13 +53,13 @@ Many WebSocket APIs behave like this:
 - No close frame is issued
 - The socket appears “connected forever”
 
-From an application perspective, this is **indistinguishable from a dead feed**.
+From an application perspective, this is indistinguishable from a dead feed.
 
 Wirekrak refuses to guess.
 
 Instead, it enforces a simple invariant:
 
-> **If nothing happens, the connection is unhealthy.**
+> If no observable traffic arrives within the configured timeout, the connection is unhealthy.
 
 This guarantees:
 - No silent stalls
@@ -68,23 +69,22 @@ This guarantees:
 
 ---
 
-## Liveness signals
+## Liveness model (current implementation)
 
-Wirekrak tracks **two independent activity timestamps**:
+Wirekrak tracks a single activity signal:
 
 | Signal | Meaning |
-|------|--------|
-| **Last message timestamp** | When any message was received |
-| **Last heartbeat timestamp** | When a protocol heartbeat was observed |
+|--------|---------|
+| Last message timestamp | When any message was received from the server |
 
-A liveness failure occurs **only if both signals are stale**.
+A liveness failure occurs when:
 
-This supports:
-- Heartbeat-only protocols
-- Data-only protocols
-- Mixed traffic
+(now - last_message_ts) > message_timeout
 
-But it never allows *silence*.
+There is no separate heartbeat tracking at the transport layer.
+
+If a protocol requires heartbeats or pings, they are treated simply as messages
+once received. The transport layer remains protocol-agnostic.
 
 ---
 
@@ -92,28 +92,24 @@ But it never allows *silence*.
 
 Before enforcement occurs, the Connection may emit:
 
-```
 connection::Signal::LivenessThreatened
-```
 
 This indicates:
 
-> *The connection is approaching enforced liveness timeout.*
+> The connection is approaching enforced liveness timeout.
 
 Characteristics:
 
-- Emitted **once per silence window**
-- Does **not** change connection state
-- Is purely **informational**
+- Emitted once per silence window
+- Does not change connection state
+- Is purely informational
 - Represents imminent enforcement
 
-The warning provides protocols with a **last opportunity** to emit traffic
-(e.g. send a ping).
+The warning provides protocols with a last opportunity to emit traffic
+(e.g., send a ping).
 
-Importantly:
-
-> The Connection never sends traffic itself.  
-> It only signals **imminent enforcement**.
+The Connection never sends traffic itself.
+It only signals imminent enforcement.
 
 ---
 
@@ -121,29 +117,28 @@ Importantly:
 
 Enforcement occurs when:
 
-```
 (now - last_message_ts) > message_timeout
-AND
-(now - last_heartbeat_ts) > heartbeat_timeout
-```
 
 When this happens:
 
 1. The Connection enforces liveness failure
 2. A timeout is recorded in telemetry
-3. The WebSocket is **force-closed**
-4. A `connection::Signal::Disconnected` edge is emitted
+3. The WebSocket is force-closed
+4. A connection::Signal::Disconnected edge is emitted
 5. Normal reconnection logic takes over
-6. A new `epoch` will be established on successful reconnect
+6. A new epoch is established on successful reconnect
 
-This is **not an error**.  
-It is a **health enforcement action**.
+A successful reconnection resets the liveness baseline by anchoring
+last_message_ts to the connection establishment time.
+
+This is not an error.
+It is a health enforcement action.
 
 ---
 
 ## Forced disconnection is intentional
 
-When liveness expires, Wirekrak performs a **forced disconnection**.
+When liveness expires, Wirekrak performs a forced disconnection.
 
 This is deliberate:
 
@@ -164,13 +159,13 @@ The Connection layer:
 
 - Enforces liveness invariants
 - Detects silence deterministically
-- Emits **edge-triggered warning and disconnect signals**
-- Advances the transport `epoch` on successful connections
+- Emits edge-triggered warning and disconnect signals
+- Advances the transport epoch on successful connections
 - Tracks transport progress via counters
 - Provides retry, backoff, and telemetry
 - Never sends protocol messages on its own
 
-The Connection layer **does not know**:
+The Connection layer does not know:
 - Exchange semantics
 - Message formats
 - Ping payloads
@@ -190,7 +185,7 @@ The Protocol layer:
 
 If a protocol requires periodic pings:
 
-> **The protocol must send them.**
+The protocol must send them.
 
 Wirekrak does not fabricate traffic.
 
@@ -198,15 +193,15 @@ Wirekrak does not fabricate traffic.
 
 ## Passive connections are not safe
 
-Opening a WebSocket without traffic is **never considered safe**.
+Opening a WebSocket without traffic is never considered safe.
 
 If traffic stops:
 - A liveness warning may be emitted
 - Liveness enforcement occurs
 - The transport is recycled
-- A new `epoch` is established on reconnection
+- A new epoch is established on reconnection
 
-This is correct and intentional.
+This behavior is correct and intentional.
 
 ---
 
@@ -229,7 +224,7 @@ Nothing is hidden.
 
 Wirekrak follows one core rule:
 
-> **Correctness over convenience.**
+Correctness over convenience.
 
 This means:
 - No guessing
@@ -238,9 +233,9 @@ This means:
 - Clear responsibility boundaries
 
 If something disconnects, you can always answer:
-- **Why**
-- **When**
-- **Because of what signal**
+- Why
+- When
+- Because of what signal
 
 ---
 
@@ -256,4 +251,4 @@ If something disconnects, you can always answer:
 
 Wirekrak does not keep connections alive.
 
-**Protocols do.**
+Protocols do.

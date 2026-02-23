@@ -97,7 +97,7 @@ class Session {
 public:
     Session(MessageRing& ring)
         : message_ring_(ring)
-        , ctx_{connection_.heartbeat_total(), connection_.last_heartbeat_ts()}
+        , ctx_{}
         , ctx_view_{ctx_}
         , parser_(ctx_view_)
     {}
@@ -136,6 +136,7 @@ public:
     inline bool try_load_pong(schema::system::Pong& out) noexcept {
         if (ctx_.pong_slot.has()) [[likely]] {
             out = ctx_.pong_slot.value();
+            ctx_.pong_slot.reset(); // Clear after reading to prevent stale data
             return true;
         }
         return false;
@@ -164,6 +165,7 @@ public:
     inline bool try_load_status(schema::status::Update& out) noexcept {
         if (ctx_.status_slot.has()) [[likely]] {
             out = ctx_.status_slot.value();
+            ctx_.status_slot.reset(); // Clear after reading to prevent stale data
             return true;
         }
         return false;
@@ -498,12 +500,6 @@ public:
         return connection_.is_active();
     }
 
-    // Accessor to the heartbeat counter
-    [[nodiscard]]
-    inline std::uint64_t heartbeat_total() const noexcept {
-        return connection_.heartbeat_total();
-    }
-
     // Accessor to the trade subscription manager
     [[nodiscard]]
     inline const channel::Manager& trade_subscriptions() const noexcept {
@@ -535,11 +531,6 @@ public:
     [[nodiscard]]
     inline std::uint64_t tx_messages() const noexcept {
         return connection_.tx_messages();
-    }
-
-    [[nodiscard]]
-    inline std::uint64_t hb_messages() const noexcept {
-        return connection_.hb_messages();
     }
 
     // -----------------------------------------------------------------------------

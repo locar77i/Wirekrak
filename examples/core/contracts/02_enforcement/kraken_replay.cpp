@@ -112,9 +112,11 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    (void)session.unsubscribe(
-        trade::Unsubscribe{ .symbols = params.symbols }
-    );
+    if (session.is_active()) {
+        (void)session.unsubscribe(
+            trade::Unsubscribe{ .symbols = params.symbols }
+        );
+    }
 
     // -------------------------------------------------------------------------
     // Graceful shutdown: drain until protocol is idle and close session

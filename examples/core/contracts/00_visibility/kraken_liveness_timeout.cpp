@@ -75,7 +75,6 @@ int main(int argc, char** argv) {
     uint64_t last_epoch     = 0;
     uint64_t last_rx        = 0;
     uint64_t last_tx        = 0;
-    uint64_t last_heartbeat = 0;
 
     bool reconnect_observed = false;
     bool traffic_observed   = false;
@@ -99,7 +98,6 @@ int main(int argc, char** argv) {
         // --- Observe transport progression ---
         const uint64_t rx = session.rx_messages();
         const uint64_t tx = session.tx_messages();
-        const uint64_t hb = session.heartbeat_total();
 
         // Detect first successful connection
         if (last_epoch == 0 && epoch > 0) {
@@ -113,7 +111,7 @@ int main(int argc, char** argv) {
         }
 
         // Detect any traffic
-        if (rx > last_rx || tx > last_tx || hb > last_heartbeat) {
+        if (rx > last_rx || tx > last_tx) {
             traffic_observed = true;
         }
 
@@ -133,7 +131,6 @@ int main(int argc, char** argv) {
         last_epoch     = epoch;
         last_rx        = rx;
         last_tx        = tx;
-        last_heartbeat = hb;
 
         // Yield to avoid busy-waiting when idle
         std::this_thread::yield();
@@ -148,7 +145,6 @@ int main(int argc, char** argv) {
     std::cout << "  Transport epochs      : " << last_epoch << "\n";
     std::cout << "  RX messages           : " << last_rx << "\n";
     std::cout << "  TX messages           : " << last_tx << "\n";
-    std::cout << "  Heartbeats            : " << last_heartbeat << "\n";
     std::cout << "  Reconnect observed    : yes\n";
     std::cout << "  Protocol traffic      : no\n\n";
 

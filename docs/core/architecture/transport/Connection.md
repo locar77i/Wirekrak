@@ -23,17 +23,17 @@ exchanges (Kraken, future venues, custom feeds).
 
 ## Architectural Properties
 
--   Header-only
--   Concept-based design (`WebSocketConcept`)
--   No inheritance
--   No virtual dispatch
--   No background threads inside `Connection`
--   No timers
--   Fully poll-driven
--   Deterministic state transitions
--   Unit-testable with mock transports
--   Ultra-low-latency friendly
--   Zero-copy data-plane via externally owned ring
+- Header-only
+- Concept-based design (`WebSocketConcept`)
+- No inheritance
+- No virtual dispatch
+- No background threads inside `Connection`
+- No timers
+- Fully poll-driven
+- Deterministic state transitions
+- Unit-testable with mock transports
+- Ultra-low-latency friendly
+- Zero-copy data-plane via externally owned ring
 
 ---
 
@@ -51,11 +51,11 @@ The message ring is owned by the upper layer (typically `Session`).
 
 Properties:
 
--   No dynamic allocation of ring
--   No hidden buffering
--   No ownership ambiguity
--   Deterministic memory lifetime
--   Ring always outlives WebSocket
+- No dynamic allocation of ring
+- No hidden buffering
+- No ownership ambiguity
+- Deterministic memory lifetime
+- Ring always outlives WebSocket
 
 ### Ring Reset on Reconnect
 
@@ -64,9 +64,9 @@ cleared**.
 
 This guarantees:
 
--   No cross-epoch message contamination
--   No ghost messages after reconnect
--   Deterministic epoch boundaries
+- No cross-epoch message contamination
+- No ghost messages after reconnect
+- Deterministic epoch boundaries
 
 Each transport lifetime begins with an empty ring.
 
@@ -78,13 +78,13 @@ Each transport lifetime begins with an empty ring.
 
 All public methods must be called from the same thread:
 
--   `open()`
--   `close()`
--   `send()`
--   `poll()`
--   `peek_message()`
--   `release_message()`
--   `poll_signal()`
+- `open()`
+- `close()`
+- `send()`
+- `poll()`
+- `peek_message()`
+- `release_message()`
+- `poll_signal()`
 
 Cross-thread interaction is isolated to the underlying WebSocket
 transport, which communicates with `Connection` exclusively via bounded
@@ -101,16 +101,16 @@ The transport may reconnect multiple times internally.
 
 Each successful WebSocket establishment:
 
--   Creates a fresh `WS` instance
--   Reuses the injected ring (cleared beforehand)
--   Increments `epoch()` exactly once
--   Emits `connection::Signal::Connected`
+- Creates a fresh `WS` instance
+- Reuses the injected ring (cleared beforehand)
+- Increments `epoch()` exactly once
+- Emits `connection::Signal::Connected`
 
 This guarantees:
 
--   Epoch monotonicity
--   Stable logical identity
--   Deterministic lifetime boundaries
+- Epoch monotonicity
+- Stable logical identity
+- Deterministic lifetime boundaries
 
 ---
 
@@ -130,9 +130,8 @@ Used by higher layers to detect transport recycling.
 
 ### Counters
 
--   `rx_messages()`
--   `tx_messages()`
--   `heartbeat_total()`
+- `rx_messages()`
+- `tx_messages()`
 
 All counters are monotonic and never reset.
 
@@ -143,11 +142,11 @@ Counters are updated only from the user thread when progress is observed
 
 Edge-triggered, single-shot events delivered via an internal SPSC ring:
 
--   `Connected`
--   `Disconnected`
--   `RetryImmediate`
--   `RetryScheduled`
--   `LivenessThreatened`
+- `Connected`
+- `Disconnected`
+- `RetryImmediate`
+- `RetryScheduled`
+- `LivenessThreatened`
 
 Signals are informational only and must not be used for correctness.
 
@@ -159,11 +158,11 @@ Correctness must rely on epoch + counters.
 
 Internal states:
 
--   `Disconnected`
--   `Connecting`
--   `Connected`
--   `Disconnecting`
--   `WaitingReconnect`
+- `Disconnected`
+- `Connecting`
+- `Connected`
+- `Disconnecting`
+- `WaitingReconnect`
 
 Transitions are driven exclusively through `transition_()`.
 
@@ -177,8 +176,8 @@ State is not externally exposed to preserve deterministic FSM semantics.
 
 Preconditions:
 
--   Allowed only in `Disconnected` or `WaitingReconnect`
--   URL must parse successfully
+- Allowed only in `Disconnected` or `WaitingReconnect`
+- URL must parse successfully
 
 Behavior:
 
@@ -195,10 +194,10 @@ immediately attempts a fresh connection.
 
 ### close()
 
--   Idempotent
--   Cancels retry cycle
--   Transitions to `Disconnecting`
--   Emits `Disconnected` once transport closes
+- Idempotent
+- Cancels retry cycle
+- Transitions to `Disconnecting`
+- Emits `Disconnected` once transport closes
 
 Destructor calls `close()`.
 
@@ -236,8 +235,8 @@ websocket::DataBlock* block = conn.peek_message();
 
 When a message is observed:
 
--   `rx_messages_` increments
--   `last_message_ts_` updates
+- `rx_messages_` increments
+- `last_message_ts_` updates
 
 The caller must release the slot explicitly:
 
@@ -247,10 +246,10 @@ conn.release_message();
 
 This model guarantees:
 
--   Zero-copy delivery
--   Deterministic liveness updates
--   Explicit ownership boundaries
--   No receive-thread callbacks
+- Zero-copy delivery
+- Deterministic liveness updates
+- Explicit ownership boundaries
+- No receive-thread callbacks
 
 ---
 
@@ -258,8 +257,8 @@ This model guarantees:
 
 Two independent signals:
 
--   Last message timestamp
--   Last heartbeat timestamp
+- Last message timestamp
+- Last heartbeat timestamp
 
 Liveness expires only if **both** exceed their configured timeouts.
 
@@ -272,9 +271,9 @@ When remaining time falls below the configured danger window,
 
 When both signals are stale:
 
--   Transport is force-closed
--   FSM transitions to retry path
--   Immediate reconnect attempt occurs
+- Transport is force-closed
+- FSM transitions to retry path
+- Immediate reconnect attempt occurs
 
 ---
 
@@ -282,12 +281,12 @@ When both signals are stale:
 
 Retry is permitted only for transient errors:
 
--   `ConnectionFailed`
--   `HandshakeFailed`
--   `Timeout`
--   `RemoteClosed`
--   `TransportFailure`
--   `Backpressure`
+- `ConnectionFailed`
+- `HandshakeFailed`
+- `Timeout`
+- `RemoteClosed`
+- `TransportFailure`
+- `Backpressure`
 
 Retry behavior:
 
@@ -309,17 +308,17 @@ Signals are stored in:
 
 Properties:
 
--   Lock-free
--   Single producer
--   Single consumer
--   Allocation-free
--   Bounded capacity
+- Lock-free
+- Single producer
+- Single consumer
+- Allocation-free
+- Bounded capacity
 
 Overflow policy:
 
--   Log warning
--   Force connection close
--   Preserve correctness guarantees
+- Log warning
+- Force connection close
+- Preserve correctness guarantees
 
 ---
 
@@ -331,9 +330,9 @@ bool is_idle() const noexcept;
 
 Returns true if:
 
--   No pending signals
--   No reconnect timer ready to fire
--   No internal work pending
+- No pending signals
+- No reconnect timer ready to fire
+- No internal work pending
 
 Does not call `poll()`.
 
@@ -341,15 +340,15 @@ Does not call `poll()`.
 
 ## Determinism Guarantees
 
--   No implicit reconnection outside `poll()`
--   No hidden timers
--   No hidden threads inside `Connection`
--   No callback-based state mutation
--   All transitions explicit
--   All retries explicit
--   Epoch strictly monotonic
--   No cross-epoch message leakage
--   Zero-copy data path
+- No implicit reconnection outside `poll()`
+- No hidden timers
+- No hidden threads inside `Connection`
+- No callback-based state mutation
+- All transitions explicit
+- All retries explicit
+- Epoch strictly monotonic
+- No cross-epoch message leakage
+- Zero-copy data path
 
 ---
 
@@ -357,10 +356,10 @@ Does not call `poll()`.
 
 The Connection never:
 
--   Infers protocol intent
--   Replays subscriptions
--   Invents traffic
--   Hides transport recycling
+- Infers protocol intent
+- Replays subscriptions
+- Invents traffic
+- Hides transport recycling
 
 It exposes deterministic transport facts and leaves protocol logic to
 higher layers.

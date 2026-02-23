@@ -84,7 +84,7 @@ enum class DisconnectReason : uint8_t {
     None,
     LocalClose,        // explicit close() by user
     TransportError,    // websocket / IO error
-    LivenessTimeout    // heartbeat + message timeout
+    LivenessTimeout    // message timeout
 };
 
 // ------------------------------------------------------------

@@ -44,10 +44,9 @@ No level-based liveness or health state is exposed.
 -------------------------------------------------------------------------------
  Liveness & Reconnection Semantics
 -------------------------------------------------------------------------------
-- Two independent activity signals are tracked:
-    * Last received message timestamp
-    * Last received heartbeat timestamp
-- Liveness failure occurs only if BOTH signals are stale
+- Liveness is based on observable protocol traffic activity
+- If no traffic is observed within the configured window,
+  the connection is considered stale
 - On liveness timeout:
     * The transport is force-closed
     * Normal reconnection logic applies
@@ -109,7 +108,6 @@ No level-based liveness or health state is exposed.
 
 namespace wirekrak::core::transport {
 
-constexpr auto HEARTBEAT_TIMEOUT = std::chrono::seconds(15); // default heartbeat timeout
 constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15); // default message timeout
 constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of liveness window is elapsed
 
@@ -121,16 +119,13 @@ class Connection {
 public:
     Connection(MessageRing& ring,
                telemetry::Connection& telemetry,
-               std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT,
                std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
                double liveness_warning_ratio = LIVENESS_WARNING_RATIO) noexcept
         : message_ring_(ring)
         , telemetry_(telemetry)
-        , heartbeat_timeout_(heartbeat_timeout)
-        , message_timeout_(message_timeout)
         , liveness_warning_ratio_(liveness_warning_ratio)
     {
-        recompute_liveness_windows_();
+        set_liveness_timeout(message_timeout);
     }
 
     // Ensure transport is closed on destruction.
@@ -287,31 +282,6 @@ public:
     }
 
     [[nodiscard]]
-    inline std::uint64_t hb_messages() const noexcept {
-        return heartbeat_total_;
-    }
-
-    [[nodiscard]]
-    inline std::uint64_t& heartbeat_total() noexcept {
-        return heartbeat_total_;
-    }
-
-    [[nodiscard]]
-    inline const std::uint64_t& heartbeat_total() const noexcept {
-        return heartbeat_total_;
-    }
-
-    [[nodiscard]]
-    inline std::chrono::steady_clock::time_point& last_heartbeat_ts() noexcept {
-        return last_heartbeat_ts_;
-    }
-
-    [[nodiscard]]
-    inline const std::chrono::steady_clock::time_point& last_heartbeat_ts() const noexcept {
-        return last_heartbeat_ts_;
-    }
-
-    [[nodiscard]]
     inline std::uint64_t rx_messages() const noexcept {
         return rx_messages_;
     }
@@ -327,10 +297,9 @@ public:
     }
 
     // Mutators
-    inline void set_liveness_timeout(std::chrono::milliseconds heartbeat, std::chrono::milliseconds message) noexcept {
-        heartbeat_timeout_ = heartbeat;
-        message_timeout_   = message;
-        recompute_liveness_windows_();
+    inline void set_liveness_timeout( std::chrono::milliseconds timeout) noexcept {
+        message_timeout_ = timeout;
+        liveness_danger_window_ = message_timeout_ - std::chrono::milliseconds(static_cast<int>(message_timeout_.count() * liveness_warning_ratio_));
     }
 
     // -----------------------------------------------------------------------------
@@ -397,10 +366,6 @@ public:
         last_message_ts_ = ts;
     }
 
-    inline void force_last_heartbeat(std::chrono::steady_clock::time_point ts) noexcept {
-        last_heartbeat_ts_ = ts;
-    }
-
     WS& ws() {
         return *ws_;
     }
@@ -419,17 +384,12 @@ private:
     // Current transport epoch (incremented on each websocket connection: exposed progress signal.)
     std::uint64_t epoch_{0};
 
-    // Heartbeat messages tracking (for liveness monitoring)
-    std::uint64_t heartbeat_total_{0};
-    std::chrono::steady_clock::time_point last_heartbeat_ts_{std::chrono::steady_clock::now()};
-
     // Message activity tracking (liveness and observability)
     std::uint64_t rx_messages_{0};
     std::uint64_t tx_messages_{0};
     std::chrono::steady_clock::time_point last_message_ts_{std::chrono::steady_clock::now()};
 
     // Liveness configuration
-    std::chrono::milliseconds heartbeat_timeout_{10000};
     std::chrono::milliseconds message_timeout_{15000};
     double liveness_warning_ratio_;
     std::chrono::milliseconds liveness_danger_window_;
@@ -508,7 +468,7 @@ private:
                 retry_attempts_ = 0;
                 retry_root_error_ = Error::None;
                 { // Reset liveness tracking
-                    last_message_ts_ = last_heartbeat_ts_ = std::chrono::steady_clock::now();
+                    last_message_ts_ = std::chrono::steady_clock::now();
                     liveness_warning_emitted_ = false;
                     liveness_timeout_emitted_ = false;
                 }
@@ -635,31 +595,18 @@ private:
         }
     }
 
-    inline void recompute_liveness_windows_() noexcept {
-        auto total = std::max(message_timeout_, heartbeat_timeout_);
-        liveness_danger_window_ = total - std::chrono::milliseconds(static_cast<int>(total.count() * liveness_warning_ratio_));
-    }
-
     [[nodiscard]]
     inline std::chrono::milliseconds liveness_remaining_() const noexcept {
         auto now = std::chrono::steady_clock::now();
-        // last message liveness remaining
-        auto msg_left = message_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message_ts_);
-        // last heartbeat liveness remaining
-        auto hb_left = heartbeat_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_heartbeat_ts_);
-        // return the maximum remaining time of both signals
-        return std::max(msg_left, hb_left);
+        // Return the last message liveness remaining
+        return (message_timeout_ - std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message_ts_));
     }
 
     [[nodiscard]]
     inline bool is_liveness_stale_() noexcept {
         auto now = std::chrono::steady_clock::now();
         // last message liveness
-        bool message_stale   = (now - last_message_ts_) > message_timeout_;
-        // last heartbeat liveness
-        bool heartbeat_stale = (now - last_heartbeat_ts_) > heartbeat_timeout_;
-        // Conservative: only true if BOTH are stale
-        return message_stale && heartbeat_stale;
+        return ((now - last_message_ts_) > message_timeout_);
     }
 
     inline void create_transport_() {

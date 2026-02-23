@@ -41,7 +41,7 @@ struct alignas(64) Connection final {
     // Liveness decisions
     // ---------------------------------------------------------------------
 
-    // Forced disconnect due to liveness timeout (heartbeat + message)
+    // Forced disconnect due to liveness timeout
     lcr::metrics::atomic::counter32 liveness_timeouts_total;
 
     // ---------------------------------------------------------------------

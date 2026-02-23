@@ -48,7 +48,7 @@ protocol, subscription, or exchange semantics.
 - `TransportClosed` — WebSocket closed (remote or local)
 
 ### Liveness
-- `LivenessTimeout` — heartbeat + message inactivity exceeded threshold
+- `LivenessTimeout` — message inactivity exceeded threshold
 
 ### Retry
 - `RetryTimerExpired` — backoff delay elapsed
@@ -84,7 +84,7 @@ protocol, subscription, or exchange semantics.
 ### Liveness enforcement
 
 - Only evaluated in `Connected`
-- If **both** heartbeat and message are stale:
+- If message leveness is stale:
   - `LivenessTimeout`
   - transition to `Disconnecting`
   - transport is force-closed

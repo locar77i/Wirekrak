@@ -23,10 +23,6 @@ struct client_config {
 
     /// Reserved for future use.
     /// No guarantees are currently made about enforcement.
-    std::chrono::milliseconds heartbeat_timeout{30'000};
-
-    /// Reserved for future use.
-    /// No guarantees are currently made about enforcement.
     std::chrono::milliseconds message_timeout{30'000};
 };
 

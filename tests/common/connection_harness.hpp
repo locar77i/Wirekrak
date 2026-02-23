@@ -82,25 +82,23 @@ struct ConnectionHarness {
     // Constructor
     // -------------------------------------------------------------------------
     ConnectionHarness(
-        std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT,
         std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
         double liveness_warning_ratio = LIVENESS_WARNING_RATIO
     )
     {
         WebSocketUnderTest::reset();
-        make_connection(heartbeat_timeout,  message_timeout, liveness_warning_ratio);
+        make_connection(message_timeout, liveness_warning_ratio);
     }
 
     // -------------------------------------------------------------------------
     // Create a fresh Connection instance
     // -------------------------------------------------------------------------
     inline void make_connection(
-        std::chrono::seconds heartbeat_timeout = HEARTBEAT_TIMEOUT,
         std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
         double liveness_warning_ratio = LIVENESS_WARNING_RATIO
     )
     {
-        connection = std::make_unique<ConnectionUnderTest>(g_ring, telemetry, heartbeat_timeout, message_timeout, liveness_warning_ratio);
+        connection = std::make_unique<ConnectionUnderTest>(g_ring, telemetry, message_timeout, liveness_warning_ratio);
     }
 
     // -------------------------------------------------------------------------

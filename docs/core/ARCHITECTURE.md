@@ -80,7 +80,7 @@ The Transport Connection manages WebSocket lifecycle independently from any exch
 
 Responsibilities include:
 - Connection establishment and teardown
-- Dual-signal liveness detection (heartbeats + message flow)
+- Liveness detection (single signal: message flow)
 - Deterministic reconnection logic
 - Explicit state transitions
 

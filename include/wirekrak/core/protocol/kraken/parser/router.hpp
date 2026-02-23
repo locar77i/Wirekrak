@@ -314,8 +314,7 @@ private:
             case Channel::Book:
                 return parse_book_(root);
             case Channel::Heartbeat:
-                ctx_view_.heartbeat_total++;
-                ctx_view_.last_heartbeat_ts = std::chrono::steady_clock::now();
+                // TODO: parse heartbeat message and update heartbeat stats in context
                 return Result::Delivered;
             case Channel::Status: {
                 return parse_status_(root);
