@@ -34,9 +34,10 @@ avoiding timing assumptions and relying only on observable transport invariants.
 #include <cstring>
 #include <algorithm>
 
-#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/winhttp/concepts.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/policy/transport/websocket.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -104,10 +105,11 @@ static_assert(ApiConcept<FakeApi>, "FakeApi must model ApiConcept");
 // -----------------------------------------------------------------------------
 // Setup environment
 // -----------------------------------------------------------------------------
+using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
 using MessageRingUnderTest = lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY>;
-using WebSocketUnderTest = winhttp::WebSocketImpl<MessageRingUnderTest, winhttp::FakeApi>;
+using WebSocketUnderTest = winhttp::WebSocketImpl<MessageRingUnderTest, policy::transport::WebsocketDefault, winhttp::FakeApi>;
 
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
 static_assert(WebSocketConcept<WebSocketUnderTest>);

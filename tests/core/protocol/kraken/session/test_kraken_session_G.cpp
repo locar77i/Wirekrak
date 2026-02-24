@@ -24,9 +24,6 @@ These tests validate:
 #include <vector>
 
 #include "common/harness/session.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::protocol::kraken::test;
 
 
 // ------------------------------------------------------------
@@ -49,7 +46,7 @@ static std::string random_symbol(std::mt19937& rng) {
 void test_single_channel_long_run_fuzz() {
     std::cout << "[TEST] G1 Single-channel long-run fuzz\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     constexpr int STEPS = 1000;
@@ -133,7 +130,7 @@ void test_single_channel_long_run_fuzz() {
 void test_cross_channel_long_run_fuzz() {
     std::cout << "[TEST] G2 Cross-channel fuzz\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     constexpr int STEPS = 1000;
@@ -304,7 +301,7 @@ void test_cross_channel_long_run_fuzz() {
 void test_deterministic_chaos_simulator() {
     std::cout << "[TEST] G3 Deterministic chaos simulator\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     constexpr int STEPS = 1000;
@@ -436,7 +433,7 @@ void test_deterministic_chaos_simulator() {
 void test_replay_storm_amplification() {
     std::cout << "[TEST] G4 Replay storm amplification\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     constexpr int STEPS = 1000;
@@ -560,7 +557,7 @@ void test_replay_storm_amplification() {
 void test_replay_with_delayed_ack_simulation() {
     std::cout << "[TEST] G5 Replay with delayed ACK simulation\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     constexpr int STEPS = 1000;

@@ -377,8 +377,7 @@ Wirekrak was designed not only as a WebSocket SDK, but as a reliable
 **market-data ingestion layer** within larger trading systems.
 
 To validate this design, Wirekrak includes an **opt-in end-to-end integration**
-with *Flashstrike* — a high-performance matching engine developed independently
-prior to the hackathon.
+with *Flashstrike* — a high-performance matching engine developed independently.
 
 This integration is intentionally isolated from the core library and
 serves as **architectural validation**, not a required dependency.
@@ -467,7 +466,7 @@ The Kraken book channel delivers a full snapshot followed by incremental updates
 
 Built with caffeine, curiosity, and a little help from ChatGPT.
 
-ChatGPT was a great brainstorming partner throughout the hackathon, helping explore ideas, refine approaches, and keep the project moving forward.
+ChatGPT was a great brainstorming partner throughout the project, helping explore ideas, refine approaches, and keep the project moving forward.
 
 ---
 

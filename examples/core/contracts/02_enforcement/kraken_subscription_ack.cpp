@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
     auto observe_until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < observe_until) {
         (void)session.poll();
-        did_work = loop::drain_messages(session);
+        did_work = loop::drain_and_print_messages(session);
         std::cout << "[example] Trade subscriptions: active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
         loop::manage_idle_spins(did_work, idle_spins);
     }
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     while (!session.is_idle()) {
         (void)session.poll();
-        loop::drain_messages(session);
+        loop::drain_and_print_messages(session);
         std::this_thread::yield();
     }
 

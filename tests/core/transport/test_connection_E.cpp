@@ -28,7 +28,7 @@ All transport outcomes MUST be scripted via MockWebSocketScript
 #include <cassert>
 #include <iostream>
 
-#include "common/connection_harness.hpp"
+#include "common/harness/connection.hpp"
 #include "common/mock_websocket_script.hpp"
 
 

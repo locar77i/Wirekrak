@@ -57,7 +57,7 @@ F2. Liveness state transitions
 #include <iostream>
 #include <chrono>
 
-#include "common/connection_harness.hpp"
+#include "common/harness/connection.hpp"
 
 
 // -----------------------------------------------------------------------------

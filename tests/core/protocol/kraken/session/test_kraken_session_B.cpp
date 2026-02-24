@@ -22,7 +22,6 @@ These tests validate:
 #include <iostream>
 #include <string>
 
-
 #include "common/harness/session.hpp"
 
 
@@ -33,7 +32,7 @@ These tests validate:
 void test_reconnect_while_pending_subscription() {
     std::cout << "[TEST] B1 Reconnect while subscription still pending\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // Initial subscription -x but DO NOT ACK
@@ -71,7 +70,7 @@ void test_reconnect_while_pending_subscription() {
 void test_user_subscribes_during_replay_window() {
     std::cout << "[TEST] B2 User subscribes during replay window\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // Initial subscription -> ACK
@@ -119,7 +118,7 @@ void test_user_subscribes_during_replay_window() {
 void test_replay_fires_only_once_per_epoch() {
     std::cout << "[TEST] B3 Replay fires only once per epoch\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // Initial subscription -> ACK
@@ -166,7 +165,7 @@ void test_replay_fires_only_once_per_epoch() {
 void test_replay_ack_unknown_req_id_is_ignored() {
     std::cout << "[TEST] B4 Replay ACK with unknown req_id is ignored\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // Establish one valid active subscription

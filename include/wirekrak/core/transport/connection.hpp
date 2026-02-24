@@ -93,11 +93,12 @@ No level-based liveness or health state is exposed.
 #include <chrono>
 #include <memory>
 
-#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/telemetry/connection.hpp"
 #include "wirekrak/core/transport/parse_url.hpp"
 #include "wirekrak/core/transport/state.hpp"
 #include "wirekrak/core/transport/connection/signal.hpp"
+#include "wirekrak/core/transport/connection/config.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
 #include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "wirekrak/core/telemetry.hpp"
@@ -225,6 +226,10 @@ public:
 
                 case websocket::EventType::Error:
                     on_transport_error_(ev.error);
+                    break;
+
+                case websocket::EventType::Backpressure:
+                    on_transport_backpressure_();
                     break;
             }
         }
@@ -409,7 +414,7 @@ private:
     int retry_attempts_{0}; // It is 1-based and represents the ordinal number of the next retry attempt (not completed attempts).
 
     // The pending transition events
-    lcr::lockfree::spsc_ring<connection::Signal, 16> events_;
+    lcr::lockfree::spsc_ring<connection::Signal, SIGNAL_RING_CAPACITY> events_;
 
     inline void emit_(connection::Signal sig) noexcept {
         WK_TRACE("[CONN] Emitting signal: " << to_string(sig));
@@ -647,6 +652,10 @@ private:
         // Notify FSM that the transport has closed (resolution is state-dependent)
         transition_(Event::TransportClosed, last_error_);
         WK_INFO("[CONN] Connection closed from server: " << last_url_ << " (reason: " << to_string(disconnect_reason_) << ")");
+    }
+
+    inline void on_transport_backpressure_() {
+        emit_(connection::Signal::BackpressureDetected);
     }
 
     // Determines whether a transport error represents a transient, external

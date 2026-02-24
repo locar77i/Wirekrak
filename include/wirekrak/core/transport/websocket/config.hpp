@@ -98,8 +98,11 @@ Do not modify casually.
 
 namespace wirekrak::core::transport {
 
+// Capacity of the control event ring buffer (number of events)
+inline constexpr static std::size_t CTRL_RING_CAPACITY = 64;
+
 // Capacity of the I/O message ring buffer (number of messages)
-inline constexpr static std::size_t RX_RING_CAPACITY = 1024;
+inline constexpr static std::size_t RX_RING_CAPACITY = 128;
 
 namespace websocket {
 

@@ -66,9 +66,6 @@ For market data systems, **latency determinism matters more than raw throughput*
 - Easier shutdown semantics
 - Fewer race conditions
 
-This is especially important for a hackathon, where **clarity and correctness**
-are judged as much as performance.
-
 ---
 
 ### 3. Lock-Free Design Already Scales
@@ -139,7 +136,7 @@ Wirekrak follows this principle strictly:
 
 ---
 
-## Roadmap (Post-Hackathon)
+## Roadmap
 
 The 3-thread model will be evaluated once:
 

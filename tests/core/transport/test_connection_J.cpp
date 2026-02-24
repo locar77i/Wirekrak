@@ -22,7 +22,7 @@ These tests MUST NOT involve reconnection scripts beyond initial setup.
 #include <iostream>
 #include <memory>
 
-#include "common/connection_harness.hpp"
+#include "common/harness/connection.hpp"
 #include "common/mock_websocket_script.hpp"
 
 // -----------------------------------------------------------------------------

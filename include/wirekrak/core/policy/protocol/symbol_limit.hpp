@@ -4,7 +4,7 @@
 #include <concepts>
 
 
-namespace wirekrak::core::protocol::policy {
+namespace wirekrak::core::policy::protocol {
 
 // ------------------------------------------------------------
 // Limit Mode
@@ -93,4 +93,4 @@ concept SymbolLimitConcept =
         { T::hard } -> std::convertible_to<bool>;
     };
 
-} // namespace wirekrak::core::protocol::policy
+} // namespace wirekrak::core::policy::protocol

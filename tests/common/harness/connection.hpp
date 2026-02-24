@@ -28,7 +28,7 @@ This enables:
 #include <vector>
 #include <memory>
 
-#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/connection/signal.hpp"
 #include "wirekrak/core/transport/telemetry/connection.hpp"
@@ -53,9 +53,13 @@ static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → 
 
 
 namespace wirekrak::core::transport::test {
+namespace harness {
 
-
-struct ConnectionHarness {
+template<
+    WebSocketConcept WS,
+    typename MessageRing
+>
+struct Connection {
     // -------------------------------------------------------------------------
     // Persistent telemetry (must outlive Connection)
     // -------------------------------------------------------------------------
@@ -81,7 +85,7 @@ struct ConnectionHarness {
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
-    ConnectionHarness(
+    Connection(
         std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
         double liveness_warning_ratio = LIVENESS_WARNING_RATIO
     )
@@ -161,5 +165,9 @@ struct ConnectionHarness {
         signals.clear();
     }
 };
+
+} // namespace harness
+
+using ConnectionHarness = harness::Connection<WebSocketUnderTest, MessageRingUnderTest>;
 
 } // namespace wirekrak::core::transport::test

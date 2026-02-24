@@ -61,14 +61,12 @@ Data-plane model:
 #include <utility>
 
 
-#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 #include "wirekrak/core/protocol/config.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
-#include "wirekrak/core/protocol/policy/liveness.hpp"
-#include "wirekrak/core/protocol/policy/symbol_limit.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
@@ -76,6 +74,8 @@ Data-plane model:
 #include "wirekrak/core/protocol/kraken/parser/router.hpp"
 #include "wirekrak/core/protocol/kraken/channel/manager.hpp"
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
+#include "wirekrak/core/policy/protocol/liveness.hpp"
+#include "wirekrak/core/policy/protocol/symbol_limit.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/local/raw_buffer.hpp"
 #include "lcr/local/ring.hpp"
@@ -83,14 +83,12 @@ Data-plane model:
 #include "lcr/sequence.hpp"
 
 
-namespace wirekrak::core {
-namespace protocol {
-namespace kraken {
+namespace wirekrak::core::protocol::kraken {
 
 template<
     transport::WebSocketConcept WS,
     typename MessageRing,
-    policy::SymbolLimitConcept LimitPolicy = policy::NoSymbolLimits
+    policy::protocol::SymbolLimitConcept LimitPolicy = policy::protocol::NoSymbolLimits
 >
 class Session {
 
@@ -348,7 +346,7 @@ public:
     }
 
     // -----------------------------------------------------------------------------
-    // NOTE (Hackathon scope)
+    // NOTE
     // -----------------------------------------------------------------------------
     // The current poll() implementation explicitly drains each ring buffer in-line.
     // While functionally correct, this results in repetitive boilerplate and mixes
@@ -358,8 +356,7 @@ public:
     // group ring processing by domain (system, trade, book, etc.) to improve
     // readability, extensibility, and maintainability.
     //
-    // This refactor was intentionally deferred to prioritize correctness,
-    // stability, and timely hackathon submission.
+    // This refactor was intentionally deferred to prioritize correctness and stability.
     // -----------------------------------------------------------------------
     //
     // NOTE:
@@ -384,17 +381,24 @@ public:
         }
         // === Drain transport data-plane (zero-copy) ===
         transport::websocket::DataBlock* block = nullptr;
-        while ((block = connection_.peek_message()) != nullptr) {
+        std::size_t messages_processed = 0;
+        while (messages_processed < config::MAX_MESSAGES_PER_POLL && (block = connection_.peek_message()) != nullptr) {
             // The message slot remains valid until release_message() is called
             std::string_view sv{ block->data, block->size };
             // Handle the message (parsing & routing)
-            auto r = parser_.parse_and_route(sv);
+            Method method;
+            Channel channel;
+            auto r = parser_.parse_and_route(sv, method, channel);
             if (r == parser::Result::Backpressure) {
-                WK_WARN("[SESSION] Failed to deliver message (backpressure) — protocol correctness compromised (user is not draining fast enough)");
+                WK_WARN("[SESSION] Failed to deliver " << to_string(channel) << " message (backpressure)"
+                    " - protocol correctness compromised (user is not draining fast enough)");
                 backpressure_violation_ = true;
+                // When session-level backpressure occurs, we intentionally do not release the slot to prevent silent data loss.
+                break; // Stop processing more messages to prevent further damage
             }
             // Release the message slot back to the transport regardless of parsing outcome to maintain flow.
             connection_.release_message();
+            ++messages_processed;
         }
         // ===============================================================================
         // PROCESS REJECTION NOTICES (lossless, semantic errors)
@@ -413,7 +417,7 @@ public:
             handle_rejection_(notice);
             // 2) Forward to user-visible rejection buffer (lossless)
             if (!user_rejection_buffer_.push(notice)) [[unlikely]] { // This is a hard failure: we cannot report semantic errors reliably
-                WK_WARN("[SESSION] Failed to deliver rejection notice (backpressure) — protocol correctness compromised (user is not draining fast enough)");
+                WK_WARN("[SESSION] Failed to deliver rejection notice (backpressure) - protocol correctness compromised (user is not draining fast enough)");
                 backpressure_violation_ = true;
                 break;
             }
@@ -476,21 +480,16 @@ public:
             }
         }}
 
-        // Check for backpressure violations and close connection if necessary
-        // Future backpresusre policy (default:strict)
-        // Wirekrak should never lie to the user or perform magic without explicit user instruction
-        // Defensive action: close the connection to prevent further damage
+        // Check for backpressure violations and enforce policy if needed
         if (backpressure_violation_) {
-            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees.");
-            connection_.close();
-            backpressure_violation_ = false;
+            enforce_backpressure_policy_();
         }
 
         return connection_.epoch();
     }
 
     // Set liveness policy
-    inline void set_policy(policy::Liveness p) noexcept {
+    inline void set_policy(policy::protocol::Liveness p) noexcept {
         liveness_policy_ = p;
     }
 
@@ -632,7 +631,7 @@ private:
     transport::Connection<WS, MessageRing> connection_{message_ring_, telemetry_};
 
     // Liveness policy
-    policy::Liveness liveness_policy_{policy::Liveness::Passive};
+    policy::protocol::Liveness liveness_policy_{policy::protocol::Liveness::Passive};
 
     // Temporary buffer for request serialization (to avoid heap allocations)
     lcr::local::raw_buffer<config::TX_BUFFER_CAPACITY> tx_buffer_{};
@@ -737,18 +736,37 @@ private:
         case transport::connection::Signal::Disconnected:
             handle_disconnect_();
             break;
+        case transport::connection::Signal::RetryImmediate:
+            // Currently no user-defined hook for immediate retry
+            break;
         case transport::connection::Signal::RetryScheduled:
             // Currently no user-defined hook for retry scheduled
             break;
         case transport::connection::Signal::LivenessThreatened:
             // Currently no user-defined hook for liveness warning
-            if (liveness_policy_ == policy::Liveness::Active) {
+            if (liveness_policy_ == policy::protocol::Liveness::Active) {
                     ping();
                 }
+            break;
+        case transport::connection::Signal::BackpressureDetected:
+            WK_WARN("[SESSION] Transport backpressure detected - protocol correctness compromised (user is not draining fast enough)");
+            // TODO: take further action based on backpressure policy (default harcoded: strict)
+            backpressure_violation_ = true;
             break;
         default:
             break;
         }
+    }
+
+    inline void enforce_backpressure_policy_() noexcept {
+        // Current backpresusre policy (strict)
+        // Wirekrak should never lie to the user or perform magic without explicit user instruction
+        // Defensive action: close the connection to prevent further damage
+        if (connection_.is_active()) {
+            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees.");
+            connection_.close();
+        }
+        backpressure_violation_ = false;
     }
 
     // Helpers to get the correct subscription manager
@@ -869,7 +887,4 @@ private:
 
 };
 
-
-} // namespace kraken
-} // namespace protocol
-} // namespace wirekrak::core
+} // namespace wirekrak::core::protocol::kraken

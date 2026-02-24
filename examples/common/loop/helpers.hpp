@@ -42,6 +42,44 @@ inline bool drain_messages(wirekrak::core::protocol::kraken::SessionT& session) 
     // Observe latest pong (liveness signal)
     system::Pong last_pong;
     if (session.try_load_pong(last_pong)) {
+        did_work = true;
+    }
+
+    // Observe latest status
+    status::Update last_status;
+    if (session.try_load_status(last_status)) {
+        did_work = true;
+    }
+
+    // Drain protocol errors (required)
+    session.drain_rejection_messages([&](const rejection::Notice&) {
+        did_work = true;
+    });
+
+    // Drain data-plane trade messages (required)
+    session.drain_trade_messages([&](const trade::Response&) {
+        did_work = true;
+    });
+
+    // Drain data-plane book messages (required)
+    session.drain_book_messages([&](const book::Response&) {
+        did_work = true;
+    });
+
+    return did_work;
+}
+
+// -----------------------------------------------------------------------------
+// Helper to drain all available messages
+// -----------------------------------------------------------------------------
+inline bool drain_and_print_messages(wirekrak::core::protocol::kraken::SessionT& session) {
+    using namespace wirekrak::core::protocol::kraken::schema;
+
+    bool did_work = false;
+
+    // Observe latest pong (liveness signal)
+    system::Pong last_pong;
+    if (session.try_load_pong(last_pong)) {
         std::cout << " -> " << last_pong << std::endl;
         did_work = true;
     }

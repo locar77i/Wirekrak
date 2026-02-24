@@ -38,7 +38,7 @@ They validate only what a consumer can **observe** via poll_signal().
 #include <string>
 #include <iostream>
 
-#include "common/connection_harness.hpp"
+#include "common/harness/connection.hpp"
 #include "common/mock_websocket_script.hpp"
 
 // -----------------------------------------------------------------------------

@@ -21,9 +21,6 @@ E5 Multi-channel reconnect stress
 #include <string>
 
 #include "common/harness/session.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::protocol::kraken::test;
 
 
 // ----------------------------------------------------------------------------
@@ -33,7 +30,7 @@ using namespace wirekrak::core::protocol::kraken::test;
 void test_trade_replay_isolated_from_book() {
     std::cout << "[TEST] E1 Trade replay isolation\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto trade_id = h.subscribe_trade("BTC/USD");
@@ -59,7 +56,7 @@ void test_trade_replay_isolated_from_book() {
 void test_book_replay_isolated_from_trade() {
     std::cout << "[TEST] E2 Book replay isolation\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto book_id = h.subscribe_book("ETH/USD", 25);
@@ -85,7 +82,7 @@ void test_book_replay_isolated_from_trade() {
 void test_rejection_isolated_per_channel() {
     std::cout << "[TEST] E3.1 Rejection isolation\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto trade_id = h.subscribe_trade("BTC/USD");
@@ -114,7 +111,7 @@ void test_rejection_isolated_per_channel() {
 void test_rejection_isolation_with_reconnect() {
     std::cout << "[TEST] E3.2 Rejection isolation + reconnect\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // Subscribe trade + book
@@ -186,7 +183,7 @@ void test_rejection_isolation_with_reconnect() {
 void test_replay_database_isolated_tables() {
     std::cout << "[TEST] E4 Replay DB isolation\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto trade_id = h.subscribe_trade("BTC/USD");
@@ -215,7 +212,7 @@ void test_replay_database_isolated_tables() {
 void test_multi_channel_reconnect_stress() {
     std::cout << "[TEST] E5 Multi-channel reconnect stress\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto trade_id = h.subscribe_trade("BTC/USD");

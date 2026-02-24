@@ -30,7 +30,7 @@ C2. send() fails when not connected
 #include <iostream>
 #include <string>
 
-#include "common/connection_harness.hpp"
+#include "common/harness/connection.hpp"
 
 
 // -----------------------------------------------------------------------------

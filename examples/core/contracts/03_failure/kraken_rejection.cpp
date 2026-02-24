@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     auto epoch = session.transport_epoch();
     while (epoch < 3) {
         epoch = session.poll();
-        did_work = loop::drain_messages(session);
+        did_work = loop::drain_and_print_messages(session);
         loop::manage_idle_spins(did_work, idle_spins);
     }
 
@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     while (!session.is_idle()) {
         (void)session.poll();
-        loop::drain_messages(session);
+        loop::drain_and_print_messages(session);
         std::this_thread::yield();
     }
 

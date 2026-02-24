@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <cassert>
 
-#include "wirekrak/core/transport/concepts.hpp"
+#include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
@@ -22,26 +22,26 @@
 // Setup environment
 // -----------------------------------------------------------------------------
 using namespace wirekrak::core;
-using namespace wirekrak::core::transport;
 using namespace wirekrak::core::protocol;
 using namespace wirekrak::core::protocol::kraken;
 
-using MessageRingUnderTest = lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY>;
-using WebSocketUnderTest = test::MockWebSocket<MessageRingUnderTest>;
+using MessageRingUnderTest = lcr::lockfree::spsc_ring<transport::websocket::DataBlock, transport::RX_RING_CAPACITY>;
+using WebSocketUnderTest = transport::test::MockWebSocket<MessageRingUnderTest>;
 
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
-static_assert(WebSocketConcept<WebSocketUnderTest>);
+static_assert(transport::WebSocketConcept<WebSocketUnderTest>);
 
 static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 
-namespace wirekrak::core::protocol::kraken::test::harness {
+namespace wirekrak::core::protocol::kraken::test {
+namespace harness {
 
 
 template<
-    WebSocketConcept WS,
+    transport::WebSocketConcept WS,
     typename MessageRing,
-    policy::SymbolLimitConcept LimitPolicy = policy::NoSymbolLimits
+    policy::protocol::SymbolLimitConcept LimitPolicy = policy::protocol::NoSymbolLimits
 >
 struct Session {
 
@@ -195,7 +195,8 @@ struct Session {
     }
 };
 
-} // namespace wirekrak::core::protocol::kraken::test::harness
+} // namespace harness
 
+using SessionHarness = harness::Session<WebSocketUnderTest, MessageRingUnderTest>;
 
-using SessionHarness = wirekrak::core::protocol::kraken::test::harness::Session<WebSocketUnderTest, MessageRingUnderTest>;
+} // namespace wirekrak::core::protocol::kraken::test

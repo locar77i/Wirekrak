@@ -23,8 +23,8 @@ These tests assume:
 #include <iostream>
 #include <string>
 
-
 #include "common/harness/session.hpp"
+
 
 // ----------------------------------------------------------------------------
 // A1 Single Active Subscription Replayed
@@ -33,7 +33,7 @@ These tests assume:
 void test_single_active_subscription_replayed() {
     std::cout << "[TEST] A1 Single active subscription replayed\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // Subscribe trade and receive ACK
@@ -66,7 +66,7 @@ void test_single_active_subscription_replayed() {
 void test_multiple_channel_replay() {
     std::cout << "[TEST] A2 Multi-channel replay\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // Subscribe trade and receive ACK
@@ -109,7 +109,7 @@ void test_multiple_channel_replay() {
 void test_no_active_no_replay() {
     std::cout << "[TEST] A3 No active → no replay\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // Subscribe trade and receive ACK

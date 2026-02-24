@@ -22,25 +22,30 @@ Design principles:
 // -----------------------------------------------------------------------------
 // Control-plane messages (low frequency)
 // -----------------------------------------------------------------------------
-inline constexpr std::size_t REJECTION_RING_CAPACITY  = 1 << 5; // 32
+inline constexpr static std::size_t REJECTION_RING_CAPACITY  = 1 << 5; // 32
 
 // -----------------------------------------------------------------------------
 // Subscription acknowledgements (very low frequency)
 // -----------------------------------------------------------------------------
-inline constexpr std::size_t ACK_RING_CAPACITY        = 1 << 5; // 32
+inline constexpr static std::size_t ACK_RING_CAPACITY        = 1 << 5; // 32
 
 // -----------------------------------------------------------------------------
 // High-throughput market data
 // -----------------------------------------------------------------------------
-inline constexpr std::size_t TRADE_RING_CAPACITY      = 1 << 10; // 1024
-inline constexpr std::size_t BOOK_RING_CAPACITY       = 1 << 10; // 1024
+inline constexpr static std::size_t TRADE_RING_CAPACITY      = 1 << 10; // 1024
+inline constexpr static std::size_t BOOK_RING_CAPACITY       = 1 << 10; // 1024
 
 
-/*
-===============================================================================
-Transmission buffer capacity
-===============================================================================
-*/
-static constexpr std::size_t TX_BUFFER_CAPACITY = 4096;
+// -----------------------------------------------------------------------------
+// Transmission buffer capacity
+// -----------------------------------------------------------------------------
+inline constexpr static std::size_t TX_BUFFER_CAPACITY = 4096;
+
+
+// -----------------------------------------------------------------------------
+// Message batch processing limits
+// -----------------------------------------------------------------------------
+
+inline constexpr static std::size_t MAX_MESSAGES_PER_POLL = 128; // Tunable limit for batch processing in poll()
 
 } // namespace wirekrak::core::protocol::config

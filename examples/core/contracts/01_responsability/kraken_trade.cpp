@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
     bool did_work = false;
     while (running.load(std::memory_order_relaxed) && session.is_active()) {
         (void)session.poll();
-        did_work = loop::drain_messages(session);
+        did_work = loop::drain_and_print_messages(session);
         // Yield to avoid busy-waiting when idle
         loop::manage_idle_spins(did_work, idle_spins);
     }

@@ -30,7 +30,7 @@ and observes whether the connection enters WaitingReconnect or Disconnected.
 #include <iostream>
 #include <vector>
 
-#include "common/connection_harness.hpp"
+#include "common/harness/connection.hpp"
 #include "common/mock_websocket_script.hpp"
 
 

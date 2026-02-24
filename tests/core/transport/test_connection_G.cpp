@@ -47,7 +47,7 @@ Tests MUST NOT expect poll() to stall or idle before the first retry.
 #include <chrono>
 #include <thread>
 
-#include "common/connection_harness.hpp"
+#include "common/harness/connection.hpp"
 #include "common/mock_websocket_script.hpp"
 
 

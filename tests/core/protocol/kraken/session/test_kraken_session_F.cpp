@@ -23,11 +23,9 @@ These validate:
 */
 
 #include <iostream>
-#include "common/harness/session.hpp"
-#include "common/test_check.hpp"
 
-using namespace wirekrak::core::protocol::kraken;
-using namespace wirekrak::core::protocol::kraken::test;
+#include "common/harness/session.hpp"
+
 
 // ----------------------------------------------------------------------------
 // F1 Partial rejection before reconnect
@@ -36,7 +34,7 @@ using namespace wirekrak::core::protocol::kraken::test;
 void test_partial_rejection_before_reconnect() {
     std::cout << "[TEST] F1 Partial rejection before reconnect\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto id = h.subscribe_trade({"BTC/USD", "ETH/USD"});
@@ -71,7 +69,7 @@ void test_partial_rejection_before_reconnect() {
 void test_reject_after_reconnect_before_ack() {
     std::cout << "[TEST] F2 Reject after reconnect before replay ACK\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto id = h.subscribe_trade("BTC/USD");
@@ -106,7 +104,7 @@ void test_reject_after_reconnect_before_ack() {
 void test_mixed_accept_reject_cross_channel() {
     std::cout << "[TEST] F3 Mixed accept + reject cross-channel\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto t_id = h.subscribe_trade("BTC/USD");
@@ -147,7 +145,7 @@ void test_mixed_accept_reject_cross_channel() {
 void test_reconnect_storm_with_rejections() {
     std::cout << "[TEST] F4 Reconnect storm with interleaved rejections\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto id = h.subscribe_trade({"BTC/USD", "ETH/USD"});

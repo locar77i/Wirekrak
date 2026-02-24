@@ -26,9 +26,7 @@ These tests validate:
 #include <string>
 
 #include "common/harness/session.hpp"
-#include "common/test_check.hpp"
 
-using namespace wirekrak::core::protocol::kraken::test;
 
 // ----------------------------------------------------------------------------
 // D1 Epoch strictly increases
@@ -37,7 +35,7 @@ using namespace wirekrak::core::protocol::kraken::test;
 void test_epoch_monotonicity() {
     std::cout << "[TEST] D1 Epoch monotonicity\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     uint64_t e1 = h.session.transport_epoch();
@@ -66,7 +64,7 @@ void test_epoch_monotonicity() {
 void test_replay_once_per_epoch() {
     std::cout << "[TEST] D2 Replay fires only once per epoch\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto id = h.subscribe_trade("BTC/USD");
@@ -97,7 +95,7 @@ void test_replay_once_per_epoch() {
 void test_no_duplicate_replay_across_epochs() {
     std::cout << "[TEST] D3 No duplicate replay across epochs\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto id = h.subscribe_trade("BTC/USD");
@@ -126,7 +124,7 @@ void test_no_duplicate_replay_across_epochs() {
 void test_reconnect_stress_convergence() {
     std::cout << "[TEST] D4 Reconnect convergence stress\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto id1 = h.subscribe_trade("BTC/USD");

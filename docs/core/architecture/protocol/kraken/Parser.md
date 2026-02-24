@@ -3,7 +3,8 @@
 
 ## Overview
 
-This document summarizes the core features, architecture, and strengths of the C++ parser developed for **Track 1 – SDK Client** in the Kraken Forge Hackathon. It also includes suggestions to further strengthen the implementation for production-ready usage.
+This document summarizes the core features, architecture, and strengths of the Wirekrak parser.
+It also includes suggestions to further strengthen the implementation for production-ready usage.
 
 The parser is designed as a **high-performance, modular message parsing layer** for Kraken’s WebSocket API, emphasizing correctness, extensibility, and low latency.
 

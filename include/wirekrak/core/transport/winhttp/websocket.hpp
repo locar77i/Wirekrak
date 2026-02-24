@@ -12,7 +12,9 @@
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
+#include "wirekrak/core/transport/websocket/config.hpp"
 #include "wirekrak/core/transport/websocket/data_block.hpp"
+#include "wirekrak/core/policy/transport/websocket.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
@@ -62,6 +64,7 @@ namespace wirekrak::core::transport::winhttp {
 
 template<
     typename MessageRing,
+    typename PolicyBundle = policy::transport::WebsocketDefault,
     ApiConcept Api = RealApi
 >
 class WebSocketImpl {
@@ -240,11 +243,9 @@ private:
 
             // Acquire slot lazily (only when starting a message)
             if (!current_slot) {
-                current_slot = message_ring_.acquire_producer_slot();
-                if (!current_slot) [[unlikely]] {
-                    handle_fatal_error_("[WS] Failed to prepare the next data block (backpressure)"
-                        " - transport correctness compromised (user is not draining fast enough)", Error::Backpressure);
-                    break;
+                current_slot = acquire_slot_();
+                if (! current_slot) [[unlikely]] {
+                    continue; // backpressure handling (no slot available)
                 }
                 current_size = 0;
             }
@@ -326,6 +327,67 @@ private:
         signal_close_();
     }
 
+    [[nodiscard]]
+    inline websocket::DataBlock* acquire_slot_() noexcept {
+        websocket::DataBlock* slot = message_ring_.acquire_producer_slot();
+        if (!slot) [[unlikely]] {
+            // 1. Get the policy-defined backpressure handling mode
+            constexpr auto mode = BackpressurePolicy::on_ring_full();
+            // 2. Handle backpressure according to the policy
+            if constexpr (mode == core::policy::BackpressureMode::ZeroTolerance) {
+                // 2.1. Immediate escalation with forced close
+                WK_WARN("[WS] Backpressure: Ring buffer full, applying zero-tolerance backpressure policy (immediate event and forced close)");
+                if (!control_events_.push(websocket::Event::make_backpressure())) {
+                    WK_FATAL("[WS] Failed to emit backpressure event - control event lost in transport shutdown");
+                }
+                handle_fatal_error_("[WS] Failed to acquire message slot (backpressure)"
+                    " - transport correctness compromised (user is not draining fast enough)", Error::Backpressure);
+                return nullptr;
+            }
+            else
+            if constexpr (mode == core::policy::BackpressureMode::Strict) {
+                // 2.2. Immediate escalation (session decides fate)
+                if (!backpressure_.signaled) {
+                    backpressure_.signaled = true;
+                    WK_WARN("[WS] Backpressure: Ring buffer full, applying strict backpressure policy (immediate event)");
+                    if (!control_events_.push(websocket::Event::make_backpressure())) {
+                        handle_fatal_error_("[WS] Failed to emit backpressure event (backpressure)"
+                            " - transport correctness compromised (user is not draining fast enough)", Error::Backpressure);
+                    }
+                }
+                std::this_thread::yield();
+                return nullptr;
+            }
+            else
+            if constexpr (mode == core::policy::BackpressureMode::Relaxed) {
+                // 2.3. Tolerate temporarily before signaling (session decides fate)
+                ++backpressure_.attempts;
+                if (!backpressure_.signaled && backpressure_.attempts >= backpressure_.threshold) {
+                    backpressure_.signaled = true;
+                    // Emit backpressure event after reaching threshold
+                    WK_WARN("[WS] Backpressure: Ring buffer full, applying relaxed backpressure policy (threshold reached)");
+                    if (!control_events_.push(websocket::Event::make_backpressure())) {
+                        handle_fatal_error_("[WS] Failed to emit backpressure event (backpressure)"
+                            " - transport correctness compromised (user is not draining fast enough)", Error::Backpressure);
+                        return nullptr;
+                    }
+                    backpressure_.attempts = 0;
+                }
+                // Slow down reader slightly to give it a chance to catch up before retrying 
+                if (backpressure_.attempts < 10) { // Light backoff for initial attempts to reduce CPU pressure
+                    std::this_thread::yield();
+                }
+                else { // Stronger backoff after multiple attempts to reduce scheduler dependency
+                    std::this_thread::sleep_for(std::chrono::microseconds(10));
+                }
+                return nullptr;
+            }
+        }
+        // Successfully acquired slot
+        backpressure_.reset();
+        return slot;
+    }
+
     inline Error handle_receive_error_(DWORD error) noexcept {
         switch (error) {
         case ERROR_WINHTTP_OPERATION_CANCELLED: // ERR_OPERATION_CANCELLED 12017 (local close)
@@ -385,9 +447,29 @@ private:
     }
 
 private:
+    // Telemetry reference (non-owning) 
     telemetry::WebSocket& telemetry_;
+
+    // Policy-defined backpressure handling (default: strict)
+    using BackpressurePolicy = typename PolicyBundle::backpressure;
+
+    // Backpressure state tracking
+    struct BackpressureState {
+        std::uint32_t attempts{0};
+        static constexpr std::uint32_t threshold{50};
+        bool signaled{false};
+        // Resets the backpressure state (e.g. after successfully acquiring a slot)
+        void reset() noexcept {
+            attempts = 0;
+            signaled = false;
+        }
+    };
+    BackpressureState backpressure_;
+
+    // Compile-time API policy (default: RealApi)
     Api api_;
 
+    // WinHTTP handles
     HINTERNET hSession_   = nullptr;
     HINTERNET hConnect_   = nullptr;
     HINTERNET hRequest_   = nullptr;
@@ -398,7 +480,7 @@ private:
     std::atomic<bool> closed_{false};
 
     // Control event queue (for signaling events like close and error)
-    lcr::lockfree::spsc_ring<websocket::Event, 16> control_events_;
+    lcr::lockfree::spsc_ring<websocket::Event, CTRL_RING_CAPACITY> control_events_;
 
     // Data message queue (transport → connection/session)
     MessageRing& message_ring_;

@@ -87,7 +87,7 @@ struct alignas(64) size {
     // String formatter (for human-readable or Prometheus output)
     inline std::string str() const {
         std::ostringstream oss;
-        oss << " samples=" << lcr::format_number_exact(samples_.load())
+        oss << "samples=" << lcr::format_number_exact(samples_.load())
             << " last=" << lcr::format_number_exact(last_.load())
             << " min=" << lcr::format_number_exact(min_.load())
             << " max=" << lcr::format_number_exact(max_.load())

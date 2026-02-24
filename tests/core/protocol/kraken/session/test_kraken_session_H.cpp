@@ -41,7 +41,7 @@ static std::string random_symbol(std::mt19937& rng) {
 void test_out_of_order_ack_burst() {
     std::cout << "[TEST] H1 Out-of-order ACK burst\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // ------------------------------------------------------------
@@ -111,7 +111,7 @@ void test_out_of_order_ack_burst() {
 void test_duplicate_ack_storm() {
     std::cout << "[TEST] H2 Duplicate ACK storm\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // ------------------------------------------------------------
@@ -196,7 +196,7 @@ void test_duplicate_ack_storm() {
 void test_subscribe_unsubscribe_race_under_replay() {
     std::cout << "[TEST] H3 Subscribe/unsubscribe race under replay\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     // ------------------------------------------------------------
@@ -261,7 +261,7 @@ void test_subscribe_unsubscribe_race_under_replay() {
 void test_replay_db_saturation_limit() {
     std::cout << "[TEST] H4 Replay DB saturation limit\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     constexpr int STEPS = 1000;
@@ -354,7 +354,7 @@ void test_replay_db_saturation_limit() {
 void test_replay_db_mixed_trade_book_stress() {
     std::cout << "[TEST] H5 Replay DB stress with mixed trade + book\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     constexpr int STEPS = 1000;
@@ -458,7 +458,7 @@ void test_replay_db_mixed_trade_book_stress() {
 void test_saturation_race_overlap() {
     std::cout << "[TEST] H6 Saturation + race overlap\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     constexpr int STEPS = 1000;
@@ -608,13 +608,12 @@ void test_saturation_race_overlap() {
 // ------------------------------------------------------------
 
 void test_hard_limit_enforcement() {
-    using namespace wirekrak::core::transport;
     using namespace wirekrak::core::protocol;
     std::cout << "[TEST] H7 Hard limit enforcement\n";
 
     using Hard5 =
-    policy::SymbolLimitPolicy<
-        policy::LimitMode::Hard,
+    policy::protocol::SymbolLimitPolicy<
+        policy::protocol::LimitMode::Hard,
         5, 5, 8
     >;
 

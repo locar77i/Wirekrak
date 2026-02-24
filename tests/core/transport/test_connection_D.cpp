@@ -34,7 +34,7 @@ D2. Message dispatch ignored when no handler
 #include <string>
 #include <chrono>
 
-#include "common/connection_harness.hpp"
+#include "common/harness/connection.hpp"
 #include "common/mock_websocket_script.hpp"
 
 

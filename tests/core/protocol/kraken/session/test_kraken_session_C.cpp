@@ -30,9 +30,6 @@ C5 Unsubscribe rejected keeps intent
 #include <string>
 
 #include "common/harness/session.hpp"
-#include "common/test_check.hpp"
-
-using namespace wirekrak::core::protocol::kraken::test;
 
 
 // ----------------------------------------------------------------------------
@@ -42,7 +39,7 @@ using namespace wirekrak::core::protocol::kraken::test;
 void test_initial_subscribe_rejected_removes_intent() {
     std::cout << "[TEST] C1 Initial subscribe rejected removes intent\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto sub_id = h.subscribe_trade("BTC/USD");
@@ -70,7 +67,7 @@ void test_initial_subscribe_rejected_removes_intent() {
 void test_replay_rejected_removes_intent() {
     std::cout << "[TEST] C2 Replay rejected removes intent permanently\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto sub_id = h.subscribe_trade("BTC/USD");
@@ -104,7 +101,7 @@ void test_replay_rejected_removes_intent() {
 void test_silent_pending_survives_disconnect() {
     std::cout << "[TEST] C3 Silent pending survives disconnect\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto sub_id = h.subscribe_trade("BTC/USD");
@@ -137,7 +134,7 @@ void test_silent_pending_survives_disconnect() {
 void test_unsubscribe_accepted_removes_intent() {
     std::cout << "[TEST] C4 Unsubscribe accepted removes intent\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto sub_id = h.subscribe_trade("BTC/USD");
@@ -167,7 +164,7 @@ void test_unsubscribe_accepted_removes_intent() {
 void test_unsubscribe_rejected_keeps_intent() {
     std::cout << "[TEST] C5 Unsubscribe rejected keeps intent\n";
 
-    SessionHarness h;
+    test::SessionHarness h;
     h.connect();
 
     auto sub_id = h.subscribe_trade("BTC/USD");

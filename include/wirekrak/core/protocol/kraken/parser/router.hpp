@@ -124,7 +124,7 @@ public:
 
     // Main entry point
     [[nodiscard]]
-    inline Result parse_and_route(std::string_view raw_msg) noexcept {
+    inline Result parse_and_route(std::string_view raw_msg, Method& method, Channel& channel) noexcept {
         using namespace simdjson;
         // Parse JSON message
         simdjson::dom::element root;
@@ -134,12 +134,10 @@ public:
             return Result::InvalidSchema;
         }
         // METHOD DISPATCH (ACK / CONTROL)
-        Method method;
         if (adapter::parse_method_required(root, method) == Result::Parsed) {
             return parse_method_message_(method, root);
         }
         // CHANNEL DISPATCH (DATA)
-        Channel channel;
         if (adapter::parse_channel_required(root, channel) == Result::Parsed) {
             return parse_channel_message_(channel, root);
         }
