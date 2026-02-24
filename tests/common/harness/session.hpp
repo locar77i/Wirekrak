@@ -41,11 +41,12 @@ namespace harness {
 template<
     transport::WebSocketConcept WS,
     typename MessageRing,
-    policy::protocol::SymbolLimitConcept LimitPolicy = policy::protocol::NoSymbolLimits
+//  policy::protocol::SymbolLimitConcept LimitPolicy = policy::protocol::NoSymbolLimits
+    typename Bundle = policy::protocol::SessionDefault
 >
 struct Session {
 
-    using SessionUnderTest = kraken::Session<WS, MessageRing, LimitPolicy>;
+    using SessionUnderTest = kraken::Session<WS, MessageRing, Bundle>;
     SessionUnderTest session;
 
     Session()

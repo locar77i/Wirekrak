@@ -34,6 +34,7 @@
 #include "wirekrak/core.hpp"
 #include "common/cli/minimal.hpp"
 
+
 // -----------------------------------------------------------------------------
 // Lifecycle control
 // -----------------------------------------------------------------------------
@@ -53,11 +54,44 @@ static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 
 // -----------------------------------------------------------------------------
+// Session Type Definitions (Compile-Time Policy Injection)
+// -----------------------------------------------------------------------------
+
+using PassiveBundle =
+    policy::protocol::session_bundle<
+        policy::backpressure::Strict,
+        policy::protocol::liveness::Passive,
+        policy::protocol::NoSymbolLimits
+    >;
+
+using ActiveBundle =
+    policy::protocol::session_bundle<
+        policy::backpressure::Strict,
+        policy::protocol::liveness::Active,
+        policy::protocol::NoSymbolLimits
+    >;
+
+using PassiveSession =
+    Session<
+        transport::winhttp::WebSocketImpl<MessageRingT>,
+        MessageRingT,
+        PassiveBundle
+    >;
+
+using ActiveSession =
+    Session<
+        transport::winhttp::WebSocketImpl<MessageRingT>,
+        MessageRingT,
+        ActiveBundle
+    >;
+
+
+// -----------------------------------------------------------------------------
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     using namespace schema;
-    using namespace protocol::policy;
+    using namespace policy::protocol;
 
     // -------------------------------------------------------------------------
     // Runtime configuration
@@ -76,84 +110,85 @@ int main(int argc, char** argv) {
     std::signal(SIGINT, on_signal);
 
     // -------------------------------------------------------------------------
-    // Session setup
-    // -------------------------------------------------------------------------
-    SessionT session(g_ring);
-
-    // -------------------------------------------------------------------------
     // Phase A - Passive liveness
     // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase A - Passive liveness policy\n";
-    std::cout << "          No protocol heartbeats will be sent.\n";
-    std::cout << "          Forced reconnects are expected if the protocol remains silent.\n\n";
+    {
+        std::cout << "\n[example] Phase A - Passive liveness policy\n";
+        std::cout << "          No protocol heartbeats will be sent.\n";
+        std::cout << "          Forced reconnects are expected if the protocol remains silent.\n\n";
 
-    session.set_policy(Liveness::Passive);
+        // Session with passive liveness policy: connection may force reconnects if no traffic is observed
+        PassiveSession session{g_ring};
 
-    if (!session.connect(params.url)) {
-        return -1;
-    }
-
-    // -------------------------------------------------------------------------
-    // Poll-driven execution loop
-    // -------------------------------------------------------------------------
-    auto phase_a_start = std::chrono::steady_clock::now();
-    system::Pong last_pong;
-    while (std::chrono::steady_clock::now() - phase_a_start < std::chrono::seconds(20)) {
-        (void)session.poll();
-        // Observe latest pong (liveness signal - not relevant in Passive policy)
-        if (session.try_load_pong(last_pong)) {
-            std::cout << " -> " << last_pong << std::endl;
+        if (!session.connect(params.url)) {
+            return -1;
         }
-        std::this_thread::yield();
-    }
 
+        // Poll-driven execution loop
+        system::Pong last_pong;
+        std::uint64_t epoch = session.transport_epoch();
+        while (epoch < 2) { // Run until 2 forced reconnects occur (for demonstration purposes)
+            epoch = session.poll();
+            // Observe latest pong (liveness signal - not relevant in Passive policy)
+            if (session.try_load_pong(last_pong)) {
+                std::cout << " -> " << last_pong << std::endl;
+            }
+            std::this_thread::yield();
+        }
+
+        // Shutdown
+        session.close();
+
+        // Dump telemetry
+        session.telemetry().debug_dump(std::cout);
+    }
     // -------------------------------------------------------------------------
     // Phase B - Active liveness
     // -------------------------------------------------------------------------
-    std::cout << "\n[example] Phase B - Active liveness policy\n";
-    std::cout << "          Session will react to liveness warnings\n";
-    std::cout << "          by sending protocol-level pings.\n\n";
+    {
+        std::cout << "\n[example] Phase B - Active liveness policy\n";
+        std::cout << "          Session will react to liveness warnings\n";
+        std::cout << "          by sending protocol-level pings.\n\n";
 
-    session.set_policy(Liveness::Active);
+        // Session with active liveness policy: session will attempt to maintain liveness by emitting protocol pings
+        ActiveSession session{g_ring};
 
-    while (running.load(std::memory_order_relaxed)) {
-        (void)session.poll();
-        // Observe latest pong (liveness signal - only relevant in Active policy)
-        if (session.try_load_pong(last_pong)) {
-            std::cout << " -> " << last_pong << std::endl;
+        if (!session.connect(params.url)) {
+            return -1;
         }
-        std::this_thread::yield();
+
+        // Poll-driven execution loop
+        system::Pong last_pong;
+        while (running.load(std::memory_order_relaxed)) {
+            (void)session.poll();
+            // Observe latest pong (liveness signal - only relevant in Active policy)
+            if (session.try_load_pong(last_pong)) {
+                std::cout << " -> " << last_pong << std::endl;
+            }
+            std::this_thread::yield();
+        }
+
+        // Graceful shutdown: drain until protocol is idle and close session
+        while (!session.is_idle()) {
+            (void)session.poll();
+            std::this_thread::yield();
+        }
+
+        session.close();
+
+        // Dump telemetry
+        session.telemetry().debug_dump(std::cout);
     }
 
-    // -------------------------------------------------------------------------
-    // Graceful shutdown: drain until protocol is idle and close session
-    // -------------------------------------------------------------------------
-    while (!session.is_idle()) {
-        (void)session.poll();
-        // Observe latest pong (liveness signal - only relevant in Active policy)
-        if (session.try_load_pong(last_pong)) {
-            std::cout << " -> " << last_pong << std::endl;
-        }
-        std::this_thread::yield();
-    }
-
-    session.close();
-
-    // -------------------------------------------------------------------------
-    // Dump telemetry
-    // -------------------------------------------------------------------------
-    session.telemetry().debug_dump(std::cout);
-
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // Summary
-    // -------------------------------------------------------------------------
+    // =========================================================================
     std::cout << "\n=== Summary ===\n"
-              << "- Passive policy allows forced reconnects.\n"
-              << "- Active policy attempts to maintain liveness via protocol pings.\n"
-              << "- Connection enforces invariants; protocol provides signals.\n"
-              << "- Behavior is explicit, observable, and deterministic.\n\n"
-              << "Wirekrak enforces correctness.\n"
-              << "Responsibility is explicit and observable.\n";
+              << "- Liveness policy is compile-time injected.\n"
+              << "- Passive does not emit pings.\n"
+              << "- Active emits protocol-level pings.\n"
+              << "- No runtime policy switching.\n"
+              << "- Deterministic and zero-overhead.\n\n";
 
     return 0;
 }

@@ -74,8 +74,7 @@ Data-plane model:
 #include "wirekrak/core/protocol/kraken/parser/router.hpp"
 #include "wirekrak/core/protocol/kraken/channel/manager.hpp"
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
-#include "wirekrak/core/policy/protocol/liveness.hpp"
-#include "wirekrak/core/policy/protocol/symbol_limit.hpp"
+#include "wirekrak/core/policy/protocol/session.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/local/raw_buffer.hpp"
 #include "lcr/local/ring.hpp"
@@ -88,8 +87,13 @@ namespace wirekrak::core::protocol::kraken {
 template<
     transport::WebSocketConcept WS,
     typename MessageRing,
-    policy::protocol::SymbolLimitConcept LimitPolicy = policy::protocol::NoSymbolLimits
+    typename Bundle = policy::protocol::SessionDefault
 >
+requires requires {
+    typename Bundle::backpressure;
+    typename Bundle::liveness;
+    typename Bundle::symbol_limit;
+}
 class Session {
 
 public:
@@ -253,7 +257,7 @@ public:
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
         WK_INFO("[SESSION] Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         // 1) Hard symbol limit enforcement (compile-time removable)
-        if constexpr (LimitPolicy::enabled && LimitPolicy::hard) {
+        if constexpr (SymbolLimitPolicy::enabled && SymbolLimitPolicy::hard) {
             if (!hard_symbol_limit_enforcement_<RequestT>(req)) {
                 return ctrl::INVALID_REQ_ID;
             }
@@ -297,21 +301,21 @@ public:
         // Check limits
         if constexpr (channel_of_v<RequestT> == Channel::Trade) { // Check trade limits
 
-            if (LimitPolicy::max_trade > 0 && trade_now + requested > LimitPolicy::max_trade) {
-                WK_WARN("[SESSION] Trade symbol limit exceeded (" << trade_now + requested << " > " << LimitPolicy::max_trade << ")");
+            if (SymbolLimitPolicy::max_trade > 0 && trade_now + requested > SymbolLimitPolicy::max_trade) {
+                WK_WARN("[SESSION] Trade symbol limit exceeded (" << trade_now + requested << " > " << SymbolLimitPolicy::max_trade << ")");
                 return false;
             }
         }
         else if constexpr (channel_of_v<RequestT> == Channel::Book) { // Check book limits
 
-            if (LimitPolicy::max_book > 0 && book_now + requested > LimitPolicy::max_book) {
-                WK_WARN("[SESSION] Book symbol limit exceeded (" << book_now + requested << " > " << LimitPolicy::max_book << ")");
+            if (SymbolLimitPolicy::max_book > 0 && book_now + requested > SymbolLimitPolicy::max_book) {
+                WK_WARN("[SESSION] Book symbol limit exceeded (" << book_now + requested << " > " << SymbolLimitPolicy::max_book << ")");
                 return false;
             }
         }
         // Check global limits
-        if (LimitPolicy::max_global > 0 && global_now + requested > LimitPolicy::max_global) {
-            WK_WARN("[SESSION] Global symbol limit exceeded (" << global_now + requested << " > " << LimitPolicy::max_global << ")");
+        if (SymbolLimitPolicy::max_global > 0 && global_now + requested > SymbolLimitPolicy::max_global) {
+            WK_WARN("[SESSION] Global symbol limit exceeded (" << global_now + requested << " > " << SymbolLimitPolicy::max_global << ")");
             return false;
         }
         return true;
@@ -488,11 +492,6 @@ public:
         return connection_.epoch();
     }
 
-    // Set liveness policy
-    inline void set_policy(policy::protocol::Liveness p) noexcept {
-        liveness_policy_ = p;
-    }
-
     // Returns true if the current connection is active
     [[nodiscard]]
     inline bool is_active() const noexcept {
@@ -630,8 +629,10 @@ private:
     transport::telemetry::Connection telemetry_;
     transport::Connection<WS, MessageRing> connection_{message_ring_, telemetry_};
 
-    // Liveness policy
-    policy::protocol::Liveness liveness_policy_{policy::protocol::Liveness::Passive};
+    // Internal policy aliases for cleaner access
+    using BackpressurePolicy = typename Bundle::backpressure;
+    using LivenessPolicy     = typename Bundle::liveness;
+    using SymbolLimitPolicy  = typename Bundle::symbol_limit;
 
     // Temporary buffer for request serialization (to avoid heap allocations)
     lcr::local::raw_buffer<config::TX_BUFFER_CAPACITY> tx_buffer_{};
@@ -743,10 +744,9 @@ private:
             // Currently no user-defined hook for retry scheduled
             break;
         case transport::connection::Signal::LivenessThreatened:
-            // Currently no user-defined hook for liveness warning
-            if (liveness_policy_ == policy::protocol::Liveness::Active) {
-                    ping();
-                }
+            if constexpr (LivenessPolicy::proactive) {
+                ping();
+            }
             break;
         case transport::connection::Signal::BackpressureDetected:
             WK_WARN("[SESSION] Transport backpressure detected - protocol correctness compromised (user is not draining fast enough)");
@@ -759,13 +759,28 @@ private:
     }
 
     inline void enforce_backpressure_policy_() noexcept {
-        // Current backpresusre policy (strict)
-        // Wirekrak should never lie to the user or perform magic without explicit user instruction
-        // Defensive action: close the connection to prevent further damage
-        if (connection_.is_active()) {
-            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees.");
-            connection_.close();
+
+        constexpr auto mode = BackpressurePolicy::on_ring_full();
+
+        if constexpr (mode == policy::BackpressureMode::ZeroTolerance) {
+            if (connection_.is_active()) {
+                WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (ZeroTolerance backpressure).");
+                connection_.close();
+            }
         }
+        else if constexpr (mode == policy::BackpressureMode::Strict) {
+            if (connection_.is_active()) {
+                WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (Strict backpressure).");
+                connection_.close();
+            }
+        }
+        else if constexpr (mode == policy::BackpressureMode::Relaxed) {
+            if (connection_.is_active()) {
+                WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (Relaxed backpressure).");
+                connection_.close();
+            }
+        }
+
         backpressure_violation_ = false;
     }
 

@@ -1,22 +1,75 @@
+
 #pragma once
 
-#include <cstdint>
-#include <string_view>
+#include <concepts>
 
 namespace wirekrak::core::policy::protocol {
+namespace liveness {
 
-enum class Liveness : std::uint8_t {
-    Passive,  // Liveness reflects observable protocol traffic only
-    Active    // Protocol is responsible for maintaining liveness
+// ============================================================================
+// Liveness Policy
+// ============================================================================
+//
+// Controls how the Session reacts to transport::connection::Signal::LivenessThreatened.
+//
+// Design goals:
+//   • Compile-time injectable
+//   • Zero runtime branching
+//   • No state
+//   • Deterministic behavior
+//   • Ultra-low-latency friendly
+//
+// Semantics:
+//
+// Passive
+//   - Session reflects observable protocol traffic only
+//   - No proactive ping is sent
+//
+// Active
+//   - Session proactively maintains liveness
+//   - Sends ping() when liveness is threatened
+//
+// ============================================================================
+
+
+// ----------------------------------------------------------------------------
+// Passive Liveness Policy
+// ----------------------------------------------------------------------------
+
+struct Passive {
+
+    // Whether session should actively maintain liveness
+    static constexpr bool proactive = false;
 };
 
-[[nodiscard]]
-inline constexpr std::string_view to_string(Liveness policy) noexcept {
-    switch (policy) {
-        case Liveness::Passive: return "Passive";
-        case Liveness::Active:  return "Active";
-        default:                return "Unknown";
-    }
-}
+
+// ----------------------------------------------------------------------------
+// Active Liveness Policy
+// ----------------------------------------------------------------------------
+
+struct Active {
+
+    // Whether session should actively maintain liveness
+    static constexpr bool proactive = true;
+};
+
+} // namespace liveness
+
+// ----------------------------------------------------------------------------
+// Concept
+// ----------------------------------------------------------------------------
+
+template<class T>
+concept LivenessConcept =
+    requires {
+        { T::proactive } -> std::convertible_to<bool>;
+    };
+
+
+// ----------------------------------------------------------------------------
+// Default
+// ----------------------------------------------------------------------------
+
+using DefaultLiveness = liveness::Passive;
 
 } // namespace wirekrak::core::policy::protocol

@@ -12,18 +12,11 @@ namespace wirekrak::core::policy::transport {
 //
 // This bundle acts as a single injection point for transport behavior.
 //
-// Future additions may include:
-//
-//   using ClosePolicy;
-//   using FragmentPolicy;
-//   using LivenessPolicy;
-//   using TimeoutPolicy;
-//
 // Keeping this as a bundle prevents template parameter explosion.
 // ============================================================================
 
 template<
-    BackpressurePolicy BackpressureT = backpressure::ZeroTolerance
+    BackpressurePolicy BackpressureT = backpressure::Strict
 >
 struct websocket_bundle {
 
