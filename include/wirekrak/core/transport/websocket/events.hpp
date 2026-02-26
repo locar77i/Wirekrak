@@ -82,7 +82,8 @@ namespace wirekrak::core::transport::websocket {
 enum class EventType : std::uint8_t {
     Close = 0,
     Error = 1,
-    Backpressure = 2
+    BackpressureDetected = 2,
+    BackpressureCleared  = 3,
 };
 
 // -----------------------------------------------------------------------------
@@ -122,9 +123,15 @@ struct Event {
     // Factory: Backpressure
     // -------------------------------------------------------------------------
 
-    static constexpr Event make_backpressure() noexcept {
+    static constexpr Event make_backpressure_detected() noexcept {
         Event ev;
-        ev.type = EventType::Backpressure;
+        ev.type = EventType::BackpressureDetected;
+        return ev;
+    }
+
+    static constexpr Event make_backpressure_cleared() noexcept {
+        Event ev;
+        ev.type = EventType::BackpressureCleared;
         return ev;
     }
 };

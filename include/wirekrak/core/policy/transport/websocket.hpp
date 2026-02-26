@@ -10,13 +10,20 @@ namespace wirekrak::core::policy::transport {
 // WebSocket Policy Bundle
 // ============================================================================
 //
-// This bundle acts as a single injection point for transport behavior.
+// Single injection point for transport behavior.
+// Prevents template parameter explosion.
 //
-// Keeping this as a bundle prevents template parameter explosion.
+// The bundle forwards:
+//   - backpressure policy
+//   - mode
+//   - hysteresis type (if applicable)
+//
+// ZeroTolerance does not expose hysteresis.
+// Strict / Relaxed do.
 // ============================================================================
 
 template<
-    BackpressurePolicy BackpressureT = backpressure::Strict
+    BackpressurePolicy BackpressureT = backpressure::Strict<>
 >
 struct websocket_bundle {
 

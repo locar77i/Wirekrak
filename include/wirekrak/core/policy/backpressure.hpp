@@ -2,6 +2,10 @@
 
 #include <concepts>
 
+#include "wirekrak/core/config/backpressure.hpp"
+#include "lcr/control/binary_hysteresis.hpp"
+
+
 namespace wirekrak::core::policy {
 
 // ============================================================================
@@ -27,22 +31,11 @@ enum class BackpressureMode {
 // ============================================================================
 // Backpressure Policy Concept
 // ============================================================================
-//
-// A BackpressurePolicy must expose:
-//
-//   static constexpr BackpressureMode on_ring_full() noexcept;
-//
-// Policy must:
-//   - Be pure
-//   - Be side-effect free
-//   - Not access state
-//   - Be constexpr evaluable
-// ============================================================================
 
 template<typename P>
 concept BackpressurePolicy =
 requires {
-    { P::on_ring_full() } noexcept -> std::same_as<BackpressureMode>;
+    { P::mode } -> std::same_as<const BackpressureMode&>;
 };
 
 // ============================================================================
@@ -51,25 +44,51 @@ requires {
 
 namespace backpressure {
 
-// Immediate signaling
+// ------------------------------------------------------------
+// ZeroTolerance
+// ------------------------------------------------------------
+// Immediate activation
+// No recovery (transport forces close on backpressure)
+
 struct ZeroTolerance {
-    static constexpr BackpressureMode on_ring_full() noexcept {
-        return BackpressureMode::ZeroTolerance;
-    }
+
+    static constexpr BackpressureMode mode =
+        BackpressureMode::ZeroTolerance;
 };
 
-// Immediate signaling
+
+// ------------------------------------------------------------
+// Strict
+// ------------------------------------------------------------
+// Immediate activation
+// Stabilized recovery
+
+template<
+    std::uint32_t DeactivateThreshold = 8
+>
 struct Strict {
-    static constexpr BackpressureMode on_ring_full() noexcept {
-        return BackpressureMode::Strict;
-    }
+
+    static constexpr BackpressureMode mode = BackpressureMode::Strict;
+
+    using hysteresis = lcr::control::BinaryHysteresis<1, DeactivateThreshold>;
 };
 
-// Delayed signaling (tolerates temporary saturation)
+
+// ------------------------------------------------------------
+// Relaxed
+// ------------------------------------------------------------
+// Delayed activation
+// Stabilized recovery
+
+template<
+    std::uint32_t ActivateThreshold   = 64,
+    std::uint32_t DeactivateThreshold = 8
+>
 struct Relaxed {
-    static constexpr BackpressureMode on_ring_full() noexcept {
-        return BackpressureMode::Relaxed;
-    }
+
+    static constexpr BackpressureMode mode = BackpressureMode::Relaxed;
+
+    using hysteresis = lcr::control::BinaryHysteresis<ActivateThreshold, DeactivateThreshold>;
 };
 
 } // namespace backpressure

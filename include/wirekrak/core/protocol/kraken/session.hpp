@@ -64,7 +64,6 @@ Data-plane model:
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
-#include "wirekrak/core/protocol/config.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
@@ -75,6 +74,8 @@ Data-plane model:
 #include "wirekrak/core/protocol/kraken/channel/manager.hpp"
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
 #include "wirekrak/core/policy/protocol/session.hpp"
+#include "wirekrak/core/config/protocol.hpp"
+#include "wirekrak/core/config/backpressure.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/local/raw_buffer.hpp"
 #include "lcr/local/ring.hpp"
@@ -386,7 +387,7 @@ public:
         // === Drain transport data-plane (zero-copy) ===
         transport::websocket::DataBlock* block = nullptr;
         std::size_t messages_processed = 0;
-        while (messages_processed < config::MAX_MESSAGES_PER_POLL && (block = connection_.peek_message()) != nullptr) {
+        while (messages_processed < config::protocol::MAX_MESSAGES_PER_POLL && (block = connection_.peek_message()) != nullptr) {
             // The message slot remains valid until release_message() is called
             std::string_view sv{ block->data, block->size };
             // Handle the message (parsing & routing)
@@ -396,8 +397,8 @@ public:
             if (r == parser::Result::Backpressure) {
                 WK_WARN("[SESSION] Failed to deliver " << to_string(channel) << " message (backpressure)"
                     " - protocol correctness compromised (user is not draining fast enough)");
-                backpressure_violation_ = true;
-                // When session-level backpressure occurs, we intentionally do not release the slot to prevent silent data loss.
+                overload_state_.user.mark_active();
+                connection_.release_message();
                 break; // Stop processing more messages to prevent further damage
             }
             // Release the message slot back to the transport regardless of parsing outcome to maintain flow.
@@ -422,7 +423,7 @@ public:
             // 2) Forward to user-visible rejection buffer (lossless)
             if (!user_rejection_buffer_.push(notice)) [[unlikely]] { // This is a hard failure: we cannot report semantic errors reliably
                 WK_WARN("[SESSION] Failed to deliver rejection notice (backpressure) - protocol correctness compromised (user is not draining fast enough)");
-                backpressure_violation_ = true;
+                overload_state_.user.mark_active();
                 break;
             }
         }}
@@ -485,9 +486,7 @@ public:
         }}
 
         // Check for backpressure violations and enforce policy if needed
-        if (backpressure_violation_) {
-            enforce_backpressure_policy_();
-        }
+        enforce_backpressure_policy_();
 
         return connection_.epoch();
     }
@@ -635,7 +634,7 @@ private:
     using SymbolLimitPolicy  = typename Bundle::symbol_limit;
 
     // Temporary buffer for request serialization (to avoid heap allocations)
-    lcr::local::raw_buffer<config::TX_BUFFER_CAPACITY> tx_buffer_{};
+    lcr::local::raw_buffer<config::protocol::TX_BUFFER_CAPACITY> tx_buffer_{};
 
     // Session context (owning)
     Context ctx_;
@@ -648,7 +647,7 @@ private:
 
     // User-visible rejection queue.
     // Decoupled from internal protocol processing to prevent user behavior from affecting Core correctness.
-    lcr::local::ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY> user_rejection_buffer_;
+    lcr::local::ring<schema::rejection::Notice, config::protocol::REJECTION_RING_CAPACITY> user_rejection_buffer_;
 
     // Channel subscription managers
     channel::Manager trade_channel_manager_{Channel::Trade};
@@ -657,8 +656,99 @@ private:
     // Replay database
     replay::Database replay_db_;
 
-    // Backpressure violation flag
-    bool backpressure_violation_{false};
+    // --------------------------------------------------------------------------------
+    // Overload tracking counters for specific domains (transport, protocol, user)
+    // --------------------------------------------------------------------------------
+
+    // Persistent overload counter (remembers if overload was active in previous poll)
+    class PersistentOverloadCounter {
+        bool active{false};
+        std::uint32_t consecutive_polls{0};
+
+    public:
+        inline void set_active(bool value) noexcept {
+            active = value;
+        }
+
+        inline void next_poll() noexcept {
+            if (active) {
+                ++consecutive_polls;
+                WK_DEBUG("Persistent overload count = " << consecutive_polls);
+            } else {
+                consecutive_polls = 0;
+            }
+        }
+
+        [[nodiscard]]
+        inline bool is_active() const noexcept {
+            return active;
+        }
+
+        [[nodiscard]]
+        inline std::uint32_t count() const noexcept {
+            return consecutive_polls;
+        }
+
+        inline void reset() noexcept {
+            active = false;
+            consecutive_polls = 0;
+        }
+    };
+
+    // Frame-specific overload counter (resets if no activity in a poll)
+    class FrameOverloadCounter {
+        bool active_this_poll{false};
+        std::uint32_t consecutive_polls{0};
+
+    public:
+        inline void mark_active() noexcept {
+            active_this_poll = true;
+        }
+
+        inline void next_poll() noexcept {
+            if (active_this_poll) {
+                ++consecutive_polls;
+                //WK_DEBUG("Frame overload count = " << consecutive_polls);
+            } else {
+                consecutive_polls = 0;
+            }
+
+            // Reset for next frame
+            active_this_poll = false;
+        }
+
+        [[nodiscard]]
+        inline bool is_active() const noexcept {
+            return consecutive_polls > 0;
+        }
+
+        [[nodiscard]]
+        inline std::uint32_t count() const noexcept {
+            return consecutive_polls;
+        }
+
+        inline void reset() noexcept {
+            active_this_poll = false;
+            consecutive_polls = 0;
+        }
+    };
+
+    // Overall overload state tracking for transport, protocol, and user domains
+    struct OverloadState {
+        PersistentOverloadCounter transport;
+        FrameOverloadCounter user;
+
+        inline void next_poll() noexcept {
+            transport.next_poll();
+            user.next_poll();
+        }
+
+        inline void reset() noexcept {
+            transport.reset();
+            user.reset();
+        }
+    };
+    OverloadState overload_state_;
 
 private:
     inline void handle_connect_() {
@@ -714,6 +804,7 @@ private:
         // Clear runtime state
         trade_channel_manager_.clear_all();
         book_channel_manager_.clear_all();
+        overload_state_.reset();
     }
 
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
@@ -749,9 +840,12 @@ private:
             }
             break;
         case transport::connection::Signal::BackpressureDetected:
-            WK_WARN("[SESSION] Transport backpressure detected - protocol correctness compromised (user is not draining fast enough)");
-            // TODO: take further action based on backpressure policy (default harcoded: strict)
-            backpressure_violation_ = true;
+            WK_DEBUG("[SESSION] Transport backpressure detected - protocol correctness compromised (messages are not being processed fast enough)");
+            overload_state_.transport.set_active(true);
+            break;
+        case transport::connection::Signal::BackpressureCleared:
+            WK_TRACE("[SESSION] Transport backpressure cleared");
+            overload_state_.transport.set_active(false);
             break;
         default:
             break;
@@ -759,29 +853,60 @@ private:
     }
 
     inline void enforce_backpressure_policy_() noexcept {
-
-        constexpr auto mode = BackpressurePolicy::on_ring_full();
-
-        if constexpr (mode == policy::BackpressureMode::ZeroTolerance) {
-            if (connection_.is_active()) {
-                WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (ZeroTolerance backpressure).");
-                connection_.close();
-            }
+        overload_state_.next_poll();
+        if (overload_state_.transport.is_active() && enforce_transport_backpressure_policy_()) [[unlikely]] {
+            return; // If transport policy enforcement resulted in connection close, skip user policy to avoid redundant actions
         }
-        else if constexpr (mode == policy::BackpressureMode::Strict) {
-            if (connection_.is_active()) {
-                WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (Strict backpressure).");
-                connection_.close();
-            }
+        if (overload_state_.user.is_active() && enforce_user_backpressure_policy_()) [[unlikely]] {
+            return; // If user policy enforcement resulted in connection close, skip further actions
         }
-        else if constexpr (mode == policy::BackpressureMode::Relaxed) {
-            if (connection_.is_active()) {
-                WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (Relaxed backpressure).");
-                connection_.close();
-            }
+    }
+
+    [[nodiscard]]
+    inline bool enforce_transport_backpressure_policy_() noexcept {
+
+        // ZeroTolerance is handled by transport layer (force close on backpressure), so we do not need to do anything here.
+        if constexpr (BackpressurePolicy::mode == policy::BackpressureMode::ZeroTolerance) {
+            return false;
         }
 
-        backpressure_violation_ = false;
+        // Determine threshold - consecutive backpressure signals before taking action
+        constexpr std::uint32_t threshold = (BackpressurePolicy::mode == policy::BackpressureMode::Strict) ?
+        config::backpressure::STRICT_ESCALATION_THRESHOLD : config::backpressure::RELAXED_ESCALATION_THRESHOLD;
+
+        if (overload_state_.transport.count() >= threshold) [[unlikely]] {
+            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (transport backpressure escalation after "
+                << overload_state_.transport.count() << " consecutive overloaded polls).");
+            connection_.close();
+            overload_state_.reset();
+            return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]]
+    inline bool enforce_user_backpressure_policy_() noexcept {
+
+        if constexpr (BackpressurePolicy::mode == policy::BackpressureMode::ZeroTolerance) {
+            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
+                << overload_state_.user.count() << " consecutive overloaded polls).");
+            connection_.close();
+            overload_state_.reset();
+            return true;
+        }
+
+        // Determine threshold - consecutive backpressure signals before taking action
+        constexpr std::uint32_t threshold = (BackpressurePolicy::mode == policy::BackpressureMode::Strict) ?
+            config::backpressure::STRICT_ESCALATION_THRESHOLD : config::backpressure::RELAXED_ESCALATION_THRESHOLD;
+
+        if (overload_state_.user.count() >= threshold) [[unlikely]] {
+            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
+                << overload_state_.user.count() << " consecutive overloaded polls).");
+            connection_.close();
+            overload_state_.reset();
+            return true;
+        }
+        return false;
     }
 
     // Helpers to get the correct subscription manager
@@ -880,7 +1005,7 @@ private:
         }
         // 2. Serialize to JSON (into stack buffer to avoid heap allocation)
         const std::size_t required = req.max_json_size();
-        if (required > config::TX_BUFFER_CAPACITY) [[unlikely]] {
+        if (required > config::protocol::TX_BUFFER_CAPACITY) [[unlikely]] {
             WK_FATAL("[SESSION] JSON exceeds TX buffer capacity");
             return false;
         }

@@ -12,9 +12,10 @@
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
-#include "wirekrak/core/transport/websocket/config.hpp"
 #include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "wirekrak/core/policy/transport/websocket.hpp"
+#include "wirekrak/core/config/transport/websocket.hpp"
+#include "wirekrak/core/config/backpressure.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
@@ -330,61 +331,61 @@ private:
     [[nodiscard]]
     inline websocket::DataBlock* acquire_slot_() noexcept {
         websocket::DataBlock* slot = message_ring_.acquire_producer_slot();
-        if (!slot) [[unlikely]] {
-            // 1. Get the policy-defined backpressure handling mode
-            constexpr auto mode = BackpressurePolicy::on_ring_full();
-            // 2. Handle backpressure according to the policy
-            if constexpr (mode == core::policy::BackpressureMode::ZeroTolerance) {
-                // 2.1. Immediate escalation with forced close
-                WK_WARN("[WS] Backpressure: Ring buffer full, applying zero-tolerance backpressure policy (immediate event and forced close)");
-                if (!control_events_.push(websocket::Event::make_backpressure())) {
-                    WK_FATAL("[WS] Failed to emit backpressure event - control event lost in transport shutdown");
-                }
-                handle_fatal_error_("[WS] Failed to acquire message slot (backpressure)"
-                    " - transport correctness compromised (user is not draining fast enough)", Error::Backpressure);
+        if (!slot) [[unlikely]] { // Handle backpressure according to the policy
+            // =========================================================
+            // ZeroTolerance (transport-level forced close)
+            // =========================================================
+            if constexpr (BackpressurePolicy::mode == core::policy::BackpressureMode::ZeroTolerance) {
+                // 1.1. Forced close without signaling (transport decides fate)
+                // ZeroTolerance guarantees no BackpressureDetected event will ever be emitted.
+                WK_WARN("[WS] The message ring buffer is full (backpressure)");
+                handle_fatal_error_("[WS] Failed to acquire message slot (zero-tolerance policy)"
+                    " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
                 return nullptr;
             }
-            else
-            if constexpr (mode == core::policy::BackpressureMode::Strict) {
-                // 2.2. Immediate escalation (session decides fate)
-                if (!backpressure_.signaled) {
-                    backpressure_.signaled = true;
-                    WK_WARN("[WS] Backpressure: Ring buffer full, applying strict backpressure policy (immediate event)");
-                    if (!control_events_.push(websocket::Event::make_backpressure())) {
-                        handle_fatal_error_("[WS] Failed to emit backpressure event (backpressure)"
-                            " - transport correctness compromised (user is not draining fast enough)", Error::Backpressure);
+            // =========================================================
+            // Strict / Relaxed (policy defines thresholds)
+            // =========================================================
+            else { 
+                // 1.2. Immediate escalation (session decides fate)
+                auto transition = backpressure_.on_active_signal();
+                if (transition == Hysteresis::Transition::Activated) {
+                    WK_TRACE("[WS] Backpressure detected - message ring buffer is full");
+                    if (!control_events_.push(websocket::Event::make_backpressure_detected())) {
+                        handle_fatal_error_("[WS] Failed to emit backpressure event (event lost)"
+                            " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
                     }
                 }
+                // Slow down reader slightly to give it a chance to catch up before retrying
                 std::this_thread::yield();
-                return nullptr;
-            }
-            else
-            if constexpr (mode == core::policy::BackpressureMode::Relaxed) {
-                // 2.3. Tolerate temporarily before signaling (session decides fate)
-                ++backpressure_.attempts;
-                if (!backpressure_.signaled && backpressure_.attempts >= backpressure_.threshold) {
-                    backpressure_.signaled = true;
-                    // Emit backpressure event after reaching threshold
-                    WK_WARN("[WS] Backpressure: Ring buffer full, applying relaxed backpressure policy (threshold reached)");
-                    if (!control_events_.push(websocket::Event::make_backpressure())) {
-                        handle_fatal_error_("[WS] Failed to emit backpressure event (backpressure)"
-                            " - transport correctness compromised (user is not draining fast enough)", Error::Backpressure);
-                        return nullptr;
-                    }
-                    backpressure_.attempts = 0;
-                }
-                // Slow down reader slightly to give it a chance to catch up before retrying 
+/*
                 if (backpressure_.attempts < 10) { // Light backoff for initial attempts to reduce CPU pressure
                     std::this_thread::yield();
                 }
                 else { // Stronger backoff after multiple attempts to reduce scheduler dependency
                     std::this_thread::sleep_for(std::chrono::microseconds(10));
                 }
+*/
                 return nullptr;
             }
         }
-        // Successfully acquired slot
-        backpressure_.reset();
+        // =============================================================
+        // Successful slot acquisition
+        // =============================================================
+        if constexpr (BackpressurePolicy::mode != core::policy::BackpressureMode::ZeroTolerance) {
+
+            auto transition = backpressure_.on_inactive_signal();
+
+            if (transition == Hysteresis::Transition::Deactivated) {
+                WK_TRACE("[WS] Backpressure cleared: Message slot acquired successfully");
+                // Cleared is advisory
+                if (!control_events_.push(websocket::Event::make_backpressure_cleared())) {
+                    // Event intentionally dropped on the floor (logged for observability)
+                    // We have already successfully acquired a slot, so transport correctness is not compromised
+                    WK_WARN("[WS] Dropping backpressure cleared event (control ring full)");
+                }
+            }
+        }
         return slot;
     }
 
@@ -450,21 +451,20 @@ private:
     // Telemetry reference (non-owning) 
     telemetry::WebSocket& telemetry_;
 
-    // Policy-defined backpressure handling (default: strict)
+    // Backpressure policy instance
     using BackpressurePolicy = typename PolicyBundle::backpressure;
 
-    // Backpressure state tracking
-    struct BackpressureState {
-        std::uint32_t attempts{0};
-        static constexpr std::uint32_t threshold{50};
-        bool signaled{false};
-        // Resets the backpressure state (e.g. after successfully acquiring a slot)
-        void reset() noexcept {
-            attempts = 0;
-            signaled = false;
-        }
-    };
-    BackpressureState backpressure_;
+    // Hysteresis type based on the backpressure policy mode
+    using Hysteresis =
+        std::conditional_t<
+            BackpressurePolicy::mode == core::policy::BackpressureMode::ZeroTolerance,
+            std::nullptr_t,
+            typename BackpressurePolicy::hysteresis
+        >;
+
+    // Backpressure stabilizer (only used for non-zero-tolerance policies)
+    [[no_unique_address]]
+    Hysteresis backpressure_;
 
     // Compile-time API policy (default: RealApi)
     Api api_;

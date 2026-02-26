@@ -98,9 +98,9 @@ No level-based liveness or health state is exposed.
 #include "wirekrak/core/transport/parse_url.hpp"
 #include "wirekrak/core/transport/state.hpp"
 #include "wirekrak/core/transport/connection/signal.hpp"
-#include "wirekrak/core/transport/connection/config.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
 #include "wirekrak/core/transport/websocket/data_block.hpp"
+#include "wirekrak/core/config/transport/connection.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/optional.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
@@ -228,8 +228,12 @@ public:
                     on_transport_error_(ev.error);
                     break;
 
-                case websocket::EventType::Backpressure:
-                    on_transport_backpressure_();
+                case websocket::EventType::BackpressureDetected:
+                    on_transport_backpressure_detected_();
+                    break;
+
+                case websocket::EventType::BackpressureCleared:
+                    on_transport_backpressure_cleared_();
                     break;
             }
         }
@@ -422,7 +426,7 @@ private:
         if (events_.push(sig)) [[likely]] {
             return;
         }
-        WK_WARN("[CONN] Failed to emit signal '" << to_string(sig) << "' (backpressure) - protocol correctness compromised (user is not draining fast enough)");
+        WK_WARN("[CONN] Failed to emit signal '" << to_string(sig) << "' (backpressure) - protocol correctness compromised (protocol is not draining fast enough)");
         // Future backpresusre policy (default:strict)
         // Wirekrak should never lie to the user or perform magic without explicit user instruction
         // Defensive action: close the connection to prevent further damage
@@ -654,8 +658,12 @@ private:
         WK_INFO("[CONN] Connection closed from server: " << last_url_ << " (reason: " << to_string(disconnect_reason_) << ")");
     }
 
-    inline void on_transport_backpressure_() {
+    inline void on_transport_backpressure_detected_() {
         emit_(connection::Signal::BackpressureDetected);
+    }
+
+    inline void on_transport_backpressure_cleared_() {
+        emit_(connection::Signal::BackpressureCleared);
     }
 
     // Determines whether a transport error represents a transient, external

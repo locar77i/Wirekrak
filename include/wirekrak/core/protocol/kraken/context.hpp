@@ -1,6 +1,5 @@
 #pragma once
 
-#include "wirekrak/core/protocol/config.hpp"
 #include "wirekrak/core/protocol/kraken/schema/rejection_notice.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/pong.hpp"
 #include "wirekrak/core/protocol/kraken/schema/status/update.hpp"
@@ -10,6 +9,7 @@
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe_ack.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe_ack.hpp"
+#include "wirekrak/core/config/protocol.hpp"
 #include "lcr/local/ring.hpp"
 
 
@@ -37,17 +37,17 @@ struct Context {
     lcr::optional<schema::status::Update> status_slot{};
 
     // Output rings for rejection notices
-    lcr::local::ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY> rejection_ring{};
+    lcr::local::ring<schema::rejection::Notice, config::protocol::REJECTION_RING_CAPACITY> rejection_ring{};
 
     // Output rings for trade channel
-    lcr::local::ring<schema::trade::Response, config::TRADE_RING_CAPACITY> trade_ring{};
-    lcr::local::ring<schema::trade::SubscribeAck, config::ACK_RING_CAPACITY> trade_subscribe_ring{};
-    lcr::local::ring<schema::trade::UnsubscribeAck, config::ACK_RING_CAPACITY> trade_unsubscribe_ring{};
+    lcr::local::ring<schema::trade::Response, config::protocol::TRADE_RING_CAPACITY> trade_ring{};
+    lcr::local::ring<schema::trade::SubscribeAck, config::protocol::ACK_RING_CAPACITY> trade_subscribe_ring{};
+    lcr::local::ring<schema::trade::UnsubscribeAck, config::protocol::ACK_RING_CAPACITY> trade_unsubscribe_ring{};
 
     // Output rings for book channel
-    lcr::local::ring<schema::book::Response, config::BOOK_RING_CAPACITY> book_ring{};
-    lcr::local::ring<schema::book::SubscribeAck, config::ACK_RING_CAPACITY> book_subscribe_ring{};
-    lcr::local::ring<schema::book::UnsubscribeAck, config::ACK_RING_CAPACITY> book_unsubscribe_ring{};
+    lcr::local::ring<schema::book::Response, config::protocol::BOOK_RING_CAPACITY> book_ring{};
+    lcr::local::ring<schema::book::SubscribeAck, config::protocol::ACK_RING_CAPACITY> book_subscribe_ring{};
+    lcr::local::ring<schema::book::UnsubscribeAck, config::protocol::ACK_RING_CAPACITY> book_unsubscribe_ring{};
 
     // ------------------------------------------------------------
     // Construction from owning Context
@@ -93,17 +93,17 @@ struct ContextView {
     lcr::optional<schema::status::Update>& status_slot;
 
     // Output rings for rejection notices
-    lcr::local::ring<schema::rejection::Notice, config::REJECTION_RING_CAPACITY>& rejection_ring;
+    lcr::local::ring<schema::rejection::Notice, config::protocol::REJECTION_RING_CAPACITY>& rejection_ring;
 
     // Output rings for trade channel
-    lcr::local::ring<schema::trade::Response, config::TRADE_RING_CAPACITY>& trade_ring;
-    lcr::local::ring<schema::trade::SubscribeAck, config::ACK_RING_CAPACITY>& trade_subscribe_ring;
-    lcr::local::ring<schema::trade::UnsubscribeAck, config::ACK_RING_CAPACITY>& trade_unsubscribe_ring;
+    lcr::local::ring<schema::trade::Response, config::protocol::TRADE_RING_CAPACITY>& trade_ring;
+    lcr::local::ring<schema::trade::SubscribeAck, config::protocol::ACK_RING_CAPACITY>& trade_subscribe_ring;
+    lcr::local::ring<schema::trade::UnsubscribeAck, config::protocol::ACK_RING_CAPACITY>& trade_unsubscribe_ring;
 
     // Output rings for book channel
-    lcr::local::ring<schema::book::Response, config::BOOK_RING_CAPACITY>& book_ring;
-    lcr::local::ring<schema::book::SubscribeAck, config::ACK_RING_CAPACITY>& book_subscribe_ring;
-    lcr::local::ring<schema::book::UnsubscribeAck, config::ACK_RING_CAPACITY>& book_unsubscribe_ring;
+    lcr::local::ring<schema::book::Response, config::protocol::BOOK_RING_CAPACITY>& book_ring;
+    lcr::local::ring<schema::book::SubscribeAck, config::protocol::ACK_RING_CAPACITY>& book_subscribe_ring;
+    lcr::local::ring<schema::book::UnsubscribeAck, config::protocol::ACK_RING_CAPACITY>& book_unsubscribe_ring;
 
     // ------------------------------------------------------------
     // Construction from owning Context

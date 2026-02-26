@@ -80,6 +80,7 @@ enum class Signal : uint8_t {
     LivenessThreatened,    // Liveness threatened (healthy → warning)
     // --- Backpressure ---
     BackpressureDetected,  // Transport backpressure detected (user is not draining fast enough)
+    BackpressureCleared,   // Transport backpressure resolved (user has caught up)
 };
 
 [[nodiscard]]
@@ -92,6 +93,7 @@ inline std::string_view to_string(Signal sig) noexcept {
         case Signal::RetryScheduled:       return "RetryScheduled";
         case Signal::LivenessThreatened:   return "LivenessThreatened";
         case Signal::BackpressureDetected: return "BackpressureDetected";
+        case Signal::BackpressureCleared:  return "BackpressureCleared";
         default:                           return "Unknown";
     }
 }

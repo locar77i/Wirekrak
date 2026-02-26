@@ -59,14 +59,14 @@ static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 using PassiveBundle =
     policy::protocol::session_bundle<
-        policy::backpressure::Strict,
+        policy::backpressure::Strict<>,
         policy::protocol::liveness::Passive,
         policy::protocol::NoSymbolLimits
     >;
 
 using ActiveBundle =
     policy::protocol::session_bundle<
-        policy::backpressure::Strict,
+        policy::backpressure::Strict<>,
         policy::protocol::liveness::Active,
         policy::protocol::NoSymbolLimits
     >;

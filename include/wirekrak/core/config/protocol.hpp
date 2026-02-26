@@ -2,7 +2,8 @@
 
 #include <cstddef>
 
-namespace wirekrak::core::protocol::config {
+
+namespace wirekrak::core::config::protocol {
 
 /*
 ===============================================================================
@@ -48,4 +49,4 @@ inline constexpr static std::size_t TX_BUFFER_CAPACITY = 4096;
 
 inline constexpr static std::size_t MAX_MESSAGES_PER_POLL = 128; // Tunable limit for batch processing in poll()
 
-} // namespace wirekrak::core::protocol::config
+} // namespace wirekrak::core::config::protocol

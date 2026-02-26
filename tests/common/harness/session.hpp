@@ -41,7 +41,6 @@ namespace harness {
 template<
     transport::WebSocketConcept WS,
     typename MessageRing,
-//  policy::protocol::SymbolLimitConcept LimitPolicy = policy::protocol::NoSymbolLimits
     typename Bundle = policy::protocol::SessionDefault
 >
 struct Session {

@@ -19,9 +19,9 @@ namespace wirekrak::core::policy::protocol {
 // ============================================================================
 
 template<
-    BackpressurePolicy BackpressureT = backpressure::Strict,    // Family
-    LivenessConcept LivenessT        = DefaultLiveness,         // Concept
-    SymbolLimitConcept SymbolLimitT  = NoSymbolLimits           // Concept
+    BackpressurePolicy BackpressureT = backpressure::Strict<>,    // Family
+    LivenessConcept LivenessT        = DefaultLiveness,           // Concept
+    SymbolLimitConcept SymbolLimitT  = NoSymbolLimits             // Concept
 >
 struct session_bundle {
 

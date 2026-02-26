@@ -82,7 +82,7 @@ memory footprint of the message ring.
 
 #include <cstdint>
 #include <cstddef>
-#include "wirekrak/core/transport/websocket/config.hpp"
+#include "wirekrak/core/config/transport/websocket.hpp"
 
 
 namespace wirekrak::core::transport::websocket {
