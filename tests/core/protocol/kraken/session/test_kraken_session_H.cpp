@@ -617,13 +617,13 @@ void test_hard_limit_enforcement() {
         5, 5, 8
     >;
 
-    using Bundle = policy::protocol::session_bundle<
-        policy::backpressure::Strict,
+    using SessionPolicies = policy::protocol::session_bundle<
+        policy::backpressure::Strict<>,
         policy::protocol::liveness::Active,
         Hard5
     >;
 
-    kraken::test::harness::Session<WebSocketUnderTest, MessageRingUnderTest, Bundle> h;
+    kraken::test::harness::Session<WebSocketUnderTest, MessageRingUnderTest, SessionPolicies> h;
     h.connect();
 
     constexpr std::size_t MAX_SYMBOLS = 5;

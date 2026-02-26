@@ -172,27 +172,3 @@ Wirekrak Core is built to evolve without breaking contracts.
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/protocol/kraken/session.hpp"
-
-
-namespace wirekrak::core {
-
-    using MessageRingT = lcr::lockfree::spsc_ring<transport::websocket::DataBlock, transport::RX_RING_CAPACITY>;
-
-namespace transport {
-
-    using WebSocketT   = winhttp::WebSocketImpl<MessageRingT>;
-
-    // Assert that WebSocketT conforms to transport::WebSocketConcept concept
-    static_assert(WebSocketConcept<WebSocketT>);
-  
-    using ConnectionT  = Connection<WebSocketT, MessageRingT>;
-
-} // namespace transport
-
-namespace protocol::kraken {
-    
-    using SessionT     = protocol::kraken::Session<transport::WebSocketT, MessageRingT>;
-
-} // namespace protocol::kraken
-
-} // namespace wirekrak::core

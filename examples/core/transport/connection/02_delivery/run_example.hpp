@@ -107,7 +107,7 @@ Wirekrak separates **fact**, **availability**, and **consumption** - on purpose.
 #include <thread>
 #include <csignal>
 
-#include "wirekrak/core.hpp"
+#include "wirekrak/core/preset/transport/connection_default.hpp"
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -124,7 +124,7 @@ inline void on_signal(int) {
 using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
-static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
+static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 
 // -----------------------------------------------------------------------------
@@ -143,7 +143,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // Connection setup
     // -------------------------------------------------------------------------
     telemetry::Connection telemetry;
-    ConnectionT connection(g_ring, telemetry);
+    preset::transport::DefaultConnection connection(g_ring, telemetry);
 
     // -------------------------------------------------------------------------
     // Lambda to drain events

@@ -35,6 +35,7 @@
 //
 // ============================================================================
 #include "commom/run_backpressure_example.hpp"
+#include "wirekrak/core/preset/message_ring_default.hpp"
 
 
 // -------------------------------------------------------------------------
@@ -62,22 +63,16 @@ using MySessionPolicies =
         >
     >;
 
-using MyMessageRing =
-    lcr::lockfree::spsc_ring<
-        transport::websocket::DataBlock,
-        transport::RX_RING_CAPACITY
-    >;
-
 using MyWebSocket =
     transport::winhttp::WebSocketImpl<
-        MyMessageRing,
+        preset::DefaultMessageRing,
         MyWebSocketPolicies
     >;
 
 using MySession =
     protocol::kraken::Session<
         MyWebSocket,
-        MyMessageRing,
+        preset::DefaultMessageRing,
         MySessionPolicies
     >;
 
@@ -85,7 +80,7 @@ using MySession =
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
-    return run_backpressure_example<MySession, MyMessageRing>(argc, argv,
+    return run_backpressure_example<MySession, preset::DefaultMessageRing>(argc, argv,
         "Wirekrak Core — Protocol Backpressure Example (Relaxed)\n"
         "Demonstrates explicit backpressure handling with multiple subscriptions.\n",
         "This example runs indefinitely until interrupted.\n"

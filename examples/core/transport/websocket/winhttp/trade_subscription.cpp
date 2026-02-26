@@ -5,7 +5,7 @@
 #include <locale>
 #include <csignal>
 
-#include "wirekrak/core.hpp"
+#include "wirekrak/core/preset/transport/websocket_default.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -14,7 +14,7 @@
 using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
-static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
+static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -33,7 +33,7 @@ int main() {
     std::signal(SIGINT, on_signal);  // Handle Ctrl+C
 
     telemetry::WebSocket telemetry;
-    WebSocketT ws(g_ring, telemetry);
+    preset::transport::DefaultWebSocket ws(g_ring, telemetry);
 
     if (ws.connect("ws.kraken.com", "443", "/v2") != Error::None) {
         std::cerr << "Connect failed" << std::endl;

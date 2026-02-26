@@ -27,7 +27,7 @@
 #include <iostream>
 #include <thread>
 
-#include "wirekrak/core.hpp"
+#include "wirekrak/core/preset/protocol/kraken_default.hpp"
 #include "common/cli/trade.hpp"
 #include "common/loop/helpers.hpp"
 
@@ -46,7 +46,7 @@ void on_signal(int) {
 using namespace wirekrak::core;
 using namespace wirekrak::core::protocol::kraken;
 
-static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
+static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 
 // -----------------------------------------------------------------------------
@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    SessionT session(g_ring);
+    preset::protocol::kraken::DefaultSession session(g_ring);
 
     // -------------------------------------------------------------------------
     // Connect

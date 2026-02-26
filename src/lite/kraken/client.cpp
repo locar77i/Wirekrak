@@ -15,6 +15,7 @@
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
 #include "wirekrak/core/protocol/kraken/response/partitioner.hpp"
+#include "wirekrak/core/preset/protocol/kraken_default.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 
 
@@ -26,18 +27,12 @@ namespace wirekrak::lite {
 namespace transport = wirekrak::core::transport;
 namespace kraken = wirekrak::core::protocol::kraken;
 namespace schema = kraken::schema;
-
-using MessageRingT = lcr::lockfree::spsc_ring<transport::websocket::DataBlock, transport::RX_RING_CAPACITY>;
-using WebSocketT   = transport::winhttp::WebSocketImpl<MessageRingT>;
-using SessionT     = kraken::Session<WebSocketT, MessageRingT>;
-
-// Defensive check that WebSocketT conforms to the WebSocketConcept concept
-static_assert(transport::WebSocketConcept<WebSocketT>);
+namespace preset = wirekrak::core::preset;
 
 // -----------------------------------------------------------------------------
 // Golbal SPSC ring buffer (transport → session)
 // -----------------------------------------------------------------------------
-static MessageRingT g_ring;
+static preset::DefaultMessageRing g_ring;
 
 // -----------------------------
 // Impl
@@ -47,7 +42,7 @@ struct Client::Impl {
     client_config cfg;
 
     // Core session (owning)
-    SessionT session;
+    preset::protocol::kraken::DefaultSession session;
 
     // Partitioner for trade responses: 1 trade::Response -> N trade::ResponseView (one per symbol)
     kraken::response::Partitioner<schema::trade::Response> trade_partitioner_;

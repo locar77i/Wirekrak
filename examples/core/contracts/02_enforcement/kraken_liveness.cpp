@@ -31,7 +31,10 @@
 #include <atomic>
 #include <csignal>
 
-#include "wirekrak/core.hpp"
+#include "wirekrak/core/protocol/kraken/session.hpp"
+
+#include "wirekrak/core/preset/message_ring_default.hpp"
+#include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "common/cli/minimal.hpp"
 
 
@@ -50,21 +53,21 @@ void on_signal(int) {
 using namespace wirekrak::core;
 using namespace wirekrak::core::protocol::kraken;
 
-static MessageRingT g_ring;   // Golbal SPSC ring buffer (transport → session)
+static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
 
 
 // -----------------------------------------------------------------------------
 // Session Type Definitions (Compile-Time Policy Injection)
 // -----------------------------------------------------------------------------
 
-using PassiveBundle =
+using PassivePolicies =
     policy::protocol::session_bundle<
         policy::backpressure::Strict<>,
         policy::protocol::liveness::Passive,
         policy::protocol::NoSymbolLimits
     >;
 
-using ActiveBundle =
+using ActivePolicies =
     policy::protocol::session_bundle<
         policy::backpressure::Strict<>,
         policy::protocol::liveness::Active,
@@ -73,16 +76,16 @@ using ActiveBundle =
 
 using PassiveSession =
     Session<
-        transport::winhttp::WebSocketImpl<MessageRingT>,
-        MessageRingT,
-        PassiveBundle
+        preset::transport::DefaultWebSocket,
+        preset::DefaultMessageRing,
+        PassivePolicies
     >;
 
 using ActiveSession =
     Session<
-        transport::winhttp::WebSocketImpl<MessageRingT>,
-        MessageRingT,
-        ActiveBundle
+        preset::transport::DefaultWebSocket,
+        preset::DefaultMessageRing,
+        ActivePolicies
     >;
 
 
