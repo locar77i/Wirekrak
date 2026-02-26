@@ -34,7 +34,8 @@ inline void manage_idle_spins(bool& did_work, int& idle_spins, int max_idle_spin
 // -----------------------------------------------------------------------------
 // Helper to drain all available messages
 // -----------------------------------------------------------------------------
-inline bool drain_messages(wirekrak::core::protocol::kraken::SessionT& session) {
+template<typename Session>
+inline bool drain_messages(Session& session) {
     using namespace wirekrak::core::protocol::kraken::schema;
 
     bool did_work = false;
@@ -72,7 +73,8 @@ inline bool drain_messages(wirekrak::core::protocol::kraken::SessionT& session) 
 // -----------------------------------------------------------------------------
 // Helper to drain all available messages
 // -----------------------------------------------------------------------------
-inline bool drain_and_print_messages(wirekrak::core::protocol::kraken::SessionT& session) {
+template<typename Session>
+inline bool drain_and_print_messages(Session& session) {
     using namespace wirekrak::core::protocol::kraken::schema;
 
     bool did_work = false;

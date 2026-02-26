@@ -76,11 +76,12 @@ Data-plane model:
 #include "wirekrak/core/policy/protocol/session.hpp"
 #include "wirekrak/core/config/protocol.hpp"
 #include "wirekrak/core/config/backpressure.hpp"
-#include "lcr/log/logger.hpp"
 #include "lcr/local/raw_buffer.hpp"
 #include "lcr/local/ring.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/control/consecutive_state.hpp"
 #include "lcr/sequence.hpp"
+#include "lcr/log/logger.hpp"
 
 
 namespace wirekrak::core::protocol::kraken {
@@ -88,12 +89,12 @@ namespace wirekrak::core::protocol::kraken {
 template<
     transport::WebSocketConcept WS,
     typename MessageRing,
-    typename Bundle = policy::protocol::SessionDefault
+    typename PolicyBundle = policy::protocol::SessionDefault
 >
 requires requires {
-    typename Bundle::backpressure;
-    typename Bundle::liveness;
-    typename Bundle::symbol_limit;
+    typename PolicyBundle::backpressure;
+    typename PolicyBundle::liveness;
+    typename PolicyBundle::symbol_limit;
 }
 class Session {
 
@@ -629,9 +630,9 @@ private:
     transport::Connection<WS, MessageRing> connection_{message_ring_, telemetry_};
 
     // Internal policy aliases for cleaner access
-    using BackpressurePolicy = typename Bundle::backpressure;
-    using LivenessPolicy     = typename Bundle::liveness;
-    using SymbolLimitPolicy  = typename Bundle::symbol_limit;
+    using BackpressurePolicy = typename PolicyBundle::backpressure;
+    using LivenessPolicy     = typename PolicyBundle::liveness;
+    using SymbolLimitPolicy  = typename PolicyBundle::symbol_limit;
 
     // Temporary buffer for request serialization (to avoid heap allocations)
     lcr::local::raw_buffer<config::protocol::TX_BUFFER_CAPACITY> tx_buffer_{};
@@ -656,91 +657,14 @@ private:
     // Replay database
     replay::Database replay_db_;
 
-    // --------------------------------------------------------------------------------
-    // Overload tracking counters for specific domains (transport, protocol, user)
-    // --------------------------------------------------------------------------------
-
-    // Persistent overload counter (remembers if overload was active in previous poll)
-    class PersistentOverloadCounter {
-        bool active{false};
-        std::uint32_t consecutive_polls{0};
-
-    public:
-        inline void set_active(bool value) noexcept {
-            active = value;
-        }
-
-        inline void next_poll() noexcept {
-            if (active) {
-                ++consecutive_polls;
-                WK_DEBUG("Persistent overload count = " << consecutive_polls);
-            } else {
-                consecutive_polls = 0;
-            }
-        }
-
-        [[nodiscard]]
-        inline bool is_active() const noexcept {
-            return active;
-        }
-
-        [[nodiscard]]
-        inline std::uint32_t count() const noexcept {
-            return consecutive_polls;
-        }
-
-        inline void reset() noexcept {
-            active = false;
-            consecutive_polls = 0;
-        }
-    };
-
-    // Frame-specific overload counter (resets if no activity in a poll)
-    class FrameOverloadCounter {
-        bool active_this_poll{false};
-        std::uint32_t consecutive_polls{0};
-
-    public:
-        inline void mark_active() noexcept {
-            active_this_poll = true;
-        }
-
-        inline void next_poll() noexcept {
-            if (active_this_poll) {
-                ++consecutive_polls;
-                //WK_DEBUG("Frame overload count = " << consecutive_polls);
-            } else {
-                consecutive_polls = 0;
-            }
-
-            // Reset for next frame
-            active_this_poll = false;
-        }
-
-        [[nodiscard]]
-        inline bool is_active() const noexcept {
-            return consecutive_polls > 0;
-        }
-
-        [[nodiscard]]
-        inline std::uint32_t count() const noexcept {
-            return consecutive_polls;
-        }
-
-        inline void reset() noexcept {
-            active_this_poll = false;
-            consecutive_polls = 0;
-        }
-    };
-
     // Overall overload state tracking for transport, protocol, and user domains
     struct OverloadState {
-        PersistentOverloadCounter transport;
-        FrameOverloadCounter user;
+        lcr::control::ConsecutiveStateCounter transport;
+        lcr::control::FrameConsecutiveStateCounter user;
 
-        inline void next_poll() noexcept {
-            transport.next_poll();
-            user.next_poll();
+        inline void next_frame() noexcept {
+            transport.next_frame();
+            user.next_frame();
         }
 
         inline void reset() noexcept {
@@ -853,7 +777,7 @@ private:
     }
 
     inline void enforce_backpressure_policy_() noexcept {
-        overload_state_.next_poll();
+        overload_state_.next_frame();
         if (overload_state_.transport.is_active() && enforce_transport_backpressure_policy_()) [[unlikely]] {
             return; // If transport policy enforcement resulted in connection close, skip user policy to avoid redundant actions
         }

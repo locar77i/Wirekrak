@@ -455,12 +455,7 @@ private:
     using BackpressurePolicy = typename PolicyBundle::backpressure;
 
     // Hysteresis type based on the backpressure policy mode
-    using Hysteresis =
-        std::conditional_t<
-            BackpressurePolicy::mode == core::policy::BackpressureMode::ZeroTolerance,
-            std::nullptr_t,
-            typename BackpressurePolicy::hysteresis
-        >;
+    using Hysteresis = typename BackpressurePolicy::hysteresis;
 
     // Backpressure stabilizer (only used for non-zero-tolerance policies)
     [[no_unique_address]]

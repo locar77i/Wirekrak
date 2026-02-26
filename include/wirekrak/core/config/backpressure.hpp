@@ -92,17 +92,17 @@ namespace wirekrak::core::config::backpressure {
 // Backpressure hysteresis thresholds
 // -----------------------------------------------------------------------------
 
-inline constexpr static std::uint32_t HYSTERESIS_STRICT_ACTIVATION_THRESHOLD    =  1;
-inline constexpr static std::uint32_t HYSTERESIS_STRICT_DEACTIVATION_THRESHOLD  =  8;
+inline constexpr static std::uint32_t STRICT_HYSTERESIS_ACTIVATION_THRESHOLD    =  1;
+inline constexpr static std::uint32_t STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD  =  8;
 
-inline constexpr static std::uint32_t HYSTERESIS_RELAXED_ACTIVATION_THRESHOLD   = 64;
-inline constexpr static std::uint32_t HYSTERESIS_RELAXED_DEACTIVATION_THRESHOLD =  8;
+inline constexpr static std::uint32_t RELAXED_HYSTERESIS_ACTIVATION_THRESHOLD   = 64;
+inline constexpr static std::uint32_t RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD =  8;
 
 // -----------------------------------------------------------------------------
 // Backpressure escalation thresholds
 // -----------------------------------------------------------------------------
 
-inline constexpr static std::uint32_t STRICT_ESCALATION_THRESHOLD  = HYSTERESIS_STRICT_DEACTIVATION_THRESHOLD  +  8;
-inline constexpr static std::uint32_t RELAXED_ESCALATION_THRESHOLD = HYSTERESIS_RELAXED_DEACTIVATION_THRESHOLD + 64;
+inline constexpr static std::uint32_t STRICT_ESCALATION_THRESHOLD  = STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD  +  8;
+inline constexpr static std::uint32_t RELAXED_ESCALATION_THRESHOLD = RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD + 64;
 
 } // namespace wirekrak::core::config::backpressure

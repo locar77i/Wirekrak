@@ -52,8 +52,9 @@ namespace backpressure {
 
 struct ZeroTolerance {
 
-    static constexpr BackpressureMode mode =
-        BackpressureMode::ZeroTolerance;
+    static constexpr BackpressureMode mode = BackpressureMode::ZeroTolerance;
+
+    using hysteresis = std::nullptr_t;
 };
 
 
@@ -64,13 +65,13 @@ struct ZeroTolerance {
 // Stabilized recovery
 
 template<
-    std::uint32_t DeactivateThreshold = 8
+    std::uint32_t DeactivateThreshold = config::backpressure::STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD
 >
 struct Strict {
 
     static constexpr BackpressureMode mode = BackpressureMode::Strict;
 
-    using hysteresis = lcr::control::BinaryHysteresis<1, DeactivateThreshold>;
+    using hysteresis = lcr::control::BinaryHysteresis<config::backpressure::STRICT_HYSTERESIS_ACTIVATION_THRESHOLD, DeactivateThreshold>;
 };
 
 
@@ -81,8 +82,8 @@ struct Strict {
 // Stabilized recovery
 
 template<
-    std::uint32_t ActivateThreshold   = 64,
-    std::uint32_t DeactivateThreshold = 8
+    std::uint32_t ActivateThreshold   = config::backpressure::RELAXED_HYSTERESIS_ACTIVATION_THRESHOLD,
+    std::uint32_t DeactivateThreshold = config::backpressure::RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD
 >
 struct Relaxed {
 
