@@ -618,7 +618,7 @@ void test_hard_limit_enforcement() {
     >;
 
     using SessionPolicies = policy::protocol::session_bundle<
-        policy::backpressure::Strict<>,
+        policy::protocol::backpressure::Strict<>,
         policy::protocol::liveness::Active,
         Hard5
     >;

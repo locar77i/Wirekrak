@@ -13,7 +13,7 @@
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
 #include "wirekrak/core/transport/websocket/data_block.hpp"
-#include "wirekrak/core/policy/transport/websocket.hpp"
+#include "wirekrak/core/policy/transport/websocket_bundle.hpp"
 #include "wirekrak/core/config/transport/websocket.hpp"
 #include "wirekrak/core/config/backpressure.hpp"
 #include "wirekrak/core/telemetry.hpp"

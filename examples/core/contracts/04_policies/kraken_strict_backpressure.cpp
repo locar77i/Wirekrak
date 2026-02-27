@@ -55,7 +55,9 @@ using MyWebSocketPolicies =
 
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Strict<HYSTERESIS_DEACTIVATION_THRESHOLD>
+        policy::protocol::backpressure::Strict<
+            ESCALATION_THRESHOLD
+        >
     >;
 
 using MyWebSocket =

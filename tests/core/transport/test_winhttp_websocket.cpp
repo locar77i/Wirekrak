@@ -37,7 +37,7 @@ avoiding timing assumptions and relying only on observable transport invariants.
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/winhttp/concepts.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
-#include "wirekrak/core/policy/transport/websocket.hpp"
+#include "wirekrak/core/policy/transport/websocket_bundle.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;

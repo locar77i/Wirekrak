@@ -92,6 +92,7 @@ No level-based liveness or health state is exposed.
 #include <functional>
 #include <chrono>
 #include <memory>
+#include <cassert>
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/telemetry/connection.hpp"
@@ -100,6 +101,7 @@ No level-based liveness or health state is exposed.
 #include "wirekrak/core/transport/connection/signal.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
 #include "wirekrak/core/transport/websocket/data_block.hpp"
+#include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "wirekrak/core/config/transport/connection.hpp"
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/optional.hpp"
@@ -109,25 +111,17 @@ No level-based liveness or health state is exposed.
 
 namespace wirekrak::core::transport {
 
-constexpr auto MESSAGE_TIMEOUT   = std::chrono::seconds(15); // default message timeout
-constexpr auto LIVENESS_WARNING_RATIO = 0.8;                 // warn when 80% of liveness window is elapsed
-
 template <
     WebSocketConcept WS,
-    typename MessageRing
+    typename MessageRing,
+    typename PolicyBundle = policy::transport::ConnectionDefault
 >
 class Connection {
 public:
-    Connection(MessageRing& ring,
-               telemetry::Connection& telemetry,
-               std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
-               double liveness_warning_ratio = LIVENESS_WARNING_RATIO) noexcept
+    Connection(MessageRing& ring, telemetry::Connection& telemetry) noexcept
         : message_ring_(ring)
         , telemetry_(telemetry)
-        , liveness_warning_ratio_(liveness_warning_ratio)
-    {
-        set_liveness_timeout(message_timeout);
-    }
+    {}
 
     // Ensure transport is closed on destruction.
     // Reconnection is not attempted after object lifetime ends.
@@ -215,6 +209,7 @@ public:
 
     // Event loop
     inline void poll() noexcept {
+        assert(ws_ && "poll() called while no transport exists");
         //WK_TRACE("[CONN] Polling connection ... (state: " << to_string(get_state_()) << ")");
         // === Drain transport events ===
         websocket::Event ev;
@@ -243,20 +238,28 @@ public:
             (void)reconnect_();
         }
         // === Liveness logic ===
+        if constexpr (LivenessPolicy::enabled) {
+            enforce_liveness_policy_();
+        }
+    }
+
+    inline void enforce_liveness_policy_() noexcept {
         // NOTE: liveness is evaluated only while Connected.
         // Once a timeout forces disconnection, reconnection logic takes over.
         if (get_state_() == State::Connected) {
+            static constexpr auto liveness_danger_window =
+                std::chrono::milliseconds((message_timeout_.count() * LivenessPolicy::warning_percent) / 100);
             // === Liveness warning check ===
             auto remaining = liveness_remaining_();
             if (!liveness_warning_emitted_) [[likely]] {
-                if (remaining <= liveness_danger_window_) {
+                if (remaining <= liveness_danger_window) {
                     WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
                     liveness_warning_emitted_ = true;
                     transition_(Event::LivenessOutdated);
                 }
             } else { // If liveness warning was previously emitted,
                 // reset it once observable activity restores liveness above the danger window.
-                if (remaining > liveness_danger_window_) {
+                if (remaining > liveness_danger_window) {
                     liveness_warning_emitted_ = false;
                 }
             }
@@ -305,12 +308,6 @@ public:
         return last_message_ts_;
     }
 
-    // Mutators
-    inline void set_liveness_timeout( std::chrono::milliseconds timeout) noexcept {
-        message_timeout_ = timeout;
-        liveness_danger_window_ = message_timeout_ - std::chrono::milliseconds(static_cast<int>(message_timeout_.count() * liveness_warning_ratio_));
-    }
-
     // -----------------------------------------------------------------------------
     // Idle observation
     // -----------------------------------------------------------------------------
@@ -349,7 +346,7 @@ public:
 
     [[nodiscard]]
     inline websocket::DataBlock* peek_message() noexcept {
-        assert(ws_ && "Transport not initialized");
+        assert(ws_ && "peek_message() called while no transport exists");
         websocket::DataBlock* block = ws_->peek_message();
         if (block) { // Update rx message count and timestamp
             WK_TL1( telemetry_.messages_forwarded_total.inc() );
@@ -360,7 +357,7 @@ public:
     }
 
     inline void release_message() noexcept {
-        assert(ws_ && "Transport not initialized");
+        assert(ws_ && "release_message() called while no transport exists");
         ws_->release_message();
     }
 
@@ -398,10 +395,12 @@ private:
     std::uint64_t tx_messages_{0};
     std::chrono::steady_clock::time_point last_message_ts_{std::chrono::steady_clock::now()};
 
+    
+    // Liveness policy instance
+    using LivenessPolicy = typename PolicyBundle::liveness;
+
     // Liveness configuration
-    std::chrono::milliseconds message_timeout_{15000};
-    double liveness_warning_ratio_;
-    std::chrono::milliseconds liveness_danger_window_;
+    static constexpr auto message_timeout_ = LivenessPolicy::timeout;
 
     // Liveness tracking state
     bool liveness_warning_emitted_{false};
@@ -478,8 +477,10 @@ private:
                 retry_root_error_ = Error::None;
                 { // Reset liveness tracking
                     last_message_ts_ = std::chrono::steady_clock::now();
-                    liveness_warning_emitted_ = false;
-                    liveness_timeout_emitted_ = false;
+                    if constexpr (LivenessPolicy::enabled) {
+                        liveness_warning_emitted_ = false;
+                        liveness_timeout_emitted_ = false;
+                    }
                 }
                 disconnect_reason_ = DisconnectReason::None;
                 // Only increment on Connected (Never on retries, attempts, or disconnections)

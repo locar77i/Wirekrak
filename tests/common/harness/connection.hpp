@@ -32,6 +32,7 @@ This enables:
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/transport/connection/signal.hpp"
 #include "wirekrak/core/transport/telemetry/connection.hpp"
+#include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "common/mock_websocket.hpp"
 #include "common/test_check.hpp"
 
@@ -56,8 +57,9 @@ namespace wirekrak::core::transport::test {
 namespace harness {
 
 template<
-    WebSocketConcept WS,
-    typename MessageRing
+    WebSocketConcept WS   = WebSocketUnderTest,
+    typename MessageRing  = MessageRingUnderTest,
+    typename PolicyBundle = policy::transport::ConnectionDefault
 >
 struct Connection {
     // -------------------------------------------------------------------------
@@ -68,7 +70,9 @@ struct Connection {
     // -------------------------------------------------------------------------
     // Connection under test (explicit lifetime)
     // -------------------------------------------------------------------------
-    std::unique_ptr<ConnectionUnderTest> connection;
+    using ConnectionType = wirekrak::core::transport::Connection<WS, MessageRing, PolicyBundle>;
+
+    std::unique_ptr<ConnectionType> connection;
 
     // -------------------------------------------------------------------------
     // Event counters
@@ -85,24 +89,18 @@ struct Connection {
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
-    Connection(
-        std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
-        double liveness_warning_ratio = LIVENESS_WARNING_RATIO
-    )
+    Connection()
     {
         WebSocketUnderTest::reset();
-        make_connection(message_timeout, liveness_warning_ratio);
+        make_connection();
     }
 
     // -------------------------------------------------------------------------
     // Create a fresh Connection instance
     // -------------------------------------------------------------------------
-    inline void make_connection(
-        std::chrono::seconds message_timeout = MESSAGE_TIMEOUT,
-        double liveness_warning_ratio = LIVENESS_WARNING_RATIO
-    )
+    inline void make_connection()
     {
-        connection = std::make_unique<ConnectionUnderTest>(g_ring, telemetry, message_timeout, liveness_warning_ratio);
+        connection = std::make_unique<ConnectionType>(g_ring, telemetry);
     }
 
     // -------------------------------------------------------------------------

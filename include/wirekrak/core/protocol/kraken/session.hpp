@@ -73,7 +73,7 @@ Data-plane model:
 #include "wirekrak/core/protocol/kraken/parser/router.hpp"
 #include "wirekrak/core/protocol/kraken/channel/manager.hpp"
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
-#include "wirekrak/core/policy/protocol/session.hpp"
+#include "wirekrak/core/policy/protocol/session_bundle.hpp"
 #include "wirekrak/core/config/protocol.hpp"
 #include "wirekrak/core/config/backpressure.hpp"
 #include "lcr/local/raw_buffer.hpp"
@@ -768,7 +768,8 @@ private:
             overload_state_.transport.set_active(true);
             break;
         case transport::connection::Signal::BackpressureCleared:
-            WK_TRACE("[SESSION] Transport backpressure cleared");
+            WK_DEBUG("[SESSION] Transport backpressure cleared - resuming normal processing (consecutive backpressure frames: "
+                << overload_state_.transport.count() << " < threshold: " << BackpressurePolicy::escalation_threshold << ")");
             overload_state_.transport.set_active(false);
             break;
         default:

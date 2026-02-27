@@ -130,10 +130,16 @@ void test_connection_liveness_edges()
 {
     std::cout << "[TEST] Group F2: liveness edge semantics\n";
 
-    test::ConnectionHarness h(
-        std::chrono::seconds(5),   // message timeout
-        0.7                        // warning ratio (70%)
-    );
+    using MyConnectionHarness =
+        test::harness::Connection<
+            WebSocketUnderTest,
+            MessageRingUnderTest,
+            policy::transport::connection_bundle<
+                policy::transport::liveness::Enabled<5000, 70>
+            >
+        >;
+    MyConnectionHarness h;
+    //test::ConnectionHarness h(std::chrono::seconds(5), 0.7);
 
     // -------------------------------------------------------------------------
     // Connect

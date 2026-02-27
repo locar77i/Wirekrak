@@ -125,7 +125,7 @@ int run_backpressure_example(int argc, char** argv, const char* title, const cha
     // Poll-driven execution loop
     // -------------------------------------------------------------------------
     // NOTE:
-    // Under Strict policy, sustained transport backpressure will escalate after N(16) <- TODO: inject ESCALATION_THRESHOLD at Session (currently hardcoded)
+    // Under Strict policy, sustained transport backpressure will escalate after N
     // consecutive overloaded polls. This example intentionally stresses the system.
     int idle_spins = 0;
     bool did_work = false;
