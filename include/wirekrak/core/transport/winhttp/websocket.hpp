@@ -330,12 +330,13 @@ private:
 
     [[nodiscard]]
     inline websocket::DataBlock* acquire_slot_() noexcept {
+        using core::policy::BackpressureMode;
         websocket::DataBlock* slot = message_ring_.acquire_producer_slot();
         if (!slot) [[unlikely]] { // Handle backpressure according to the policy
             // =========================================================
             // ZeroTolerance (transport-level forced close)
             // =========================================================
-            if constexpr (BackpressurePolicy::mode == core::policy::BackpressureMode::ZeroTolerance) {
+            if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
                 // 1.1. Forced close without signaling (transport decides fate)
                 // ZeroTolerance guarantees no BackpressureDetected event will ever be emitted.
                 WK_WARN("[WS] The message ring buffer is full (backpressure)");
@@ -372,7 +373,7 @@ private:
         // =============================================================
         // Successful slot acquisition
         // =============================================================
-        if constexpr (BackpressurePolicy::mode != core::policy::BackpressureMode::ZeroTolerance) {
+        if constexpr (BackpressurePolicy::mode != BackpressureMode::ZeroTolerance) {
 
             auto transition = backpressure_.on_inactive_signal();
 

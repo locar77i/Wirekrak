@@ -3,30 +3,10 @@
 #include <concepts>
 
 #include "wirekrak/core/config/backpressure.hpp"
-#include "lcr/control/binary_hysteresis.hpp"
+#include "wirekrak/core/policy/backpressure_mode.hpp"
 
 
-namespace wirekrak::core::policy {
-
-// ============================================================================
-// Backpressure Mode
-// ============================================================================
-//
-// Transport detects saturation.
-// Policy only classifies behavior timing.
-// Transport executes mechanics.
-// Session owns strategy.
-//
-// ZeroTolerance -> signal immediately and force close
-// Strict        -> signal immediately and let session decide fate
-// Relaxed       -> tolerate temporarily before signal to let session decide fate
-// ============================================================================
-
-enum class BackpressureMode {
-    ZeroTolerance,
-    Strict,
-    Relaxed
-};
+namespace wirekrak::core::policy::protocol {
 
 // ============================================================================
 // Backpressure Policy Concept
@@ -36,6 +16,7 @@ template<typename P>
 concept BackpressurePolicy =
 requires {
     { P::mode } -> std::same_as<const BackpressureMode&>;
+     { P::escalation_threshold } -> std::convertible_to<std::uint32_t>;
 };
 
 // ============================================================================
@@ -54,7 +35,8 @@ struct ZeroTolerance {
 
     static constexpr BackpressureMode mode = BackpressureMode::ZeroTolerance;
 
-    using hysteresis = std::nullptr_t;
+    static constexpr std::uint32_t escalation_threshold = 1;
+
 };
 
 
@@ -65,13 +47,14 @@ struct ZeroTolerance {
 // Stabilized recovery
 
 template<
-    std::uint32_t DeactivateThreshold = config::backpressure::STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD
+    std::uint32_t EscalationThreshold = config::backpressure::STRICT_ESCALATION_THRESHOLD
 >
 struct Strict {
 
     static constexpr BackpressureMode mode = BackpressureMode::Strict;
 
-    using hysteresis = lcr::control::BinaryHysteresis<config::backpressure::STRICT_HYSTERESIS_ACTIVATION_THRESHOLD, DeactivateThreshold>;
+    static constexpr std::uint32_t escalation_threshold = EscalationThreshold;
+
 };
 
 
@@ -82,16 +65,16 @@ struct Strict {
 // Stabilized recovery
 
 template<
-    std::uint32_t ActivateThreshold   = config::backpressure::RELAXED_HYSTERESIS_ACTIVATION_THRESHOLD,
-    std::uint32_t DeactivateThreshold = config::backpressure::RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD
+    std::uint32_t EscalationThreshold = config::backpressure::RELAXED_ESCALATION_THRESHOLD
 >
 struct Relaxed {
 
     static constexpr BackpressureMode mode = BackpressureMode::Relaxed;
 
-    using hysteresis = lcr::control::BinaryHysteresis<ActivateThreshold, DeactivateThreshold>;
+    static constexpr std::uint32_t escalation_threshold = EscalationThreshold;
+
 };
 
 } // namespace backpressure
 
-} // namespace wirekrak::core::policy
+} // namespace wirekrak::core::policy::protocol

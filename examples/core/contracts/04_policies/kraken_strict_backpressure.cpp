@@ -45,14 +45,17 @@
 // Number of consecutive signals before deactivation (for Strict policy)
 constexpr std::size_t HYSTERESIS_DEACTIVATION_THRESHOLD = 8;
 
+// Session escalates if overload persists for twice the activation threshold
+constexpr std::size_t ESCALATION_THRESHOLD = HYSTERESIS_DEACTIVATION_THRESHOLD + 16;
+
 using MyWebSocketPolicies =
     policy::transport::websocket_bundle<
-        policy::backpressure::Strict<HYSTERESIS_DEACTIVATION_THRESHOLD>
+        policy::transport::backpressure::Strict<HYSTERESIS_DEACTIVATION_THRESHOLD>
     >;
 
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::backpressure::Strict<HYSTERESIS_DEACTIVATION_THRESHOLD>
+        policy::protocol::backpressure::Strict<HYSTERESIS_DEACTIVATION_THRESHOLD>
     >;
 
 using MyWebSocket =

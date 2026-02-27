@@ -788,19 +788,21 @@ private:
 
     [[nodiscard]]
     inline bool enforce_transport_backpressure_policy_() noexcept {
+        using core::policy::BackpressureMode;
 
         // ZeroTolerance is handled by transport layer (force close on backpressure), so we do not need to do anything here.
-        if constexpr (BackpressurePolicy::mode == policy::BackpressureMode::ZeroTolerance) {
+        if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
             return false;
         }
 
-        // Determine threshold - consecutive backpressure signals before taking action
-        constexpr std::uint32_t threshold = (BackpressurePolicy::mode == policy::BackpressureMode::Strict) ?
-        config::backpressure::STRICT_ESCALATION_THRESHOLD : config::backpressure::RELAXED_ESCALATION_THRESHOLD;
-
-        if (overload_state_.transport.count() >= threshold) [[unlikely]] {
-            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (transport backpressure escalation after "
-                << overload_state_.transport.count() << " consecutive overloaded polls).");
+        if (overload_state_.transport.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
+            if constexpr (BackpressurePolicy::mode == BackpressureMode::Strict) {
+                WK_WARN("[SESSION] Transport backpressure has been active for " << overload_state_.transport.count() << " consecutive polls (strict backpressure policy)");
+            }
+            else {
+                WK_WARN("[SESSION] Transport backpressure has been active for " << overload_state_.transport.count() << " consecutive polls (relaxed backpressure policy)");
+            }
+            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees");
             connection_.close();
             overload_state_.reset();
             return true;
@@ -810,8 +812,9 @@ private:
 
     [[nodiscard]]
     inline bool enforce_user_backpressure_policy_() noexcept {
+        using core::policy::BackpressureMode;
 
-        if constexpr (BackpressurePolicy::mode == policy::BackpressureMode::ZeroTolerance) {
+        if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
                 << overload_state_.user.count() << " consecutive overloaded polls).");
             connection_.close();
@@ -819,11 +822,7 @@ private:
             return true;
         }
 
-        // Determine threshold - consecutive backpressure signals before taking action
-        constexpr std::uint32_t threshold = (BackpressurePolicy::mode == policy::BackpressureMode::Strict) ?
-            config::backpressure::STRICT_ESCALATION_THRESHOLD : config::backpressure::RELAXED_ESCALATION_THRESHOLD;
-
-        if (overload_state_.user.count() >= threshold) [[unlikely]] {
+        if (overload_state_.user.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
                 << overload_state_.user.count() << " consecutive overloaded polls).");
             connection_.close();

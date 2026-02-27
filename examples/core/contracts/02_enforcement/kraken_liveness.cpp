@@ -62,14 +62,14 @@ static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transpor
 
 using PassivePolicies =
     policy::protocol::session_bundle<
-        policy::backpressure::Strict<>,
+        policy::protocol::backpressure::Strict<>,
         policy::protocol::liveness::Passive,
         policy::protocol::NoSymbolLimits
     >;
 
 using ActivePolicies =
     policy::protocol::session_bundle<
-        policy::backpressure::Strict<>,
+        policy::protocol::backpressure::Strict<>,
         policy::protocol::liveness::Active,
         policy::protocol::NoSymbolLimits
     >;

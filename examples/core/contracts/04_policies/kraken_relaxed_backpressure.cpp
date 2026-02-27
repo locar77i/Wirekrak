@@ -47,9 +47,12 @@ constexpr std::size_t HYSTERESIS_ACTIVATION_THRESHOLD   = 64;
 // Number of consecutive signals before deactivation (for Relaxed policy)
 constexpr std::size_t HYSTERESIS_DEACTIVATION_THRESHOLD = 8;
 
+// Session escalates if overload persists for twice the activation threshold
+constexpr std::size_t ESCALATION_THRESHOLD = HYSTERESIS_ACTIVATION_THRESHOLD + 128;
+
 using MyWebSocketPolicies =
     policy::transport::websocket_bundle<
-        policy::backpressure::Relaxed<
+        policy::transport::backpressure::Relaxed<
             HYSTERESIS_ACTIVATION_THRESHOLD,
             HYSTERESIS_DEACTIVATION_THRESHOLD
         >
@@ -57,9 +60,8 @@ using MyWebSocketPolicies =
 
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::backpressure::Relaxed<
-            HYSTERESIS_ACTIVATION_THRESHOLD,
-            HYSTERESIS_DEACTIVATION_THRESHOLD
+        policy::protocol::backpressure::Relaxed<
+            ESCALATION_THRESHOLD
         >
     >;
 

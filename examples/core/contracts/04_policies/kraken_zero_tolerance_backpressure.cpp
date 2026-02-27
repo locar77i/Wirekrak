@@ -46,12 +46,12 @@
 // -------------------------------------------------------------------------
 using MyWebSocketPolicies =
     policy::transport::websocket_bundle<
-        policy::backpressure::ZeroTolerance
+        policy::transport::backpressure::ZeroTolerance
     >;
 
 using MySessionPolicies = 
     policy::protocol::session_bundle<
-        policy::backpressure::ZeroTolerance
+        policy::protocol::backpressure::ZeroTolerance
     >;
 
 using MyWebSocket =
