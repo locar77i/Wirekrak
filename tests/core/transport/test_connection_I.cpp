@@ -138,7 +138,8 @@ void test_retry_scheduled_after_immediate_retry_failure() {
     script.step(h.connection->ws());
 
     // Force immediate reconnect attempt to fail
-    h.connection->ws().set_next_connect_result(Error::ConnectionFailed);
+    assert(h.connection->ws() && "harness::Connection::ws() used while transport is null");
+    h.connection->ws()->set_next_connect_result(Error::ConnectionFailed);
 
     // poll triggers:
     //  - RetryImmediate

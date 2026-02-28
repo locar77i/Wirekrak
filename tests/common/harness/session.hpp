@@ -13,6 +13,8 @@
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
+#include "wirekrak/core/preset/control_ring_default.hpp"
+#include "wirekrak/core/preset/message_ring_default.hpp"
 #include "common/mock_websocket.hpp"
 #include "common/json_helpers.hpp"
 #include "common/test_check.hpp"
@@ -25,8 +27,14 @@ using namespace wirekrak::core;
 using namespace wirekrak::core::protocol;
 using namespace wirekrak::core::protocol::kraken;
 
-using MessageRingUnderTest = lcr::lockfree::spsc_ring<transport::websocket::DataBlock, transport::RX_RING_CAPACITY>;
-using WebSocketUnderTest = transport::test::MockWebSocket<MessageRingUnderTest>;
+using MessageRingUnderTest = preset::DefaultMessageRing; // Golbal message ring buffer (transport → session)
+using ControlRingUnderTest = preset::DefaultControlRing; // Golbal control ring buffer (transport → session)
+
+using WebSocketUnderTest =
+    transport::test::MockWebSocket<
+        ControlRingUnderTest,
+        MessageRingUnderTest
+    >;
 
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
 static_assert(transport::WebSocketConcept<WebSocketUnderTest>);
@@ -65,8 +73,9 @@ struct Session {
     // Force reconnect deterministically
     // -------------------------------------------------------------------------
     inline std::uint64_t force_reconnect() {
-        session.ws().emit_error(transport::Error::RemoteClosed);
-        session.ws().close();
+        assert(session.ws() && "harness::Session::force_reconnect() called with null transport");
+        session.ws()->emit_error(transport::Error::RemoteClosed);
+        session.ws()->close();
         return session.poll();
     }
 
@@ -140,30 +149,34 @@ struct Session {
     // Subscribe/Unsubscribe ACK helpers
     // -------------------------------------------------------------------------
     inline void confirm_trade_subscription(ctrl::req_id_t req_id, const std::string& sym) {
+        assert(session.ws() && "harness::Session::confirm_trade_subscription() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For trade subscriptions req_id should be >= 10");
-        session.ws().emit_message(json::ack::trade_sub(req_id, sym));
+        session.ws()->emit_message(json::ack::trade_sub(req_id, sym));
         (void)session.poll();
     }
 
     inline void confirm_trade_unsubscription(ctrl::req_id_t req_id, const std::string& sym) {
+        assert(session.ws() && "harness::Session::confirm_trade_unsubscription() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For trade unsubscriptions req_id should be >= 10");
-        session.ws().emit_message(json::ack::trade_unsub(req_id, sym));
+        session.ws()->emit_message(json::ack::trade_unsub(req_id, sym));
         (void)session.poll();
     }
 
     inline void confirm_book_subscription(ctrl::req_id_t req_id, const std::string& sym, int depth) {
+        assert(session.ws() && "harness::Session::confirm_book_subscription() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For book subscriptions req_id should be >= 10");
-        session.ws().emit_message(json::ack::book_sub(req_id, sym, depth));
+        session.ws()->emit_message(json::ack::book_sub(req_id, sym, depth));
         (void)session.poll();
     }
 
     inline void confirm_book_unsubscription(ctrl::req_id_t req_id, const std::string& sym, int depth) {
+        assert(session.ws() && "harness::Session::confirm_book_unsubscription() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For book unsubscriptions req_id should be >= 10");
-        session.ws().emit_message(json::ack::book_unsub(req_id, sym, depth));
+        session.ws()->emit_message(json::ack::book_unsub(req_id, sym, depth));
         (void)session.poll();
     }
 
@@ -172,9 +185,10 @@ struct Session {
     // -------------------------------------------------------------------------
 
     inline void reject(std::string_view method, ctrl::req_id_t req_id, const std::string& sym, std::string_view error) {
+        assert(session.ws() && "harness::Session::reject() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For rejection notices, req_id should be >= 10");
-        session.ws().emit_message(json::ack::rejection_notice(method, req_id, sym, std::string(error)));
+        session.ws()->emit_message(json::ack::rejection_notice(method, req_id, sym, std::string(error)));
         (void)session.poll();
     }
 

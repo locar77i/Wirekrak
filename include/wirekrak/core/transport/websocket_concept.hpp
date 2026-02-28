@@ -54,8 +54,6 @@ Connection / Session:
 #include <concepts>
 
 #include "wirekrak/core/transport/error.hpp"
-#include "wirekrak/core/transport/websocket/events.hpp"
-#include "wirekrak/core/transport/websocket/data_block.hpp"
 
 
 namespace wirekrak::core::transport {
@@ -67,9 +65,7 @@ concept WebSocketConcept =
         const std::string& host,
         const std::string& port,
         const std::string& path,
-        const std::string_view msg,
-        websocket::Event ev,
-        websocket::DataBlock* block
+        const std::string_view msg
     )
 {
     // ---------------------------------------------------------------------
@@ -84,23 +80,6 @@ concept WebSocketConcept =
     // ---------------------------------------------------------------------
 
     { ws.send(msg) } noexcept -> std::same_as<bool>;
-
-    // ---------------------------------------------------------------------
-    // Data-plane (pull-based message access)
-    // ---------------------------------------------------------------------
-
-    // Returns pointer to next complete message, or nullptr if none available.
-    { ws.peek_message() } noexcept -> std::same_as<websocket::DataBlock*>;
-
-    // Releases previously peeked slot.
-    { ws.release_message() } noexcept -> std::same_as<void>;
-
-    // ---------------------------------------------------------------------
-    // Control-plane
-    // ---------------------------------------------------------------------
-
-    // Drains Close/Error events.
-    { ws.poll_event(ev) } noexcept -> std::same_as<bool>;
 };
 
 } // namespace wirekrak::core::transport

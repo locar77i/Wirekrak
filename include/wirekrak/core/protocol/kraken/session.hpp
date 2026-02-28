@@ -100,7 +100,8 @@ class Session {
 
 public:
     Session(MessageRing& ring)
-        : message_ring_(ring)
+        : telemetry_()
+        , connection_(ring, telemetry_)
         , ctx_{}
         , ctx_view_{ctx_}
         , parser_(ctx_view_)
@@ -609,11 +610,11 @@ public:
 
 #ifdef WK_UNIT_TEST
 public:
-        transport::Connection<WS, MessageRing>& connection() {
+        inline transport::Connection<WS, MessageRing>& connection() {
             return connection_;
         }
 
-        WS& ws() {
+        inline WS* ws() {
             return connection_.ws();
         }
 #endif // WK_UNIT_TEST
@@ -622,12 +623,9 @@ private:
     // Sequence generator for request IDs
     lcr::sequence req_id_seq_{ctrl::PROTOCOL_BASE};
 
-    // Data message queue (transport → connection/session)
-    MessageRing& message_ring_;
-
     // Underlying streaming client (and telemetry)
     transport::telemetry::Connection telemetry_;
-    transport::Connection<WS, MessageRing> connection_{message_ring_, telemetry_};
+    transport::Connection<WS, MessageRing> connection_;
 
     // Internal policy aliases for cleaner access
     using BackpressurePolicy = typename PolicyBundle::backpressure;

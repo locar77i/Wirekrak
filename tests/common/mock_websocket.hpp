@@ -16,19 +16,17 @@
 
 namespace wirekrak::core::transport::test {
 
-constexpr static std::size_t RX_RING_CAPACITY = 8; // Capacity of the message ring buffer (number of messages)
-
-
 // NOTE:
 // MockWebSocket uses process-global static state by design.
 // This is intentional: transport::Connection owns a single-shot
 // WebSocket instance internally and tests are strictly single-threaded.
 // Each test MUST call MockWebSocket::reset() before constructing Connection.
-template<typename MessageRing>
+template<typename ControlRing, typename MessageRing>
 class MockWebSocket {
 public:
-    MockWebSocket(MessageRing& ring, telemetry::WebSocket& telemetry) noexcept
-        : message_ring_(ring) {
+    MockWebSocket(ControlRing& control_ring, MessageRing& message_ring, telemetry::WebSocket& telemetry) noexcept
+        : control_ring_(control_ring)
+        , message_ring_(message_ring) {
         (void)telemetry;
         WK_DEBUG("[MockWebSocket] constructed");
     }
@@ -61,11 +59,6 @@ public:
         if (!control_ring_.push(websocket::Event::make_close())) {
             handle_control_ring_full_();
         }
-    }
-
-    [[nodiscard]]
-    inline bool poll_event(websocket::Event& out) noexcept {
-        return control_ring_.pop(out);
     }
 
     // ---------------------------------------------------------------------
@@ -111,17 +104,6 @@ public:
         close_count_ = 0;
         error_count_ = 0;
         next_connect_result_ = Error::None;
-        websocket::Event tmp;
-        while (control_ring_.pop(tmp)) {}
-    }
-
-     [[nodiscard]]
-    inline websocket::DataBlock* peek_message() noexcept {
-        return message_ring_.peek_consumer_slot();
-    }
-
-    inline void release_message() noexcept {
-        message_ring_.release_consumer_slot();
     }
 
 private:
@@ -137,7 +119,7 @@ private:
     static inline Error next_connect_result_{Error::None};
 
     // Control event queue (for signaling events like close and error)
-    static inline lcr::lockfree::spsc_ring<websocket::Event, 16> control_ring_;
+    ControlRing& control_ring_;
 
     // Data message queue (transport → connection/session)
     MessageRing& message_ring_;

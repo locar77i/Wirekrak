@@ -48,7 +48,7 @@ void test_close_graceful_shutdown() {
     TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Transport must be closed exactly once
-    TEST_CHECK(h.connection->ws().close_count() == 1);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -108,7 +108,7 @@ void test_close_idempotent() {
     TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Transport must be closed exactly once
-    TEST_CHECK(h.connection->ws().close_count() == 1);
+    TEST_CHECK(WebSocketUnderTest::close_count() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -148,8 +148,9 @@ void test_destructor_no_reconnect() {
     TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Simulate retriable transport failure
-    h.connection->ws().emit_error(Error::RemoteClosed);
-    h.connection->ws().close();
+    assert(h.connection->ws() && "harness::Connection::ws() used while transport is null");
+    h.connection->ws()->emit_error(Error::RemoteClosed);
+    h.connection->ws()->close();
 
     // IMPORTANT:
     // We intentionally do NOT call poll().

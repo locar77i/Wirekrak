@@ -38,6 +38,8 @@ avoiding timing assumptions and relying only on observable transport invariants.
 #include "wirekrak/core/transport/winhttp/concepts.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 #include "wirekrak/core/policy/transport/websocket_bundle.hpp"
+#include "wirekrak/core/preset/control_ring_default.hpp"
+#include "wirekrak/core/preset/message_ring_default.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -108,13 +110,24 @@ static_assert(ApiConcept<FakeApi>, "FakeApi must model ApiConcept");
 using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
-using MessageRingUnderTest = lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY>;
-using WebSocketUnderTest = winhttp::WebSocketImpl<MessageRingUnderTest, policy::transport::WebsocketDefault, winhttp::FakeApi>;
+using ControlRingUnderTest = preset::DefaultControlRing; // Golbal control ring buffer (transport → session)
+using MessageRingUnderTest = preset::DefaultMessageRing; // Golbal message ring buffer (transport → session)
+
+
+using WebSocketUnderTest =
+    winhttp::WebSocketImpl<
+        ControlRingUnderTest,
+        MessageRingUnderTest,
+        policy::transport::WebsocketDefault,
+        winhttp::FakeApi
+    >;
 
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
 static_assert(WebSocketConcept<WebSocketUnderTest>);
 
-static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → session)
+
+static ControlRingUnderTest control_ring;   // Golbal control SPSC ring buffer (transport → session)
+static MessageRingUnderTest message_ring;   // Golbal SPSC ring buffer (transport → session)
 
 
 // -----------------------------------------------------------------------------
@@ -124,8 +137,12 @@ static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → 
 void test_close_called_once() {
     std::cout << "[TEST] Running close() called once test..." << std::endl;
 
+    // Reset global rings before test
+    control_ring.clear();
+    message_ring.clear();
+
     telemetry::WebSocket telemetry;
-    WebSocketUnderTest ws(g_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     // Flag to detect when receive loop has started
     std::atomic<bool> receive_started{false};
@@ -168,8 +185,12 @@ void test_close_called_once() {
 void test_error_triggers_close() {
     std::cout << "[TEST] Running error triggers close test..." << std::endl;
 
+    // Reset global rings before test
+    control_ring.clear();
+    message_ring.clear();
+
     telemetry::WebSocket telemetry;
-    WebSocketUnderTest ws(g_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
@@ -233,8 +254,12 @@ void test_error_triggers_close() {
 void test_message_delivery_to_ring() {
     std::cout << "[TEST] Running message delivery to ring test..." << std::endl;
 
+    // Reset global rings before test
+    control_ring.clear();
+    message_ring.clear();
+
     telemetry::WebSocket telemetry;
-    WebSocketUnderTest ws(g_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
@@ -286,8 +311,12 @@ void test_message_delivery_to_ring() {
 void test_send_success() {
     std::cout << "[TEST] Running send success test..." << std::endl;
 
+    // Reset global rings before test
+    control_ring.clear();
+    message_ring.clear();
+
     telemetry::WebSocket telemetry;
-    WebSocketUnderTest ws(g_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     // Establish fake connection (sets hWebSocket_)
     ws.test_start_receive_loop();
@@ -305,8 +334,12 @@ void test_send_success() {
 void test_send_failure() {
     std::cout << "[TEST] Running send failure test..." << std::endl;
 
+    // Reset global rings before test
+    control_ring.clear();
+    message_ring.clear();
+
     telemetry::WebSocket telemetry;
-    WebSocketUnderTest ws(g_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     ws.test_api().send_result = ERROR_WINHTTP_CONNECTION_ERROR;
 
@@ -326,8 +359,12 @@ void test_send_failure() {
 void test_error_then_close_ordering() {
     std::cout << "[TEST] Running error -> close ordering test..." << std::endl;
 
+    // Reset global rings before test
+    control_ring.clear();
+    message_ring.clear();
+
     telemetry::WebSocket telemetry;
-    WebSocketUnderTest ws(g_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
@@ -390,8 +427,12 @@ void test_error_then_close_ordering() {
 void test_multiple_messages() {
     std::cout << "[TEST] Running multiple message test..." << std::endl;
 
+    // Reset global rings before test
+    control_ring.clear();
+    message_ring.clear();
+
     telemetry::WebSocket telemetry;
-    WebSocketUnderTest ws(g_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);

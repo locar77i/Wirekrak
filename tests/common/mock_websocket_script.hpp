@@ -83,11 +83,23 @@ public:
     // Execution --------------------------------------------------------------
 
     template <typename WS>
-    inline void step(WS& ws) {
+    inline void step(WS* ws) {
         assert(index_ < actions_.size() && "MockWebSocketScript exhausted");
 
+        const auto& action = actions_[index_];
+
+        // If no transport exists, only Connect actions are allowed
+        if (!ws) {
+            if (auto* c = std::get_if<Connect>(&action)) {
+                WS::set_next_connect_result(c->result);
+                ++index_;
+                return;
+            }
+            assert(false && "Non-connect action requires active transport");
+        }
+
         std::visit([&](auto&& action) {
-            execute_(ws, action);
+            execute_(*ws, action);
         }, actions_[index_++]);
     }
 

@@ -36,6 +36,7 @@
 //
 // ============================================================================
 #include "commom/run_backpressure_example.hpp"
+#include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
 
 
@@ -62,6 +63,7 @@ using MySessionPolicies =
 
 using MyWebSocket =
     transport::winhttp::WebSocketImpl<
+        preset::DefaultControlRing,
         preset::DefaultMessageRing,
         MyWebSocketPolicies
     >;

@@ -14,7 +14,8 @@
 using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
-static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
+static preset::DefaultControlRing control_ring;   // Golbal control SPSC ring buffer (transport → session)
+static preset::DefaultMessageRing message_ring;   // Golbal message SPSC ring buffer (transport → session)
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -33,7 +34,7 @@ int main() {
     std::signal(SIGINT, on_signal);  // Handle Ctrl+C
 
     telemetry::WebSocket telemetry;
-    preset::transport::DefaultWebSocket ws(g_ring, telemetry);
+    preset::transport::DefaultWebSocket ws(control_ring, message_ring, telemetry);
 
     if (ws.connect("ws.kraken.com", "443", "/v2") != Error::None) {
         std::cerr << "Connect failed" << std::endl;
@@ -65,14 +66,14 @@ int main() {
     while (running.load(std::memory_order_relaxed)) {
         // Drain control-plane events
         websocket::Event ev;
-        while (ws.poll_event(ev)) {
+        while (control_ring.pop(ev)) {
             std::cout << "[example] Event received: " << static_cast<int>(ev.type) << std::endl;
         }
         // Drain data-plane messages (zero-copy)
-        while (auto* block = ws.peek_message()) {
+        while (auto* block = message_ring.peek_consumer_slot()) {
             std::string_view msg(block->data, block->size);
             std::cout << "Received:\n" << msg << "\n\n";
-            ws.release_message();
+            message_ring.release_consumer_slot();
         }
         std::this_thread::yield();
     }

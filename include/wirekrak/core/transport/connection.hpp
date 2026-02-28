@@ -209,11 +209,14 @@ public:
 
     // Event loop
     inline void poll() noexcept {
-        assert(ws_ && "poll() called while no transport exists");
+        // Fully inactive state (Disconnected) -> no work to do
+        if (get_state_() == State::Disconnected) [[unlikely]] {
+            return;
+        }
         //WK_TRACE("[CONN] Polling connection ... (state: " << to_string(get_state_()) << ")");
-        // === Drain transport events ===
+        // === Drain control plane events ===
         websocket::Event ev;
-        while (ws_->poll_event(ev)) {
+        while (control_ring_.pop(ev)) {
             switch (ev.type) {
                 case websocket::EventType::Close:
                     on_transport_closed_();
@@ -233,9 +236,11 @@ public:
             }
         }
         // === Reconnection logic ===
-        auto now = std::chrono::steady_clock::now();
-        if (get_state_() == State::WaitingReconnect && now >= next_retry_) {
-            (void)reconnect_();
+        if (get_state_() == State::WaitingReconnect) [[likely]] {
+            auto now = std::chrono::steady_clock::now();
+            if (now >= next_retry_) [[unlikely]] {
+                (void)reconnect_();
+            }
         }
         // === Liveness logic ===
         if constexpr (LivenessPolicy::enabled) {
@@ -277,13 +282,18 @@ public:
         return events_.pop(out);
     }
 
+    [[nodiscard]]
+    inline bool is_connected() const noexcept {
+        return get_state_() == State::Connected;
+    }
+
     // Returns an observable concept (not a state enum)
     [[nodiscard]]
     inline bool is_active() const noexcept {
-        return state_ == State::Connected
-            || state_ == State::Connecting
-            || state_ == State::Disconnecting
-            || state_ == State::WaitingReconnect
+        return get_state_() == State::Connected
+            || get_state_() == State::Connecting
+            || get_state_() == State::Disconnecting
+            || get_state_() == State::WaitingReconnect
         ;
     }
 
@@ -346,8 +356,7 @@ public:
 
     [[nodiscard]]
     inline websocket::DataBlock* peek_message() noexcept {
-        assert(ws_ && "peek_message() called while no transport exists");
-        websocket::DataBlock* block = ws_->peek_message();
+        websocket::DataBlock* block = message_ring_.peek_consumer_slot();
         if (block) { // Update rx message count and timestamp
             WK_TL1( telemetry_.messages_forwarded_total.inc() );
             ++rx_messages_;
@@ -357,8 +366,7 @@ public:
     }
 
     inline void release_message() noexcept {
-        assert(ws_ && "release_message() called while no transport exists");
-        ws_->release_message();
+        message_ring_.release_consumer_slot();
     }
 
     [[nodiscard]]
@@ -372,14 +380,18 @@ public:
         last_message_ts_ = ts;
     }
 
-    WS& ws() {
-        return *ws_;
+    [[nodiscard]]
+    inline WS* ws() noexcept {
+        return ws_.get();
     }
 #endif // WK_UNIT_TEST
 
 private:
     std::string last_url_;                          // for logging / retry callbacks
     lcr::optional<ParsedUrl> parsed_url_;           // Invariant: parsed_url_.has() == true -> Valid endpoint
+
+    // Control event queue (for signaling events like close and error)
+    lcr::lockfree::spsc_ring<websocket::Event, CTRL_RING_CAPACITY> control_ring_;
 
     // Data message queue (transport → connection/session)
     MessageRing& message_ring_;
@@ -492,10 +504,12 @@ private:
                 if (should_retry_(error)) {
                     WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
                     set_state_(State::WaitingReconnect);
+                    destroy_transport_if_needed_();
                     arm_immediate_reconnect_(error); // Retry immediately
                 }
                 else {
                     set_state_(State::Disconnected);
+                    destroy_transport_if_needed_();
                     disconnect_reason_ = DisconnectReason::TransportError;
                 }
                 break;
@@ -506,19 +520,23 @@ private:
                 disconnect_reason_ = DisconnectReason::TransportError;
                 if (should_retry_(error)) {
                     set_state_(State::WaitingReconnect);
+                    destroy_transport_if_needed_();
                     schedule_next_retry_();  // Schedule next retry with backoff
                 } else {
                     set_state_(State::Disconnected);
+                    destroy_transport_if_needed_();
                 }
                 break;
 
             case Event::TransportClosed:
                 // Transport closed before reaching Connected -> resolve to Disconnected
                 set_state_(State::Disconnected);
+                destroy_transport_if_needed_();
                 break;
 
             case Event::CloseRequested:
                 set_state_(State::Disconnected);
+                destroy_transport_if_needed_();
                 break;
 
             default:
@@ -554,9 +572,11 @@ private:
                 if (disconnect_reason_ != DisconnectReason::LocalClose && should_retry_(last_error_)) {
                     WK_TL1( telemetry_.retry_cycles_started_total.inc() ); // This counts retry cycles, not attempts
                     set_state_(State::WaitingReconnect);
+                    destroy_transport_if_needed_();
                     arm_immediate_reconnect_(last_error_);
                 } else {
                     set_state_(State::Disconnected);
+                    destroy_transport_if_needed_();
                 }
                 break;
 
@@ -571,9 +591,11 @@ private:
             case Event::TransportClosed:
                 if (disconnect_reason_ != DisconnectReason::LocalClose && should_retry_(last_error_)) {
                     set_state_(State::WaitingReconnect);
+                    destroy_transport_if_needed_();
                     arm_immediate_reconnect_(last_error_);
                 } else {
                     set_state_(State::Disconnected);
+                    destroy_transport_if_needed_();
                 }
                 break;
 
@@ -596,6 +618,7 @@ private:
 
             case Event::CloseRequested:
                 set_state_(State::Disconnected);
+                destroy_transport_if_needed_();
                 break;
 
             default:
@@ -620,15 +643,22 @@ private:
     }
 
     inline void create_transport_() {
-        // If exists, ensure old transport is torn down deterministically
-        if (ws_) {
-            ws_->close();
-            ws_.reset();
-        }
-        // Clear the message ring for the new epoch
+        // Clear the control/message rings for the new epoch
+        control_ring_.clear();
         message_ring_.clear();
         // Initialize transport
-        ws_ = std::make_unique<WS>(message_ring_, telemetry_.websocket);
+        ws_ = std::make_unique<WS>(control_ring_, message_ring_, telemetry_.websocket);
+    }
+
+    inline void destroy_transport_if_needed_() {
+        // We don't clear the rings here because pending events/messages may still be processed after transport destruction
+        // (e.g. transport closed event after close() is called).
+        // The rings are cleared at the start of create_transport_() to ensure a clean state for the new transport instance.
+        // Ensure old transport is torn down deterministically
+        if (ws_) {
+            ws_->close(); // close WS is idempotent, so this is safe even if the transport is already closed or failed to connect
+            ws_.reset();
+        }
     }
 
     // Placeholder for user-defined behavior on transport errors

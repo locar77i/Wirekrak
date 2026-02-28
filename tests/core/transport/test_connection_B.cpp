@@ -87,7 +87,7 @@ void test_open_success() {
     TEST_CHECK(h.connect_signals == 1);
 
     // Transport must be connected
-    TEST_CHECK(h.connection->ws().is_connected());
+    TEST_CHECK(h.connection->is_connected());
 
     std::cout << "[TEST] OK\n";
 }
@@ -112,7 +112,7 @@ void test_open_retriable_failure() {
     TEST_CHECK(h.connect_signals == 0);
 
     // Transport must not be connected
-    TEST_CHECK(h.connection->ws().is_connected() == false);
+    TEST_CHECK(h.connection->is_connected() == false);
 
     // Reconnect is scheduled implicitly:
     // observable behavior → calling poll() must attempt reconnect
@@ -186,7 +186,7 @@ void test_open_while_connected() {
     TEST_CHECK(h.retry_schedule_signals == 0);
 
     // Transport remains connected
-    TEST_CHECK(h.connection->ws().is_connected() == true);
+    TEST_CHECK(h.connection->is_connected() == true);
 
     std::cout << "[TEST] OK\n";
 }

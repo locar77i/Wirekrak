@@ -45,7 +45,7 @@ void test_send_when_connected() {
 
     // Establish connection
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
-    TEST_CHECK(connection.ws().is_connected());
+    TEST_CHECK(connection.is_connected());
 
     // send() must succeed
     TEST_CHECK(connection.send("ping") == true);

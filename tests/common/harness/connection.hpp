@@ -33,6 +33,8 @@ This enables:
 #include "wirekrak/core/transport/connection/signal.hpp"
 #include "wirekrak/core/transport/telemetry/connection.hpp"
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
+#include "wirekrak/core/preset/control_ring_default.hpp"
+#include "wirekrak/core/preset/message_ring_default.hpp"
 #include "common/mock_websocket.hpp"
 #include "common/test_check.hpp"
 
@@ -42,15 +44,25 @@ This enables:
 using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
-using MessageRingUnderTest = lcr::lockfree::spsc_ring<websocket::DataBlock, RX_RING_CAPACITY>;
-using WebSocketUnderTest = test::MockWebSocket<MessageRingUnderTest>;
+using MessageRingUnderTest = preset::DefaultMessageRing; // Golbal message ring buffer (transport → session)
+using ControlRingUnderTest = preset::DefaultControlRing; // Golbal control ring buffer (transport → session)
+
+using WebSocketUnderTest =
+    test::MockWebSocket<
+        ControlRingUnderTest, 
+        MessageRingUnderTest
+    >;
 
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
 static_assert(WebSocketConcept<WebSocketUnderTest>);
 
-using ConnectionUnderTest = Connection<WebSocketUnderTest, MessageRingUnderTest>;
+using ConnectionUnderTest =
+    Connection<
+        WebSocketUnderTest,
+        MessageRingUnderTest
+    >;
 
-static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → session)
+static MessageRingUnderTest g_ring;   // Golbal message ring buffer (transport → session)
 
 
 namespace wirekrak::core::transport::test {

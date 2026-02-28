@@ -64,14 +64,16 @@ inline std::wstring to_wide(const std::string& utf8) {
 namespace wirekrak::core::transport::winhttp {
 
 template<
+    typename ControlRing,
     typename MessageRing,
     typename PolicyBundle = policy::transport::WebsocketDefault,
     ApiConcept Api = RealApi
 >
 class WebSocketImpl {
 public:
-    explicit WebSocketImpl(MessageRing& ring, telemetry::WebSocket& telemetry) noexcept
-        : message_ring_(ring)
+    explicit WebSocketImpl(ControlRing& ctrl_ring, MessageRing& msg_ring, telemetry::WebSocket& telemetry) noexcept
+        : control_ring_(ctrl_ring)
+        , message_ring_(msg_ring)
         , telemetry_(telemetry) {
     }
 
@@ -198,20 +200,6 @@ public:
     }
 
     [[nodiscard]]
-    inline bool poll_event(websocket::Event& out) noexcept {
-        return control_events_.pop(out);
-    }
-
-    [[nodiscard]]
-    inline websocket::DataBlock* peek_message() noexcept {
-        return message_ring_.peek_consumer_slot();
-    }
-
-    inline void release_message() noexcept {
-        message_ring_.release_consumer_slot();
-    }
-
-    [[nodiscard]]
     inline telemetry::WebSocket& telemetry() noexcept {
         return telemetry_;
     }
@@ -272,7 +260,7 @@ private:
             if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
                 WK_TL1( telemetry_.receive_errors_total.inc() );
                 auto error = handle_receive_error_(result);
-                if (!control_events_.push(websocket::Event::make_error(error))) {
+                if (!control_ring_.push(websocket::Event::make_error(error))) {
                     WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">  - Event lost in transport shutdown");
                 }
                 // Stop the loop and signal close
@@ -352,7 +340,7 @@ private:
                 auto transition = backpressure_.on_active_signal();
                 if (transition == Hysteresis::Transition::Activated) {
                     WK_TRACE("[WS] Backpressure detected - message ring buffer is full");
-                    if (!control_events_.push(websocket::Event::make_backpressure_detected())) {
+                    if (!control_ring_.push(websocket::Event::make_backpressure_detected())) {
                         handle_fatal_error_("[WS] Failed to emit backpressure event (event lost)"
                             " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
                     }
@@ -380,7 +368,7 @@ private:
             if (transition == Hysteresis::Transition::Deactivated) {
                 WK_TRACE("[WS] Backpressure cleared: Message slot acquired successfully");
                 // Cleared is advisory
-                if (!control_events_.push(websocket::Event::make_backpressure_cleared())) {
+                if (!control_ring_.push(websocket::Event::make_backpressure_cleared())) {
                     // Event intentionally dropped on the floor (logged for observability)
                     // We have already successfully acquired a slot, so transport correctness is not compromised
                     WK_WARN("[WS] Dropping backpressure cleared event (control ring full)");
@@ -425,7 +413,7 @@ private:
             return;
         }
         WK_TL1( telemetry_.close_events_total.inc() );
-        if (!control_events_.push(websocket::Event::make_close())) {
+        if (!control_ring_.push(websocket::Event::make_close())) {
             WK_ERROR("[WS] Failed to emit close event (lost in transport shutdown)");
         }
     }
@@ -441,7 +429,7 @@ private:
         }
         WK_FATAL("[WS] Forcing transport close to preserve correctness guarantees.");
         // 2. Emit error event if possible
-        if (!control_events_.push(websocket::Event::make_error(error))) {
+        if (!control_ring_.push(websocket::Event::make_error(error))) {
             WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">  - Event lost in transport shutdown");
         }
         // 3. Signal close to ensure transport is fully closed (exactly-once guarded)
@@ -475,8 +463,8 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> closed_{false};
 
-    // Control event queue (for signaling events like close and error)
-    lcr::lockfree::spsc_ring<websocket::Event, CTRL_RING_CAPACITY> control_events_;
+    // Control event queue (for signaling events like close, error, backpressure detected/cleared)
+    ControlRing& control_ring_;
 
     // Data message queue (transport → connection/session)
     MessageRing& message_ring_;
@@ -486,6 +474,20 @@ public:
     // Test-only accessor to the internal API
     Api& test_api() noexcept {
         return api_;
+    }
+
+    [[nodiscard]]
+    inline bool poll_event(websocket::Event& out) noexcept {
+        return control_ring_.pop(out);
+    }
+
+    [[nodiscard]]
+    inline websocket::DataBlock* peek_message() noexcept {
+        return message_ring_.peek_consumer_slot();
+    }
+
+    inline void release_message() noexcept {
+        message_ring_.release_consumer_slot();
     }
 
 public:

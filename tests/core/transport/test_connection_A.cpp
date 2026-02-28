@@ -88,7 +88,7 @@ void test_destructor_closes_transport() {
         TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
 
         // Sanity: transport must be connected
-        TEST_CHECK(connection.ws().is_connected());
+        TEST_CHECK(connection.is_connected());
     } // Destructor must run here
 
     // Transport close must be invoked exactly once
