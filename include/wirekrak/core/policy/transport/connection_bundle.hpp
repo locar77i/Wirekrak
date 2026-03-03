@@ -1,75 +1,102 @@
 #pragma once
 
-#include <concepts>
-
-#include "wirekrak/core/policy/transport/liveness.hpp"
-
-namespace wirekrak::core::policy::transport {
-
 /*
 ===============================================================================
- Connection Policy Bundle
+ wirekrak::core::policy::transport::ConnectionBundleConcept
 ===============================================================================
 
-Single injection point for transport-level connection behavior.
+Defines the policy bundle and bundle concept for transport-level Connection.
 
-The Connection owns:
+The Connection represents a logical transport connection and owns:
 
-- Logical connection lifecycle
-- Retry / reconnection strategy
-- Liveness monitoring
-- Observable connection signals
+  • WebSocket lifecycle
+  • Reconnection strategy
+  • Liveness monitoring
+  • Observable connection signals
 
-This bundle prevents template parameter explosion by grouping all
-connection-level policies into a single type.
-
--------------------------------------------------------------------------------
- Responsibilities
--------------------------------------------------------------------------------
-
-The bundle currently forwards:
-
-  - liveness policy
-
-Future extensions may include:
-
-  - retry/backoff policy
-  - reconnection limits
-  - jitter strategy
-  - idle policy
-  - signal overflow behavior
+To prevent template parameter explosion and preserve API clarity, all
+connection-level policies are grouped into a single bundle type.
 
 -------------------------------------------------------------------------------
- Design Principles
+ Why a Bundle Concept?
+-------------------------------------------------------------------------------
+
+Instead of validating nested members via ad-hoc requires clauses, this concept:
+
+  • Ensures structural correctness (required nested types exist)
+  • Enforces semantic correctness (nested types satisfy policy concepts)
+  • Produces clearer compile-time diagnostics
+  • Keeps Connection template declarations clean
+
+-------------------------------------------------------------------------------
+ Required Nested Types
+-------------------------------------------------------------------------------
+
+A valid ConnectionBundleConcept must define:
+
+    using liveness;
+
+And that type must satisfy:
+
+    LivenessConcept
+
+-------------------------------------------------------------------------------
+ Design Guarantees
 -------------------------------------------------------------------------------
 
 • Fully compile-time configuration
 • Zero runtime polymorphism
-• No virtual dispatch
+• Zero dynamic configuration
 • Deterministic per Connection type
-• Transport-layer only (no protocol semantics)
-
--------------------------------------------------------------------------------
- Example
--------------------------------------------------------------------------------
-
-using MyConnectionPolicies = connection_bundle<
-    Active<std::chrono::seconds(15), 0.8>
->;
-
-using MyConnection =
-    Connection<MyWebSocket, MyMessageRing, MyConnectionPolicies>;
+• Extensible for future transport policies
 
 ===============================================================================
 */
+
+#include <concepts>
+
+#include "wirekrak/core/policy/transport/liveness.hpp"
+
+
+namespace wirekrak::core::policy::transport {
+
+// -----------------------------------------------------------------------------
+// Structural validation
+// -----------------------------------------------------------------------------
+
+template<typename T>
+concept HasConnectionBundleMembers =
+requires {
+    typename T::liveness;
+};
+
+// -----------------------------------------------------------------------------
+// Semantic validation
+// -----------------------------------------------------------------------------
+
+template<typename T>
+concept ConnectionBundleConcept =
+    HasConnectionBundleMembers<T> &&
+    LivenessConcept<typename T::liveness>;
 
 
 // ============================================================================
 // Connection Policy Bundle
 // ============================================================================
+//
+// Groups transport-level policies into a single injection point.
+//
+// Future extensions may include:
+//   - retry/backoff policy
+//   - jitter strategy
+//   - reconnection caps
+//   - idle behavior
+//   - signal overflow handling
+//
+// ============================================================================
 
 template<
-    LivenessPolicy LivenessT = liveness::Enabled<>
+    LivenessConcept LivenessT = liveness::Disabled
 >
 struct connection_bundle {
 
@@ -84,5 +111,8 @@ struct connection_bundle {
 // ============================================================================
 
 using ConnectionDefault = connection_bundle<>;
+
+// Compile-time self-check
+static_assert(ConnectionBundleConcept<ConnectionDefault>, "ConnectionDefault does not satisfy ConnectionBundleConcept");
 
 } // namespace wirekrak::core::policy::transport

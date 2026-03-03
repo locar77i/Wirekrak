@@ -65,7 +65,9 @@ template<
 >
 class BinaryHysteresis {
     static_assert(ActivateThreshold > 0, "ActivateThreshold must be > 0");
+    static_assert(ActivateThreshold < UINT32_MAX, "ActivateThreshold must be < UINT32_MAX");
     static_assert(DeactivateThreshold > 0, "DeactivateThreshold must be > 0");
+    static_assert(DeactivateThreshold < UINT32_MAX, "DeactivateThreshold must be < UINT32_MAX");
 
 public:
 

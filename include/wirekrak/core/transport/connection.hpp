@@ -115,7 +115,7 @@ namespace wirekrak::core::transport {
 template <
     WebSocketConcept WS,
     lcr::buffer::ConsumerSpscRingConcept MessageRing,
-    typename PolicyBundle = policy::transport::ConnectionDefault
+    policy::transport::ConnectionBundleConcept PolicyBundle = policy::transport::ConnectionDefault
 >
 class Connection {
 public:

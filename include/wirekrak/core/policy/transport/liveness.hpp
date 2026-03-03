@@ -1,10 +1,5 @@
 #pragma once
 
-#include <chrono>
-#include <concepts>
-
-namespace wirekrak::core::policy::transport {
-
 /*
 ===============================================================================
  Transport Liveness Policy
@@ -58,28 +53,79 @@ using MyTransportPolicies = transport::connection_bundle<
 ===============================================================================
 */
 
+#include <chrono>
+#include <concepts>
+
+namespace wirekrak::core::policy::transport {
+
 
 // ============================================================================
 // Liveness Policy Concept
 // ============================================================================
 //
-// A valid LivenessPolicy must expose:
+// A valid LivenessConcept defines how transport-level inactivity is evaluated.
+//
+// Liveness is strictly a transport concern. It measures observable traffic
+// activity (rx or tx progress) and determines when a connection should be
+// considered stale.
+//
+// This concept enforces both:
+//
+//   1) Structural correctness  (required static members exist)
+//   2) Semantic correctness    (values are valid when enabled)
+//
+// -----------------------------------------------------------------------------
+// Required Static Members
+// -----------------------------------------------------------------------------
 //
 //   static constexpr bool enabled;
 //   static constexpr std::chrono::milliseconds timeout;
-//   static constexpr double warning_ratio;
+//   static constexpr std::uint32_t warning_percent;
 //
-// If enabled == false, timeout and warning_ratio are ignored.
+// Semantics:
 //
-// ============================================================================
+//   • If enabled == false:
+//       - timeout and warning_percent are ignored
+//       - No liveness evaluation occurs
+//
+//   • If enabled == true:
+//       - timeout.count() > 0
+//       - 0 < warning_percent < 100
+//
+// All checks are performed at compile time.
+// No runtime overhead.
+// No dynamic configuration.
+// No inheritance required.
+//
+// -----------------------------------------------------------------------------
 
 template<typename P>
-concept LivenessPolicy =
+concept HasLivenessMembers =
 requires {
-    { P::enabled } -> std::same_as<const bool&>;
+    // Structural requirements only
+    { P::enabled } -> std::convertible_to<const bool&>;
     { P::timeout } -> std::convertible_to<std::chrono::milliseconds>;
     { P::warning_percent } -> std::convertible_to<std::uint32_t>;
 };
+
+template<typename P>
+concept LivenessConcept =
+    HasLivenessMembers<P>
+    &&
+    (
+        // Disabled mode
+        (
+            !P::enabled
+        )
+        ||
+        // Enabled mode (semantic validation)
+        (
+            P::enabled &&
+            (P::timeout.count() > 0) &&
+            (P::warning_percent > 0) &&
+            (P::warning_percent < 100)
+        )
+    );
 
 
 namespace liveness {
@@ -96,11 +142,13 @@ namespace liveness {
 struct Disabled {
 
     static constexpr bool enabled = false;
-
     // Unused placeholders (required for concept satisfaction)
     static constexpr std::chrono::milliseconds timeout{0};
     static constexpr std::uint32_t warning_percent{0};
 };
+
+// Assert that Disabled satisfies the LivenessConcept
+static_assert(LivenessConcept<Disabled>, "liveness::Disabled does not satisfy LivenessConcept");
 
 
 // ============================================================================
@@ -132,12 +180,23 @@ requires (TimeoutMs > 0) &&
 struct Enabled {
 
     static constexpr bool enabled = true;
-
     static constexpr std::chrono::milliseconds timeout{TimeoutMs};
-
     static constexpr std::uint32_t warning_percent = WarningPercent;
 };
 
+// Assert that Enabled satisfies the LivenessConcept
+static_assert(LivenessConcept<Enabled<>>, "liveness::Enabled does not satisfy LivenessConcept");
+
 } // namespace liveness
+
+
+// ============================================================================
+// Default Liveness Policy
+// ============================================================================
+
+using DefaultLiveness = liveness::Enabled<>; // Alias for Enabled with default parameters
+
+// Assert that DefaultLiveness satisfies the LivenessConcept
+static_assert(LivenessConcept<DefaultLiveness>, "DefaultLiveness does not satisfy LivenessConcept");
 
 } // namespace wirekrak::core::policy::transport

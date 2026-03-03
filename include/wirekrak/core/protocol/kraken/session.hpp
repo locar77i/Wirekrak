@@ -90,13 +90,8 @@ namespace wirekrak::core::protocol::kraken {
 template<
     transport::WebSocketConcept WS,
     lcr::buffer::ConsumerSpscRingConcept MessageRing,
-    typename PolicyBundle = policy::protocol::SessionDefault
+    policy::protocol::SessionBundleConcept PolicyBundle = policy::protocol::SessionDefault
 >
-requires requires {
-    typename PolicyBundle::backpressure;
-    typename PolicyBundle::liveness;
-    typename PolicyBundle::symbol_limit;
-}
 class Session {
 
 public:
