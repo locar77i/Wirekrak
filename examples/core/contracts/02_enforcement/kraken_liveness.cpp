@@ -32,9 +32,9 @@
 #include <csignal>
 
 #include "wirekrak/core/protocol/kraken/session.hpp"
-
 #include "wirekrak/core/preset/message_ring_default.hpp"
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
+#include "lcr/memory/block_pool.hpp"
 #include "common/cli/minimal.hpp"
 
 
@@ -53,7 +53,17 @@ void on_signal(int) {
 using namespace wirekrak::core;
 using namespace wirekrak::core::protocol::kraken;
 
-static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static preset::DefaultMessageRing message_ring(memory_pool);
 
 
 // -----------------------------------------------------------------------------
@@ -121,7 +131,7 @@ int main(int argc, char** argv) {
         std::cout << "          Forced reconnects are expected if the protocol remains silent.\n\n";
 
         // Session with passive liveness policy: connection may force reconnects if no traffic is observed
-        PassiveSession session{g_ring};
+        PassiveSession session{message_ring};
 
         if (!session.connect(params.url)) {
             return -1;
@@ -154,7 +164,7 @@ int main(int argc, char** argv) {
         std::cout << "          by sending protocol-level pings.\n\n";
 
         // Session with active liveness policy: session will attempt to maintain liveness by emitting protocol pings
-        ActiveSession session{g_ring};
+        ActiveSession session{message_ring};
 
         if (!session.connect(params.url)) {
             return -1;

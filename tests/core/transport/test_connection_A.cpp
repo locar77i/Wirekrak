@@ -58,7 +58,7 @@ void test_default_construction() {
     WebSocketUnderTest::reset();
 
     telemetry::Connection telemetry;
-    ConnectionUnderTest connection{g_ring, telemetry};
+    ConnectionUnderTest connection{message_ring, telemetry};
 
     // Cannot send while disconnected
     TEST_CHECK(connection.send("ping") == false);
@@ -82,7 +82,7 @@ void test_destructor_closes_transport() {
 
     {
         telemetry::Connection telemetry;
-        ConnectionUnderTest connection{g_ring, telemetry};
+        ConnectionUnderTest connection{message_ring, telemetry};
 
         // Open connection successfully
         TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);

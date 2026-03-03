@@ -65,6 +65,7 @@ Everything else builds on this.
 #include <csignal>
 
 #include "wirekrak/core/preset/transport/connection_default.hpp"
+#include "lcr/memory/block_pool.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -82,7 +83,17 @@ inline void on_signal(int) {
 using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
-static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static preset::DefaultMessageRing message_ring(memory_pool);
 
 
 // -----------------------------------------------------------------------------
@@ -105,7 +116,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     telemetry::Connection telemetry;
 
     // Connection owns the logical lifecycle, retries, and liveness.
-    preset::transport::DefaultConnection connection(g_ring, telemetry);
+    preset::transport::DefaultConnection connection(message_ring, telemetry);
 
     // -------------------------------------------------------------------------
     // Lambda to drain events

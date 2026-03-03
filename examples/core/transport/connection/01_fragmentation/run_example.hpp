@@ -93,6 +93,7 @@ Telemetry reflects **what happened on the wire**, not what was meant.
 #include <csignal>
 
 #include "wirekrak/core/preset/transport/connection_default.hpp"
+#include "lcr/memory/block_pool.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -110,7 +111,17 @@ inline void on_signal(int) {
 using namespace wirekrak::core;
 using namespace wirekrak::core::transport;
 
-static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static preset::DefaultMessageRing message_ring(memory_pool);
 
 
 // -----------------------------------------------------------------------------
@@ -129,7 +140,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
     // Connection setup
     // -------------------------------------------------------------------------
     telemetry::Connection telemetry;
-    preset::transport::DefaultConnection connection(g_ring, telemetry);
+    preset::transport::DefaultConnection connection(message_ring, telemetry);
 
     bool disconnected = false;
 
@@ -189,10 +200,10 @@ inline int run_example(const char* name, const char* url, const char* descriptio
         connection.poll();  // Poll-driven execution
         drain_signals();    // Drain any pending signals
         // Pull data-plane messages explicitly
-        while (auto* block = connection.peek_message()) {
-            std::cout << "[example] RX message (" << block->size << " bytes)" << std::endl;
+        while (auto* slot = connection.peek_message()) {
+            std::cout << "[example] RX message (" << slot->size() << " bytes)" << std::endl;
             // Uncomment to inspect raw payload
-            // std::cout.write(block->data, block->size);
+            // std::cout.write(slot->data(), slot->size());
             // std::cout << "" << std::endl;
             connection.release_message();
             did_work = true;

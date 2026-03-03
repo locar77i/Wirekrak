@@ -1,3 +1,5 @@
+#pragma once
+
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 

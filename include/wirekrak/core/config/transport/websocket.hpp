@@ -96,19 +96,18 @@ Do not modify casually.
 #include <cstddef>
 
 
-namespace wirekrak::core::transport {
+namespace wirekrak::core::config {
+namespace transport {
 
-// Capacity of the control event ring buffer (number of events)
-inline constexpr static std::size_t CTRL_RING_CAPACITY = 128;
+inline constexpr static std::size_t CONTROL_RING_CAPACITY =  128;    // Capacity of the control event ring buffer (number of events)
 
-// Capacity of the I/O message ring buffer (number of messages)
-inline constexpr static std::size_t RX_RING_CAPACITY = 256;
+inline constexpr static std::size_t MESSAGE_RING_CAPACITY = 1024;    // Capacity of the I/O message ring buffer (number of slots)
 
 namespace websocket {
 
-/// Maximum size (in bytes) of a single received WebSocket message.
-/// Must accommodate full message including all fragments.
-inline constexpr static std::size_t RX_BUFFER_SIZE = 128 * 1024;
+inline constexpr static std::size_t MIN_FRAME_SIZE = 256;        // Minimum writable size to trigger reactive growth
+inline constexpr static std::size_t FRAME_SIZE_HINT = 16 * 1024; // Hint size for reactive growth (must be <= RX_BUFFER_SIZE)
 
 } // namespace websocket
-} // namespace wirekrak::core::transport
+} // namespace transport
+} // namespace wirekrak::core::config

@@ -1,20 +1,3 @@
-#include <iostream>
-#include <string>
-#include <chrono>
-#include <thread>
-#include <locale>
-#include <csignal>
-
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
-#include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
-#include "lcr/metrics/snapshot/manager.hpp"
-#include "lcr/format.hpp"
-#include "lcr/log/logger.hpp"
-
-using namespace wirekrak::core;
-using namespace lcr::log;
-
-
 /*
 ===============================================================================
 WinHTTP WebSocket Transport – Benchmark Commentary
@@ -106,6 +89,23 @@ application logic, not the transport layer.
 ===============================================================================
 */
 
+#include <iostream>
+#include <string>
+#include <chrono>
+#include <thread>
+#include <locale>
+#include <csignal>
+
+#include "wirekrak/core/transport/websocket_concept.hpp"
+#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
+#include "wirekrak/core/preset/control_ring_default.hpp"
+#include "wirekrak/core/preset/message_ring_default.hpp"
+#include "lcr/memory/block_pool.hpp"
+#include "lcr/metrics/snapshot/manager.hpp"
+#include "lcr/format.hpp"
+#include "lcr/log/logger.hpp"
+
 
 namespace term {
 
@@ -142,7 +142,46 @@ void on_signal(int) {
 }
 
 
+// -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
+
+using ControlRingUnderTest = preset::DefaultControlRing; // Golbal control ring buffer (transport → session)
+using MessageRingUnderTest = preset::DefaultMessageRing; // Golbal message ring buffer (transport → session)
+
+
+using WebSocketUnderTest =
+    winhttp::WebSocketImpl<
+        ControlRingUnderTest,
+        MessageRingUnderTest,
+        policy::transport::WebsocketDefault
+    >;
+
+// Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
+static_assert(WebSocketConcept<WebSocketUnderTest>);
+
+// -------------------------------------------------------------------------
+// Golbal control SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static ControlRingUnderTest control_ring;
+
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static MessageRingUnderTest message_ring(memory_pool);
+
+
 int main() {
+    using namespace lcr::log;
     Logger::instance().set_level(Level::Info);
 
     std::signal(SIGINT, on_signal);  // Handle Ctrl+C
@@ -152,7 +191,7 @@ int main() {
 
     // Initialize telemetry and WebSocket
     transport::telemetry::WebSocket telemetry;
-    transport::winhttp::WebSocket ws(telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     // Create a telemetry manager to report the metrics
     lcr::metrics::snapshot::Manager<transport::telemetry::WebSocket> telemetry_mgr{telemetry};

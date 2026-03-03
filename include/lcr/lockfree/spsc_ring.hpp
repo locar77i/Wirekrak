@@ -109,7 +109,7 @@ public:
     }
 
     [[nodiscard]] inline memory::footprint memory_usage() const noexcept {
-       return memory::footprint{
+        return memory::footprint{
             .static_bytes = sizeof(spsc_ring<T, Capacity>),
             .dynamic_bytes = 0
         };

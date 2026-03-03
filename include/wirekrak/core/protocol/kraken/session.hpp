@@ -1,3 +1,6 @@
+
+#pragma once
+
 /*
 ===============================================================================
 Kraken protocol Session
@@ -51,9 +54,6 @@ Data-plane model:
 ===============================================================================
 */
 
-#pragma once
-
-
 #include <string>
 #include <string_view>
 #include <functional>
@@ -80,6 +80,7 @@ Data-plane model:
 #include "lcr/local/ring.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/control/consecutive_state.hpp"
+#include "lcr/buffer/concepts.hpp"
 #include "lcr/sequence.hpp"
 #include "lcr/log/logger.hpp"
 
@@ -88,7 +89,7 @@ namespace wirekrak::core::protocol::kraken {
 
 template<
     transport::WebSocketConcept WS,
-    typename MessageRing,
+    lcr::buffer::ConsumerSpscRingConcept MessageRing,
     typename PolicyBundle = policy::protocol::SessionDefault
 >
 requires requires {
@@ -387,11 +388,11 @@ public:
             handle_connection_signal_(sig);
         }
         // === Drain transport data-plane (zero-copy) ===
-        transport::websocket::DataBlock* block = nullptr;
         std::size_t messages_processed = 0;
-        while (messages_processed < config::protocol::MAX_MESSAGES_PER_POLL && (block = connection_.peek_message()) != nullptr) {
+        auto* slot = connection_.peek_message();
+        while (messages_processed < config::protocol::MAX_MESSAGES_PER_POLL && slot != nullptr) {
             // The message slot remains valid until release_message() is called
-            std::string_view sv{ block->data, block->size };
+            std::string_view sv{ slot->data(), slot->size() };
             // Handle the message (parsing & routing)
             Method method;
             Channel channel;
@@ -406,6 +407,7 @@ public:
             // Release the message slot back to the transport regardless of parsing outcome to maintain flow.
             connection_.release_message();
             ++messages_processed;
+            slot = connection_.peek_message();
         }
         // ===============================================================================
         // PROCESS REJECTION NOTICES (lossless, semantic errors)
@@ -491,6 +493,12 @@ public:
         enforce_backpressure_policy_();
 
         return connection_.epoch();
+    }
+
+    // Returns true if the current connection is connected
+    [[nodiscard]]
+    inline bool is_connected() const noexcept {
+        return connection_.is_connected();
     }
 
     // Returns true if the current connection is active

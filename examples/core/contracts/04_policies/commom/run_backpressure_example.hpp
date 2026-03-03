@@ -53,6 +53,7 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
+#include "lcr/memory/block_pool.hpp"
 #include "common/cli/symbol.hpp"
 #include "common/loop/helpers.hpp"
 
@@ -84,21 +85,28 @@ int run_backpressure_example(int argc, char** argv, const char* title, const cha
     std::signal(SIGINT, on_signal);
 
     // -------------------------------------------------------------------------
-    // Runtime configuration (symbols, log level)
+    // Runtime configuration (symbols, log level)º
     // -------------------------------------------------------------------------
     const auto& params = wirekrak::cli::symbol::configure(argc, argv, title, description);
 
     params.dump("=== Runtime Parameters ===", std::cout);
 
     // -------------------------------------------------------------------------
-    // Global message ring
+    // Global memory block pool
     // -------------------------------------------------------------------------
-    static MessageRing g_ring;
+    constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+    constexpr static std::size_t BLOCK_COUNT = 24;
+    static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+    // -----------------------------------------------------------------------------
+    // Golbal SPSC ring buffer (transport → session)
+    // -----------------------------------------------------------------------------
+    static MessageRing message_ring(memory_pool);
 
     // -------------------------------------------------------------------------
     // Session
     // -------------------------------------------------------------------------
-    Session session(g_ring);
+    Session session(message_ring);
 
     std::size_t depth = 1000; // Use max depth for this example
     bool snapshot = true; // Request snapshot for this example
@@ -139,7 +147,7 @@ int run_backpressure_example(int argc, char** argv, const char* title, const cha
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    if (session.is_active()) {
+    if (session.is_connected()) {
         (void)session.unsubscribe(
             book::Unsubscribe{ .symbols = params.symbols, .depth = depth }
         );
@@ -162,7 +170,20 @@ int run_backpressure_example(int argc, char** argv, const char* title, const cha
     // -------------------------------------------------------------------------
     // Dump telemetry
     // -------------------------------------------------------------------------
+    std::cout << "\n[1] Session Telemetry >>\n";
     session.telemetry().debug_dump(std::cout);
+
+    // -------------------------------------------------------------------------
+    // Dump message ring memory usage
+    // -------------------------------------------------------------------------
+    std::cout << "\n[2] Message Ring Memory Usage >>\n";
+    message_ring.memory_usage().debug_dump(std::cout);
+
+    // -------------------------------------------------------------------------
+    // Dump block pool memory usage
+    // -------------------------------------------------------------------------
+    std::cout << "\n[3] Block Pool Memory Usage >>\n";
+    memory_pool.memory_usage().debug_dump(std::cout);
 
     std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
     return 0;

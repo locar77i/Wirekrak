@@ -6,7 +6,6 @@
 // ---- Core includes (PRIVATE) ----
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
-#include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/response_view.hpp"
@@ -16,7 +15,7 @@
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
 #include "wirekrak/core/protocol/kraken/response/partitioner.hpp"
 #include "wirekrak/core/preset/protocol/kraken_default.hpp"
-#include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/memory/block_pool.hpp"
 
 
 namespace wirekrak::lite {
@@ -29,10 +28,17 @@ namespace kraken = wirekrak::core::protocol::kraken;
 namespace schema = kraken::schema;
 namespace preset = wirekrak::core::preset;
 
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+static constexpr std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+static constexpr std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
 // -----------------------------------------------------------------------------
 // Golbal SPSC ring buffer (transport → session)
 // -----------------------------------------------------------------------------
-static preset::DefaultMessageRing g_ring;
+static preset::DefaultMessageRing message_ring(memory_pool);
 
 // -----------------------------
 // Impl
@@ -61,7 +67,7 @@ struct Client::Impl {
 
     Impl(client_config cfg)
         : cfg(cfg)
-        , session(g_ring)
+        , session(message_ring)
     {
     }
 

@@ -39,7 +39,17 @@ using WebSocketUnderTest =
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
 static_assert(transport::WebSocketConcept<WebSocketUnderTest>);
 
-static MessageRingUnderTest g_ring;   // Golbal SPSC ring buffer (transport → session)
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static MessageRingUnderTest message_ring(memory_pool);
 
 
 namespace wirekrak::core::protocol::kraken::test {
@@ -57,7 +67,7 @@ struct Session {
     SessionUnderTest session;
 
     Session()
-        : session(g_ring) {
+        : session(message_ring) {
         WS::reset();
     }
 

@@ -41,7 +41,7 @@ void test_send_when_connected() {
     WebSocketUnderTest::reset();
 
     telemetry::Connection telemetry;
-    ConnectionUnderTest connection{g_ring, telemetry};
+    ConnectionUnderTest connection{message_ring, telemetry};
 
     // Establish connection
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
@@ -61,7 +61,7 @@ void test_send_when_disconnected() {
     WebSocketUnderTest::reset();
 
     telemetry::Connection telemetry;
-    ConnectionUnderTest connection{g_ring, telemetry};
+    ConnectionUnderTest connection{message_ring, telemetry};
 
     TEST_CHECK(connection.send("ping") == false);
 
@@ -79,7 +79,7 @@ void test_send_when_waiting_reconnect() {
     WebSocketUnderTest::set_next_connect_result(Error::ConnectionFailed);
 
     telemetry::Connection telemetry;
-    ConnectionUnderTest connection{g_ring, telemetry};
+    ConnectionUnderTest connection{message_ring, telemetry};
 
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::ConnectionFailed);
 

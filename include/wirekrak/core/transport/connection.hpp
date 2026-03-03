@@ -1,3 +1,6 @@
+
+#pragma once
+
 /*
 ===============================================================================
  wirekrak::core::transport::Connection
@@ -85,8 +88,6 @@ No level-based liveness or health state is exposed.
 ===============================================================================
 */
 
-#pragma once
-
 #include <string>
 #include <string_view>
 #include <functional>
@@ -100,12 +101,12 @@ No level-based liveness or health state is exposed.
 #include "wirekrak/core/transport/state.hpp"
 #include "wirekrak/core/transport/connection/signal.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
-#include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "wirekrak/core/config/transport/connection.hpp"
 #include "wirekrak/core/telemetry.hpp"
-#include "lcr/optional.hpp"
+#include "lcr/buffer/concepts.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/optional.hpp"
 #include "lcr/log/logger.hpp"
 
 
@@ -113,7 +114,7 @@ namespace wirekrak::core::transport {
 
 template <
     WebSocketConcept WS,
-    typename MessageRing,
+    lcr::buffer::ConsumerSpscRingConcept MessageRing,
     typename PolicyBundle = policy::transport::ConnectionDefault
 >
 class Connection {
@@ -355,14 +356,14 @@ public:
     }
 
     [[nodiscard]]
-    inline websocket::DataBlock* peek_message() noexcept {
-        websocket::DataBlock* block = message_ring_.peek_consumer_slot();
-        if (block) { // Update rx message count and timestamp
+    inline auto* peek_message() noexcept {
+        auto* slot = message_ring_.peek_consumer_slot();
+        if (slot) { // Update rx message count and timestamp
             WK_TL1( telemetry_.messages_forwarded_total.inc() );
             ++rx_messages_;
             last_message_ts_ = std::chrono::steady_clock::now();
         }
-        return block;
+        return slot;
     }
 
     inline void release_message() noexcept {
@@ -391,7 +392,7 @@ private:
     lcr::optional<ParsedUrl> parsed_url_;           // Invariant: parsed_url_.has() == true -> Valid endpoint
 
     // Control event queue (for signaling events like close and error)
-    lcr::lockfree::spsc_ring<websocket::Event, CTRL_RING_CAPACITY> control_ring_;
+    lcr::lockfree::spsc_ring<websocket::Event, config::transport::CONTROL_RING_CAPACITY> control_ring_;
 
     // Data message queue (transport → connection/session)
     MessageRing& message_ring_;

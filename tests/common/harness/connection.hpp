@@ -35,6 +35,7 @@ This enables:
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+#include "lcr/memory/block_pool.hpp"
 #include "common/mock_websocket.hpp"
 #include "common/test_check.hpp"
 
@@ -62,7 +63,18 @@ using ConnectionUnderTest =
         MessageRingUnderTest
     >;
 
-static MessageRingUnderTest g_ring;   // Golbal message ring buffer (transport → session)
+
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static MessageRingUnderTest message_ring(memory_pool);
 
 
 namespace wirekrak::core::transport::test {
@@ -112,7 +124,7 @@ struct Connection {
     // -------------------------------------------------------------------------
     inline void make_connection()
     {
-        connection = std::make_unique<ConnectionType>(g_ring, telemetry);
+        connection = std::make_unique<ConnectionType>(message_ring, telemetry);
     }
 
     // -------------------------------------------------------------------------

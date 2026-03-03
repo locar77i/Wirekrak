@@ -9,7 +9,6 @@
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
-#include "wirekrak/core/transport/websocket/data_block.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
 
@@ -66,13 +65,22 @@ public:
     // ---------------------------------------------------------------------
 
     inline void emit_message(const std::string& msg) noexcept {
-        websocket::DataBlock* block = message_ring_.acquire_producer_slot();
-        if (!block) {
+        auto* slot = message_ring_.acquire_producer_slot();
+        if (!slot) {
             WK_WARN("[MockWebSocket] Message ring is full! Cannot emit message.");
             return;
         }
-        std::strncpy(block->data, msg.data(), websocket::RX_BUFFER_SIZE);
-        block->size = static_cast<uint32_t>(std::min(msg.size(), static_cast<size_t>(websocket::RX_BUFFER_SIZE)));
+        
+        using promotion_result_type = typename MessageRing::promotion_result_type;
+        promotion_result_type r = message_ring_.reserve(slot, msg.size());
+        if (r > promotion_result_type::Success) {
+            WK_FATAL("[MockWebSocket] Failed to reserve slot for mock message");
+            return;
+        }
+
+        std::memcpy(slot->write_ptr(), msg.data(), msg.size());
+        slot->commit(msg.size());
+
         message_ring_.commit_producer_slot();
     }
 

@@ -7,6 +7,8 @@ Wirekrak Connection Configuration
 
 #include <cstddef>
 
+#include "wirekrak/core/config/transport/websocket.hpp"
+
 
 namespace wirekrak::core::transport {
 

@@ -40,6 +40,7 @@ avoiding timing assumptions and relying only on observable transport invariants.
 #include "wirekrak/core/policy/transport/websocket_bundle.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+#include "lcr/memory/block_pool.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::transport;
@@ -125,9 +126,22 @@ using WebSocketUnderTest =
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
 static_assert(WebSocketConcept<WebSocketUnderTest>);
 
+// -------------------------------------------------------------------------
+// Golbal control SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static ControlRingUnderTest control_ring;
 
-static ControlRingUnderTest control_ring;   // Golbal control SPSC ring buffer (transport → session)
-static MessageRingUnderTest message_ring;   // Golbal SPSC ring buffer (transport → session)
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static MessageRingUnderTest message_ring(memory_pool);
 
 
 // -----------------------------------------------------------------------------
@@ -283,18 +297,19 @@ void test_message_delivery_to_ring() {
     }
 
     // Now message must be available
-    websocket::DataBlock* block = nullptr;
-    while ((block = ws.peek_message()) == nullptr) {
+    auto* slot = ws.peek_message();
+    while (slot == nullptr) {
         std::this_thread::yield();
+        slot = ws.peek_message();
     }
     
-    assert(block != nullptr);
+    assert(slot != nullptr);
 
     // Assert payload
     const char* expected = "test_message";
     const std::size_t expected_size = std::strlen(expected);
-    assert(block->size == expected_size);
-    assert(std::memcmp(block->data, expected, expected_size) == 0);
+    assert(slot->size() == expected_size);
+    assert(std::memcmp(slot->data(), expected, expected_size) == 0);
 
     // Release slot (mandatory)
     ws.release_message();
@@ -462,23 +477,23 @@ void test_multiple_messages() {
     }
 
     int count = 0;
-    websocket::DataBlock* block = ws.peek_message();
-    while (block != nullptr) {
-        assert(block != nullptr);
+    auto* slot = ws.peek_message();
+    while (slot != nullptr) {
+        assert(slot != nullptr);
 
         if (count == 0) {
-            assert(block->size == 4);
-            assert(std::memcmp(block->data, "msg1", 4) == 0);
+            assert(slot->size() == 4);
+            assert(std::memcmp(slot->data(), "msg1", 4) == 0);
         }
         else if (count == 1) {
-            assert(block->size == 4);
-            assert(std::memcmp(block->data, "msg2", 4) == 0);
+            assert(slot->size() == 4);
+            assert(std::memcmp(slot->data(), "msg2", 4) == 0);
         }
         // Release slot (mandatory)
         ws.release_message();
-        std::cout << " -> Message " << count + 1 << ": " << std::string(block->data, block->size) << "\n";
+        std::cout << " -> Message " << count + 1 << ": " << std::string(slot->data(), slot->size()) << "\n";
         count++;
-        block = ws.peek_message();
+        slot = ws.peek_message();
     }
 
     ws.close();

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "wirekrak/core/protocol/kraken/session.hpp"
 
 #include "wirekrak/core/preset/message_ring_default.hpp"

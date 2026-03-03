@@ -6,16 +6,8 @@
 #include <csignal>
 
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
+#include "lcr/memory/block_pool.hpp"
 
-
-// -----------------------------------------------------------------------------
-// Setup environment
-// -----------------------------------------------------------------------------
-using namespace wirekrak::core;
-using namespace wirekrak::core::transport;
-
-static preset::DefaultControlRing control_ring;   // Golbal control SPSC ring buffer (transport → session)
-static preset::DefaultMessageRing message_ring;   // Golbal message SPSC ring buffer (transport → session)
 
 // -----------------------------------------------------------------------------
 // Ctrl+C handling
@@ -25,6 +17,29 @@ std::atomic<bool> running{true};
 void on_signal(int) {
     running.store(false);
 }
+
+// -----------------------------------------------------------------------------
+// Setup environment
+// -----------------------------------------------------------------------------
+using namespace wirekrak::core;
+using namespace wirekrak::core::transport;
+
+// -----------------------------------------------------------------------------
+// Golbal control SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static preset::DefaultControlRing control_ring;
+
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static preset::DefaultMessageRing message_ring(memory_pool);
 
 
 // -----------------------------------------------------------------------------
@@ -70,8 +85,8 @@ int main() {
             std::cout << "[example] Event received: " << static_cast<int>(ev.type) << std::endl;
         }
         // Drain data-plane messages (zero-copy)
-        while (auto* block = message_ring.peek_consumer_slot()) {
-            std::string_view msg(block->data, block->size);
+        while (auto* slot = message_ring.peek_consumer_slot()) {
+            std::string_view msg(slot->data(), slot->size());
             std::cout << "Received:\n" << msg << "\n\n";
             message_ring.release_consumer_slot();
         }

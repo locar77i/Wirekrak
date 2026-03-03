@@ -1,3 +1,5 @@
+#pragma once
+
 #include "wirekrak/core/transport/connection.hpp"
 
 #include "wirekrak/core/preset/message_ring_default.hpp"

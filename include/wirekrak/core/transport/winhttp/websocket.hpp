@@ -1,29 +1,5 @@
 #pragma once
 
-#include <string>
-#include <string_view>
-#include <thread>
-#include <functional>
-#include <atomic>
-#include <vector>
-#include <cassert>
-
-#include "wirekrak/core/transport/error.hpp"
-#include "wirekrak/core/transport/winhttp/real_api.hpp"
-#include "wirekrak/core/transport/telemetry/websocket.hpp"
-#include "wirekrak/core/transport/websocket/events.hpp"
-#include "wirekrak/core/transport/websocket/data_block.hpp"
-#include "wirekrak/core/policy/transport/websocket_bundle.hpp"
-#include "wirekrak/core/config/transport/websocket.hpp"
-#include "wirekrak/core/config/backpressure.hpp"
-#include "wirekrak/core/telemetry.hpp"
-#include "lcr/lockfree/spsc_ring.hpp"
-#include "lcr/log/logger.hpp"
-
-#include <windows.h>
-#include <winhttp.h>
-#include <winerror.h>
-
 /*
 ================================================================================
 WebSocket Transport (WinHTTP minimal implementation)
@@ -50,6 +26,30 @@ is validated independently from the operating system and network stack.
 ================================================================================
 */
 
+#include <string>
+#include <string_view>
+#include <thread>
+#include <functional>
+#include <atomic>
+#include <vector>
+#include <cassert>
+
+#include "wirekrak/core/transport/error.hpp"
+#include "wirekrak/core/transport/winhttp/real_api.hpp"
+#include "wirekrak/core/transport/telemetry/websocket.hpp"
+#include "wirekrak/core/transport/websocket/events.hpp"
+#include "wirekrak/core/policy/transport/websocket_bundle.hpp"
+#include "wirekrak/core/config/transport/websocket.hpp"
+#include "wirekrak/core/config/backpressure.hpp"
+#include "wirekrak/core/telemetry.hpp"
+#include "lcr/buffer/concepts.hpp"
+#include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/log/logger.hpp"
+
+#include <windows.h>
+#include <winhttp.h>
+#include <winerror.h>
+
 
 // helper to convert UTF-8 string to wide string
 inline std::wstring to_wide(const std::string& utf8) {
@@ -65,7 +65,7 @@ namespace wirekrak::core::transport::winhttp {
 
 template<
     typename ControlRing,
-    typename MessageRing,
+    lcr::buffer::ProducerSpscRingConcept MessageRing,
     typename PolicyBundle = policy::transport::WebsocketDefault,
     ApiConcept Api = RealApi
 >
@@ -205,6 +205,42 @@ public:
     }
 
 private:
+    // Telemetry reference (non-owning) 
+    telemetry::WebSocket& telemetry_;
+
+    // Backpressure policy instance
+    using BackpressurePolicy = typename PolicyBundle::backpressure;
+
+    // Hysteresis type based on the backpressure policy mode
+    using Hysteresis = typename BackpressurePolicy::hysteresis;
+
+    // Backpressure stabilizer (only used for non-zero-tolerance policies)
+    [[no_unique_address]]
+    Hysteresis backpressure_;
+
+    // Compile-time API policy (default: RealApi)
+    Api api_;
+
+    // WinHTTP handles
+    HINTERNET hSession_   = nullptr;
+    HINTERNET hConnect_   = nullptr;
+    HINTERNET hRequest_   = nullptr;
+    HINTERNET hWebSocket_ = nullptr;
+
+    std::thread recv_thread_;
+    std::atomic<bool> running_{false};
+    std::atomic<bool> closed_{false};
+
+    // Control event queue (for signaling events like close, error, backpressure detected/cleared)
+    ControlRing& control_ring_;
+
+    // Data message queue (transport → connection/session)
+    MessageRing& message_ring_;
+
+    using slot_type = typename MessageRing::slot_type;
+    using promotion_result_type = typename MessageRing::promotion_result_type;
+
+private:
     // The receive loop is the heart of the transport's receive path.
     // Key features:
     // - Lock-free
@@ -222,40 +258,51 @@ private:
 #endif // WK_UNIT_TEST
 
         uint32_t fragments = 0;
-        websocket::DataBlock* current_slot = nullptr;
-        std::uint32_t current_size = 0;
+        slot_type* current_slot = nullptr;
         
         // Receive internal loop
         while (running_.load(std::memory_order_acquire)) {
             DWORD bytes = 0;
             WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
 
-            // Acquire slot lazily (only when starting a message)
-            if (!current_slot) {
+            // === Lazy slot acquisition (start of new message) ===
+            if (!current_slot) [[likely]] {
                 current_slot = acquire_slot_();
                 if (! current_slot) [[unlikely]] {
                     continue; // backpressure handling (no slot available)
                 }
-                current_size = 0;
             }
-            // === Call WebSocket receive API ===
-            WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
-            DWORD remaining = websocket::RX_BUFFER_SIZE - current_size;
-            if (remaining == 0) [[unlikely]] {
+            // === Reactive growth (ONLY if not starting a new message and capacity isexhausted) ===
+            else if (current_slot->remaining() < config::transport::websocket::MIN_FRAME_SIZE) [[unlikely]] {
+                static constexpr std::size_t growth_hint = 16 * 1024;
+                promotion_result_type r = message_ring_.reserve(current_slot, config::transport::websocket::FRAME_SIZE_HINT);
+                if (r > promotion_result_type::Success) [[unlikely]] {
+                    handle_fatal_error_("[WS] Failed to grow message slot for incoming message (reserve failed)", Error::ProtocolError);
+                    current_slot = nullptr;
+                    break;
+                }
+            }
+
+            // === Amount writable this iteration ===
+            DWORD writable = static_cast<DWORD>(current_slot->remaining());
+            if (writable == 0) [[unlikely]] {
                 handle_fatal_error_("[WS] Failed to receive incoming message (size exceeds buffer capacity)"
                     " - transport correctness compromised (message will be truncated)", Error::ProtocolError);
                 // abandon current slot (not committed)
                 current_slot = nullptr;
-                current_size = 0;
                 break;
             }
+
+            // === Call WebSocket receive API ===
+            WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
             DWORD result = api_.websocket_receive(
                 hWebSocket_,
-                current_slot->data + current_size,
-                remaining,
+                current_slot->write_ptr(),
+                writable,
                 &bytes,
                 &type
             );
+
             // === Handle errors ===
             if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
                 WK_TL1( telemetry_.receive_errors_total.inc() );
@@ -268,14 +315,13 @@ private:
                 signal_close_();
                 // abandon current slot (not committed)
                 current_slot = nullptr;
-                current_size = 0;
                 break;
             }
-            else { // successful receive
-                // bytes_rx_total counts raw bytes received from the WebSocket API,
-                // including fragments and control frames.
-                WK_TL1( telemetry_.bytes_rx_total.inc(bytes) );
-            }
+
+            // === Successful receive ===
+            // bytes_rx_total counts raw bytes received from the WebSocket API, including fragments and control frames.
+            WK_TL1( telemetry_.bytes_rx_total.inc(bytes) );
+
             // === Handle close frame ===
             if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) { // normal termination
                 WK_DEBUG("[WS] Received WebSocket close frame.");
@@ -284,26 +330,26 @@ private:
                 signal_close_();
                 // abandon current slot (not committed)
                 current_slot = nullptr;
-                current_size = 0;
                 break;
             }
-            current_size += bytes;
+
+            // === Commit received bytes into slot ===
+            auto total_bytes = current_slot->commit(bytes);
+
             // === Handle final message frame ===
             if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE)  [[likely]] {
                 if (fragments > 0) {
-                    WK_TRACE("[WS] Received final message fragment (size " << bytes << ", total message size " << current_size << ", fragments " << fragments << ")");
+                    WK_TRACE("[WS] Received final message fragment (size " << bytes << ", total message size " << total_bytes << ", fragments " << fragments << ")");
                     WK_TL1( telemetry_.rx_fragments_total.inc() );
                 }
-                WK_TL1( telemetry_.rx_message_bytes.set(current_size) );
+                WK_TL1( telemetry_.rx_message_bytes.set(total_bytes) );
                 WK_TL1( telemetry_.messages_rx_total.inc() );
                 WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
                 // Commit the complete message to the ring buffer
-                current_slot->size = current_size;
                 message_ring_.commit_producer_slot();
                 // Reset for the next message
                 fragments = 0;
                 current_slot = nullptr;
-                current_size = 0;  
             }
             else // === Handle message fragments ===
             if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
@@ -317,9 +363,9 @@ private:
     }
 
     [[nodiscard]]
-    inline websocket::DataBlock* acquire_slot_() noexcept {
+    inline slot_type* acquire_slot_() noexcept {
         using core::policy::BackpressureMode;
-        websocket::DataBlock* slot = message_ring_.acquire_producer_slot();
+        slot_type* slot = message_ring_.acquire_producer_slot();
         if (!slot) [[unlikely]] { // Handle backpressure according to the policy
             // =========================================================
             // ZeroTolerance (transport-level forced close)
@@ -436,39 +482,6 @@ private:
         signal_close_();
     }
 
-private:
-    // Telemetry reference (non-owning) 
-    telemetry::WebSocket& telemetry_;
-
-    // Backpressure policy instance
-    using BackpressurePolicy = typename PolicyBundle::backpressure;
-
-    // Hysteresis type based on the backpressure policy mode
-    using Hysteresis = typename BackpressurePolicy::hysteresis;
-
-    // Backpressure stabilizer (only used for non-zero-tolerance policies)
-    [[no_unique_address]]
-    Hysteresis backpressure_;
-
-    // Compile-time API policy (default: RealApi)
-    Api api_;
-
-    // WinHTTP handles
-    HINTERNET hSession_   = nullptr;
-    HINTERNET hConnect_   = nullptr;
-    HINTERNET hRequest_   = nullptr;
-    HINTERNET hWebSocket_ = nullptr;
-
-    std::thread recv_thread_;
-    std::atomic<bool> running_{false};
-    std::atomic<bool> closed_{false};
-
-    // Control event queue (for signaling events like close, error, backpressure detected/cleared)
-    ControlRing& control_ring_;
-
-    // Data message queue (transport → connection/session)
-    MessageRing& message_ring_;
-
 #ifdef WK_UNIT_TEST
 public:
     // Test-only accessor to the internal API
@@ -482,7 +495,7 @@ public:
     }
 
     [[nodiscard]]
-    inline websocket::DataBlock* peek_message() noexcept {
+    inline slot_type* peek_message() noexcept {
         return message_ring_.peek_consumer_slot();
     }
 

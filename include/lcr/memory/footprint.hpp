@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "lcr/format.hpp"
+
 
 namespace lcr {
 namespace memory {
@@ -59,6 +61,14 @@ struct footprint {
         } else {
             static_assert(sizeof(T) == 0, "Type passed to add_dynamic() must implement memory_usage()");
         }
+    }
+
+    // debug dump method for easy logging
+    inline void debug_dump(std::ostream& os) const {
+        os << "\n=== Memory Footprint ===\n";
+        os << "  Static:  " << format_bytes(static_bytes) << "\n";
+        os << "  Dynamic: " << format_bytes(dynamic_bytes) << "\n";
+        os << "  Total:   " << format_bytes(total_bytes()) << "\n";
     }
 };
 

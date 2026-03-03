@@ -53,7 +53,7 @@ void test_message_dispatch_updates_liveness() {
         .message("hello-world");
 
     telemetry::Connection telemetry;
-    ConnectionUnderTest connection{g_ring, telemetry};
+    ConnectionUnderTest connection{message_ring, telemetry};
 
     // Open connection (does not run script yet)
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
@@ -71,10 +71,10 @@ void test_message_dispatch_updates_liveness() {
     connection.poll();
 
     // Pull message from transport data-plane
-    auto* block = connection.peek_message();
-    TEST_CHECK(block != nullptr);
+    auto* slot = connection.peek_message();
+    TEST_CHECK(slot != nullptr);
 
-    std::string received{block->data, block->size};
+    std::string received{slot->data(), slot->size()};
 
     // Release slot (mandatory)
     connection.release_message();
@@ -104,7 +104,7 @@ void test_message_dispatch_without_handler() {
         .message("no-listener");
 
     telemetry::Connection telemetry;
-    ConnectionUnderTest connection{g_ring, telemetry};
+    ConnectionUnderTest connection{message_ring, telemetry};
 
     // No on_message handler registered
 
@@ -122,8 +122,8 @@ void test_message_dispatch_without_handler() {
     connection.poll();
 
     // Consume message (even if user has no handler)
-    auto* block = connection.peek_message();
-    TEST_CHECK(block != nullptr);
+    auto* slot = connection.peek_message();
+    TEST_CHECK(slot != nullptr);
 
     // Release slot
     connection.release_message();

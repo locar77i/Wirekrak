@@ -28,6 +28,7 @@
 #include <thread>
 
 #include "wirekrak/core/preset/protocol/kraken_default.hpp"
+#include "lcr/memory/block_pool.hpp"
 #include "common/cli/trade.hpp"
 #include "common/loop/helpers.hpp"
 
@@ -46,7 +47,17 @@ void on_signal(int) {
 using namespace wirekrak::core;
 using namespace wirekrak::core::protocol::kraken;
 
-static preset::DefaultMessageRing g_ring;   // Golbal SPSC ring buffer (transport → session)
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+inline constexpr static std::size_t BLOCK_COUNT = 8;
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
+
+// -----------------------------------------------------------------------------
+// Golbal SPSC ring buffer (transport → session)
+// -----------------------------------------------------------------------------
+static preset::DefaultMessageRing message_ring(memory_pool);
 
 
 // -----------------------------------------------------------------------------
@@ -77,7 +88,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    preset::protocol::kraken::DefaultSession session(g_ring);
+    preset::protocol::kraken::DefaultSession session(message_ring);
 
     // -------------------------------------------------------------------------
     // Connect
@@ -108,7 +119,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Explicit unsubscription
     // -------------------------------------------------------------------------
-    if (session.is_active()) {
+    if (session.is_connected()) {
         (void)session.unsubscribe(
             trade::Unsubscribe{ .symbols = params.symbols }
         );
