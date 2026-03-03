@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <ostream>
 
 #include "wirekrak/core/config/backpressure.hpp"
 #include "wirekrak/core/policy/backpressure_mode.hpp"
@@ -75,6 +76,21 @@ struct ZeroTolerance {
     static constexpr BackpressureMode mode = BackpressureMode::ZeroTolerance;
 
     using hysteresis = std::nullptr_t;
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "ZeroTolerance";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Transport Backpressure Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Hysteresis  : none\n";
+        os << "- Behavior    : Immediate close on first saturation\n\n";
+    }
 };
 
 // Assert that ZeroTolerance satisfies the BackpressureConcept
@@ -96,6 +112,23 @@ struct Strict {
     static constexpr BackpressureMode mode = BackpressureMode::Strict;
 
     using hysteresis = lcr::control::BinaryHysteresis<config::backpressure::STRICT_HYSTERESIS_ACTIVATION_THRESHOLD, DeactivateThreshold>;
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "Strict";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Transport Backpressure Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Hysteresis  : enabled\n";
+        os << "- Activation  : " << config::backpressure::STRICT_HYSTERESIS_ACTIVATION_THRESHOLD << " (threshold)\n";
+        os << "- Deactivation: " << DeactivateThreshold << " (threshold)\n";
+        os << "- Behavior    : Immediate activation, stabilized recovery\n\n";
+    }
 };
 
 // Assert that Strict satisfies the BackpressureConcept
@@ -119,6 +152,23 @@ struct Relaxed {
     static constexpr BackpressureMode mode = BackpressureMode::Relaxed;
 
     using hysteresis = lcr::control::BinaryHysteresis<ActivateThreshold, DeactivateThreshold>;
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "Relaxed";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Transport Backpressure Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Hysteresis  : enabled\n";
+        os << "- Activation  : " << ActivateThreshold << " (threshold)\n";
+        os << "- Deactivation: " << DeactivateThreshold << " (threshold)\n";
+        os << "- Behavior    : Delayed activation, stabilized recovery\n\n";
+    }
 };
 
 // Assert that Relaxed satisfies the BackpressureConcept

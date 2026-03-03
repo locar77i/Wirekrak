@@ -59,6 +59,7 @@ Data-plane model:
 #include <functional>
 #include <chrono>
 #include <utility>
+#include <ostream>
 
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
@@ -74,6 +75,7 @@ Data-plane model:
 #include "wirekrak/core/protocol/kraken/channel/manager.hpp"
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
 #include "wirekrak/core/policy/protocol/session_bundle.hpp"
+#include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "wirekrak/core/config/protocol.hpp"
 #include "wirekrak/core/config/backpressure.hpp"
 #include "lcr/local/raw_buffer.hpp"
@@ -90,9 +92,12 @@ namespace wirekrak::core::protocol::kraken {
 template<
     transport::WebSocketConcept WS,
     lcr::buffer::ConsumerSpscRingConcept MessageRing,
-    policy::protocol::SessionBundleConcept PolicyBundle = policy::protocol::SessionDefault
+    policy::protocol::SessionBundleConcept PolicyBundle = policy::protocol::SessionDefault,
+    policy::transport::ConnectionBundleConcept ConnectionPolicyBundle = policy::transport::ConnectionDefault
 >
 class Session {
+public:
+    using ConnectionT = transport::Connection<WS, MessageRing, ConnectionPolicyBundle>;
 
 public:
     Session(MessageRing& ring)
@@ -256,8 +261,9 @@ public:
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
         WK_INFO("[SESSION] Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         // 1) Hard symbol limit enforcement (compile-time removable)
-        if constexpr (SymbolLimitPolicy::enabled && SymbolLimitPolicy::hard) {
+        if constexpr (symbol_limit_policy::enabled && symbol_limit_policy::hard) {
             if (!hard_symbol_limit_enforcement_<RequestT>(req)) {
+                WK_WARN("[SESSION:" << channel_name_of_v<RequestT> << "] Subscription rejected due to hard symbol limit enforcement (" << req.symbols.size() << " symbol(s) omitted)");
                 return ctrl::INVALID_REQ_ID;
             }
         }
@@ -300,21 +306,21 @@ public:
         // Check limits
         if constexpr (channel_of_v<RequestT> == Channel::Trade) { // Check trade limits
 
-            if (SymbolLimitPolicy::max_trade > 0 && trade_now + requested > SymbolLimitPolicy::max_trade) {
-                WK_WARN("[SESSION] Trade symbol limit exceeded (" << trade_now + requested << " > " << SymbolLimitPolicy::max_trade << ")");
+            if (symbol_limit_policy::max_trade > 0 && trade_now + requested > symbol_limit_policy::max_trade) {
+                WK_WARN("[SESSION:trade] Symbol limit exceeded (" << "active: " << trade_now << ", requested: " << requested << ", max: " << symbol_limit_policy::max_trade << ")");
                 return false;
             }
         }
         else if constexpr (channel_of_v<RequestT> == Channel::Book) { // Check book limits
 
-            if (SymbolLimitPolicy::max_book > 0 && book_now + requested > SymbolLimitPolicy::max_book) {
-                WK_WARN("[SESSION] Book symbol limit exceeded (" << book_now + requested << " > " << SymbolLimitPolicy::max_book << ")");
+            if (symbol_limit_policy::max_book > 0 && book_now + requested > symbol_limit_policy::max_book) {
+                WK_WARN("[SESSION:book] Symbol limit exceeded (" << "active: " << book_now << ", requested: " << requested << ", max: " << symbol_limit_policy::max_book << ")");
                 return false;
             }
         }
         // Check global limits
-        if (SymbolLimitPolicy::max_global > 0 && global_now + requested > SymbolLimitPolicy::max_global) {
-            WK_WARN("[SESSION] Global symbol limit exceeded (" << global_now + requested << " > " << SymbolLimitPolicy::max_global << ")");
+        if (symbol_limit_policy::max_global > 0 && global_now + requested > symbol_limit_policy::max_global) {
+            WK_WARN("[SESSION] Global symbol limit exceeded (" << "active: " << global_now << ", requested: " << requested << ", max: " << symbol_limit_policy::max_global << ")");
             return false;
         }
         return true;
@@ -332,6 +338,8 @@ public:
             req.req_id = req_id_seq_.next();
         }
         // 2) Send JSON BEFORE moving req.symbols
+        // TODO: Maybe we can add a policy to control whether JSON is generated before or after manager registration (which modifies the symbol list)?
+        // For now, we send the user's original intent even if some symbols are filtered by the manager.
         WK_DEBUG("[SESSION] Sending unsubscribe message: " << req.to_json());
         if (!send_request_(req)) {
             return ctrl::INVALID_REQ_ID;
@@ -611,9 +619,15 @@ public:
         return connection_.telemetry();
     }
 
+    inline static void dump_configuration(std::ostream& os) noexcept {
+        PolicyBundle::dump(os);
+        ConnectionT::dump_configuration(os);
+        WS::dump_configuration(os);
+    }
+
 #ifdef WK_UNIT_TEST
 public:
-        inline transport::Connection<WS, MessageRing>& connection() {
+        inline ConnectionT& connection() {
             return connection_;
         }
 
@@ -623,17 +637,18 @@ public:
 #endif // WK_UNIT_TEST
 
 private:
+    // Public policy aliases for cleaner access
+    using backpressure_policy  = typename PolicyBundle::backpressure;
+    using liveness_policy      = typename PolicyBundle::liveness;
+    using symbol_limit_policy  = typename PolicyBundle::symbol_limit;
+
+private:
     // Sequence generator for request IDs
     lcr::sequence req_id_seq_{ctrl::PROTOCOL_BASE};
 
     // Underlying streaming client (and telemetry)
     transport::telemetry::Connection telemetry_;
-    transport::Connection<WS, MessageRing> connection_;
-
-    // Internal policy aliases for cleaner access
-    using BackpressurePolicy = typename PolicyBundle::backpressure;
-    using LivenessPolicy     = typename PolicyBundle::liveness;
-    using SymbolLimitPolicy  = typename PolicyBundle::symbol_limit;
+    ConnectionT connection_;
 
     // Temporary buffer for request serialization (to avoid heap allocations)
     lcr::local::raw_buffer<config::protocol::TX_BUFFER_CAPACITY> tx_buffer_{};
@@ -760,7 +775,7 @@ private:
             // Currently no user-defined hook for retry scheduled
             break;
         case transport::connection::Signal::LivenessThreatened:
-            if constexpr (LivenessPolicy::proactive) {
+            if constexpr (liveness_policy::proactive) {
                 ping();
             }
             break;
@@ -770,7 +785,7 @@ private:
             break;
         case transport::connection::Signal::BackpressureCleared:
             WK_DEBUG("[SESSION] Transport backpressure cleared - resuming normal processing (consecutive backpressure frames: "
-                << overload_state_.transport.count() << " < threshold: " << BackpressurePolicy::escalation_threshold << ")");
+                << overload_state_.transport.count() << " < threshold: " << backpressure_policy::escalation_threshold << ")");
             overload_state_.transport.set_active(false);
             break;
         default:
@@ -793,12 +808,12 @@ private:
         using core::policy::BackpressureMode;
 
         // ZeroTolerance is handled by transport layer (force close on backpressure), so we do not need to do anything here.
-        if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
+        if constexpr (backpressure_policy::mode == BackpressureMode::ZeroTolerance) {
             return false;
         }
 
-        if (overload_state_.transport.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
-            if constexpr (BackpressurePolicy::mode == BackpressureMode::Strict) {
+        if (overload_state_.transport.count() >= backpressure_policy::escalation_threshold) [[unlikely]] {
+            if constexpr (backpressure_policy::mode == BackpressureMode::Strict) {
                 WK_WARN("[SESSION] Transport backpressure has been active for " << overload_state_.transport.count() << " consecutive polls (strict backpressure policy)");
             }
             else {
@@ -816,7 +831,7 @@ private:
     inline bool enforce_user_backpressure_policy_() noexcept {
         using core::policy::BackpressureMode;
 
-        if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
+        if constexpr (backpressure_policy::mode == BackpressureMode::ZeroTolerance) {
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
                 << overload_state_.user.count() << " consecutive overloaded polls).");
             connection_.close();
@@ -824,7 +839,7 @@ private:
             return true;
         }
 
-        if (overload_state_.user.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
+        if (overload_state_.user.count() >= backpressure_policy::escalation_threshold) [[unlikely]] {
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
                 << overload_state_.user.count() << " consecutive overloaded polls).");
             connection_.close();
@@ -872,16 +887,14 @@ private:
     template <typename RequestT>
     requires StaticJsonWritable<RequestT> && request::ValidRequestIntent<RequestT>
     [[nodiscard]]
-    inline bool send_request_(RequestT req)
-    {
+    inline bool send_request_(RequestT req) noexcept {
         return send_static_request_(std::move(req));
     }
 
     template <typename RequestT>
     requires DynamicJsonWritable<RequestT> && request::ValidRequestIntent<RequestT>
     [[nodiscard]]
-    inline bool send_request_(RequestT req)
-    {
+    inline bool send_request_(RequestT req) noexcept {
         return send_dynamic_request_(std::move(req));
     }
 
@@ -891,7 +904,7 @@ private:
     template <typename RequestT>
     requires StaticJsonWritable<RequestT> && request::ValidRequestIntent<RequestT>
     [[nodiscard]]
-    inline bool send_static_request_(RequestT req) {
+    inline bool send_static_request_(RequestT req) noexcept {
         // 0. Static assertions to ensure correct usage of this helper
         static_assert(request::ValidRequestIntent<RequestT>, "Invalid request type: must define exactly one intent tag");
         // 1. Assign req_id if missing
@@ -921,7 +934,7 @@ private:
     template <typename RequestT>
     requires DynamicJsonWritable<RequestT> && request::ValidRequestIntent<RequestT>
     [[nodiscard]]
-    inline bool send_dynamic_request_(RequestT req) {
+    inline bool send_dynamic_request_(RequestT req) noexcept {
         // 0. Static assertions to ensure correct usage of this helper
         static_assert(request::ValidRequestIntent<RequestT>, "Invalid request type: must define exactly one intent tag");
         // 1. Assign req_id if missing

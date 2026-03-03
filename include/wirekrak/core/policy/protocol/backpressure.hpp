@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <ostream>
 
 #include "wirekrak/core/config/backpressure.hpp"
 #include "wirekrak/core/policy/backpressure_mode.hpp"
@@ -56,6 +57,21 @@ struct ZeroTolerance {
 
     static constexpr std::uint32_t escalation_threshold = 1;
 
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "ZeroTolerance";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Protocol Backpressure Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Escalation  : " << escalation_threshold << " (threshold)\n";
+        os << "- Behavior    : Immediate activation\n\n";
+    }
+
 };
 
 
@@ -74,6 +90,20 @@ struct Strict {
 
     static constexpr std::uint32_t escalation_threshold = EscalationThreshold;
 
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "Strict";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Protocol Backpressure Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Escalation  : " << escalation_threshold << " (threshold)\n";
+        os << "- Behavior    : Slightly delayed activation\n\n";
+    }
 };
 
 
@@ -92,6 +122,20 @@ struct Relaxed {
 
     static constexpr std::uint32_t escalation_threshold = EscalationThreshold;
 
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "Relaxed";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Protocol Backpressure Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Escalation  : " << escalation_threshold << " (threshold)\n";
+        os << "- Behavior    : Delayed activation\n\n";
+    }
 };
 
 } // namespace backpressure

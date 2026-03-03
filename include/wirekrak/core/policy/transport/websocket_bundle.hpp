@@ -54,6 +54,7 @@ And that type must satisfy:
 */
 
 #include <concepts>
+#include <ostream>
 
 #include "wirekrak/core/policy/transport/backpressure.hpp"
 
@@ -102,6 +103,16 @@ struct websocket_bundle {
     using backpressure = BackpressureT;
 
     // Future WebSocket-level policies go here
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // No instances, fully compile-time, removed entirely if unused
+    // ------------------------------------------------------------
+
+    static void dump(std::ostream& os) {
+        os << "\n=== Transport WebSocket Policies ===\n";
+        backpressure::dump(os);
+    }
 };
 
 

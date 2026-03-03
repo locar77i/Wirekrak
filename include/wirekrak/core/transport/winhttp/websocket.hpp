@@ -204,6 +204,10 @@ public:
         return telemetry_;
     }
 
+    inline static void dump_configuration(std::ostream& os) noexcept {
+        PolicyBundle::dump(os);
+    }
+
 private:
     // Telemetry reference (non-owning) 
     telemetry::WebSocket& telemetry_;

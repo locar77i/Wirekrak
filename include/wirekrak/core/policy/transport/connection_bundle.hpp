@@ -54,6 +54,7 @@ And that type must satisfy:
 */
 
 #include <concepts>
+#include <ostream>
 
 #include "wirekrak/core/policy/transport/liveness.hpp"
 
@@ -103,6 +104,16 @@ struct connection_bundle {
     using liveness = LivenessT;
 
     // Future connection-level policies go here
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // No instances, fully compile-time, removed entirely if unused
+    // ------------------------------------------------------------
+
+    static void dump(std::ostream& os) {
+        os << "\n=== Transport Connection Policies ===\n";
+        liveness::dump(os);
+    }
 };
 
 

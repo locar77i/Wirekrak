@@ -94,6 +94,7 @@ No level-based liveness or health state is exposed.
 #include <chrono>
 #include <memory>
 #include <cassert>
+#include <ostream>
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/telemetry/connection.hpp"
@@ -253,19 +254,19 @@ public:
         // NOTE: liveness is evaluated only while Connected.
         // Once a timeout forces disconnection, reconnection logic takes over.
         if (get_state_() == State::Connected) {
-            static constexpr auto liveness_danger_window =
-                std::chrono::milliseconds((message_timeout_.count() * LivenessPolicy::warning_percent) / 100);
+            static constexpr auto warning_remaining_threshold =
+                std::chrono::milliseconds((message_timeout_.count() * (100 - LivenessPolicy::warning_percent)) / 100);
             // === Liveness warning check ===
             auto remaining = liveness_remaining_();
             if (!liveness_warning_emitted_) [[likely]] {
-                if (remaining <= liveness_danger_window) {
+                if (remaining <= warning_remaining_threshold) {
                     WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
                     liveness_warning_emitted_ = true;
                     transition_(Event::LivenessOutdated);
                 }
             } else { // If liveness warning was previously emitted,
                 // reset it once observable activity restores liveness above the danger window.
-                if (remaining > liveness_danger_window) {
+                if (remaining > warning_remaining_threshold) {
                     liveness_warning_emitted_ = false;
                 }
             }
@@ -373,6 +374,10 @@ public:
     [[nodiscard]]
     inline telemetry::Connection& telemetry() noexcept {
         return telemetry_;
+    }
+
+    inline static void dump_configuration(std::ostream& os) noexcept {
+        PolicyBundle::dump(os);
     }
 
 #ifdef WK_UNIT_TEST

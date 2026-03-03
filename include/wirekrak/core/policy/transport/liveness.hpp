@@ -55,6 +55,8 @@ using MyTransportPolicies = transport::connection_bundle<
 
 #include <chrono>
 #include <concepts>
+#include <ostream>
+
 
 namespace wirekrak::core::policy::transport {
 
@@ -145,6 +147,20 @@ struct Disabled {
     // Unused placeholders (required for concept satisfaction)
     static constexpr std::chrono::milliseconds timeout{0};
     static constexpr std::uint32_t warning_percent{0};
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "Disabled";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Transport Liveness Policy]\n";
+        os << "- Mode              : " << mode_name() << "\n";
+        os << "- Enabled           : no\n\n";
+    }
 };
 
 // Assert that Disabled satisfies the LivenessConcept
@@ -182,6 +198,23 @@ struct Enabled {
     static constexpr bool enabled = true;
     static constexpr std::chrono::milliseconds timeout{TimeoutMs};
     static constexpr std::uint32_t warning_percent = WarningPercent;
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "Enabled";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Transport Liveness Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Enabled     : yes\n";
+        os << "- Timeout     : " << timeout.count() << " (ms)\n";
+        os << "- Warning     : " << warning_percent << "% (threshold)\n";
+        os << "- Warning at  : " << (timeout.count() * warning_percent / 100) << " (ms)\n\n";
+    }
 };
 
 // Assert that Enabled satisfies the LivenessConcept

@@ -1,5 +1,5 @@
 // ============================================================================
-// Core Contracts Example — Relaxed Backpressure Policy
+// Core Contracts Example - Relaxed Backpressure Policy
 // ============================================================================
 //
 // POLICY BEHAVIOR
@@ -34,7 +34,7 @@
 // This example demonstrates burst-tolerant overload handling.
 //
 // ============================================================================
-#include "commom/run_backpressure_example.hpp"
+#include "common/run_multi_subscription_example.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
 
@@ -84,11 +84,8 @@ using MySession =
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
-    return run_backpressure_example<MySession, preset::DefaultMessageRing>(argc, argv,
-        "Wirekrak Core — Protocol Backpressure Example (Relaxed)\n"
-        "Demonstrates explicit backpressure handling with multiple subscriptions.\n",
-        "This example runs indefinitely until interrupted.\n"
-        "Press Ctrl+C to unsubscribe and exit cleanly.\n"
-        "Let's enjoy trading with Wirekrak!"
+    return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(argc, argv,
+        "Wirekrak Core - Protocol Backpressure Example (Relaxed)\n"
+        "Demonstrates explicit backpressure handling with multiple subscriptions.\n"
     );
 }

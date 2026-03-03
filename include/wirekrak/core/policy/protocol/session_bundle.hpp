@@ -67,6 +67,7 @@ static_assert(SessionBundleConcept<MyBundle>);
 */
 
 #include <concepts>
+#include <ostream>
 
 #include "wirekrak/core/policy/protocol/backpressure.hpp"
 #include "wirekrak/core/policy/protocol/liveness.hpp"
@@ -122,6 +123,18 @@ struct session_bundle {
     using symbol_limit = SymbolLimitT;
 
     // Future policy additions go here
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // No instances, fully compile-time, removed entirely if unused
+    // ------------------------------------------------------------
+
+    static void dump(std::ostream& os) {
+        os << "\n=== Protocol Session Policies ===\n";
+        backpressure::dump(os);
+        liveness::dump(os);
+        symbol_limit::dump(os);
+    }
 };
 
 // ============================================================================

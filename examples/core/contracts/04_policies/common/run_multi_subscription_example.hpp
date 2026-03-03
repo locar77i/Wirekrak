@@ -1,5 +1,5 @@
 // ============================================================================
-// Wirekrak Core — Generic Example Runner
+// Wirekrak Core - Generic Example Runner
 // ============================================================================
 //
 // PURPOSE
@@ -54,7 +54,7 @@
 
 #include "wirekrak/core.hpp"
 #include "lcr/memory/block_pool.hpp"
-#include "common/cli/symbol.hpp"
+#include "common/cli/minimal.hpp"
 #include "common/loop/helpers.hpp"
 
 using namespace wirekrak::core;
@@ -76,7 +76,7 @@ void on_signal(int) {
 // Generic runner
 // -----------------------------------------------------------------------------
 template<typename Session, typename MessageRing>
-int run_backpressure_example(int argc, char** argv, const char* title, const char* description ) {
+int run_multi_subscription_example(int argc, char** argv, const char* title) {
     using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
@@ -84,12 +84,32 @@ int run_backpressure_example(int argc, char** argv, const char* title, const cha
     // -------------------------------------------------------------------------
     std::signal(SIGINT, on_signal);
 
+    char description[] =    "This example runs indefinitely until interrupted.\n"
+                            "Press Ctrl+C to unsubscribe and exit cleanly.\n"
+                            "Let's enjoy trading with Wirekrak!";
+
     // -------------------------------------------------------------------------
     // Runtime configuration (symbols, log level)º
     // -------------------------------------------------------------------------
-    const auto& params = wirekrak::cli::symbol::configure(argc, argv, title, description);
+    const auto& params = wirekrak::cli::minimal::configure(argc, argv, title, description);
 
+    // Dump runtime parameters for observability
     params.dump("=== Runtime Parameters ===", std::cout);
+
+    // Dump the session configuration (policies) for observability
+    Session::dump_configuration(std::cout);
+
+    // Define a list of high-volume symbols to stress the system.
+    // The example will subscribe to all of them, which may trigger different policies
+    // depending on the configuration.
+    // Adjust the list as needed to explore different scenarios.
+    std::vector<std::string> symbols = {
+        "BTC/USD", "BTC/EUR",
+        "ETH/USD", "ETH/EUR",
+        "SOL/USD", "SOL/EUR",
+        "XRP/USD", "XRP/EUR",
+        "USDT/USD", "USDT/EUR"
+    };
 
     // -------------------------------------------------------------------------
     // Global memory block pool
@@ -108,6 +128,7 @@ int run_backpressure_example(int argc, char** argv, const char* title, const cha
     // -------------------------------------------------------------------------
     Session session(message_ring);
 
+    // Subscription parameters
     std::size_t depth = 1000; // Use max depth for this example
     bool snapshot = true; // Request snapshot for this example
 
@@ -122,11 +143,11 @@ int run_backpressure_example(int argc, char** argv, const char* title, const cha
     // Explicit subscriptions
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        book::Subscribe{ .symbols = params.symbols, .depth = depth, .snapshot = snapshot }
+        book::Subscribe{ .symbols = symbols, .depth = depth, .snapshot = snapshot }
     );
 
     (void)session.subscribe(
-        trade::Subscribe{ .symbols = params.symbols, .snapshot = snapshot }
+        trade::Subscribe{ .symbols = symbols, .snapshot = snapshot }
     );
 
     // -------------------------------------------------------------------------
@@ -149,10 +170,10 @@ int run_backpressure_example(int argc, char** argv, const char* title, const cha
     // -------------------------------------------------------------------------
     if (session.is_connected()) {
         (void)session.unsubscribe(
-            book::Unsubscribe{ .symbols = params.symbols, .depth = depth }
+            book::Unsubscribe{ .symbols = symbols, .depth = depth }
         );
         (void)session.unsubscribe(
-            trade::Unsubscribe{ .symbols = params.symbols }
+            trade::Unsubscribe{ .symbols = symbols }
         );
     }
 
