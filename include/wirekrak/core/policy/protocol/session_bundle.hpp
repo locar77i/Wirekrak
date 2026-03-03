@@ -95,7 +95,7 @@ concept HasSessionBundleMembers =
 template<typename T>
 concept SessionBundleConcept =
     HasSessionBundleMembers<T> &&
-    BackpressurePolicy<typename T::backpressure> &&
+    BackpressureConcept<typename T::backpressure> &&
     LivenessConcept<typename T::liveness> &&
     SymbolLimitConcept<typename T::symbol_limit>;
 
@@ -111,9 +111,9 @@ concept SessionBundleConcept =
 // ============================================================================
 
 template<
-    BackpressurePolicy BackpressureT = backpressure::Strict<>,    // Family
-    LivenessConcept LivenessT        = DefaultLiveness,           // Concept
-    SymbolLimitConcept SymbolLimitT  = NoSymbolLimits             // Concept
+    BackpressureConcept BackpressureT = backpressure::Strict<>,
+    LivenessConcept LivenessT        = DefaultLiveness,
+    SymbolLimitConcept SymbolLimitT  = NoSymbolLimits
 >
 struct session_bundle {
 

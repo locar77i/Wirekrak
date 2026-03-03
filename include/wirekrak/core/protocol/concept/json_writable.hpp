@@ -107,7 +107,7 @@ concept StaticJsonWritable =
     // 1. Must provide write_json and max_json_size
     requires(const T& t, char* buffer) {
         // Compile-time maximum serialized size
-        { T::max_json_size() } noexcept -> std::convertible_to<std::size_t>;
+        { T::max_json_size() } noexcept -> std::same_as<std::size_t>;
 
         // Allocation-free JSON writer
         { t.write_json(buffer) } noexcept -> std::same_as<std::size_t>;
@@ -131,7 +131,7 @@ concept DynamicJsonWritable =
     // 2. Must provide write_json and max_json_size
     requires(const T& t, char* buffer) {
         // Runtime-computed maximum serialized size
-        { t.max_json_size() } noexcept -> std::convertible_to<std::size_t>;
+        { t.max_json_size() } noexcept -> std::same_as<std::size_t>;
 
         // Allocation-free JSON writer
         { t.write_json(buffer) } noexcept -> std::same_as<std::size_t>;

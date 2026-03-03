@@ -13,11 +13,30 @@ namespace wirekrak::core::policy::protocol {
 // ============================================================================
 
 template<typename P>
-concept BackpressurePolicy =
+concept HasBackpressureMembers =
 requires {
     { P::mode } -> std::same_as<const BackpressureMode&>;
-     { P::escalation_threshold } -> std::convertible_to<std::uint32_t>;
+    { P::escalation_threshold } -> std::same_as<const std::uint32_t&>;
 };
+
+template<typename P>
+concept BackpressureConcept =
+    HasBackpressureMembers<P>
+    &&
+    (
+        // ZeroTolerance → threshold must be exactly 1
+        (
+            P::mode == BackpressureMode::ZeroTolerance &&
+            P::escalation_threshold == 1
+        )
+        ||
+        // Strict / Relaxed → threshold must be > 0
+        (
+            (P::mode == BackpressureMode::Strict || P::mode == BackpressureMode::Relaxed)
+            &&
+            (P::escalation_threshold > 0)
+        )
+    );
 
 // ============================================================================
 // Backpressure Policy Implementations

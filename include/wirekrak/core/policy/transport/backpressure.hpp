@@ -34,7 +34,7 @@ namespace wirekrak::core::policy::transport {
 template<typename P>
 concept HasBackpressureMembers =
 requires {
-    { P::mode } -> std::convertible_to<const BackpressureMode&>;
+    { P::mode } -> std::same_as<const BackpressureMode&>;
     typename P::hysteresis;
 };
 

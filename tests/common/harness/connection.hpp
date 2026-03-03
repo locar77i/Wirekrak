@@ -35,6 +35,7 @@ This enables:
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+#include "lcr/buffer/concepts.hpp"
 #include "lcr/memory/block_pool.hpp"
 #include "common/mock_websocket.hpp"
 #include "common/test_check.hpp"
@@ -82,8 +83,8 @@ namespace harness {
 
 template<
     WebSocketConcept WS   = WebSocketUnderTest,
-    typename MessageRing  = MessageRingUnderTest,
-    typename PolicyBundle = policy::transport::ConnectionDefault
+    lcr::buffer::ConsumerSpscRingConcept MessageRing = MessageRingUnderTest,
+    policy::transport::ConnectionBundleConcept PolicyBundle = policy::transport::ConnectionDefault
 >
 struct Connection {
     // -------------------------------------------------------------------------

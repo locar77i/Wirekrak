@@ -9,6 +9,7 @@
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
+#include "lcr/buffer/concepts.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
 
@@ -20,7 +21,10 @@ namespace wirekrak::core::transport::test {
 // This is intentional: transport::Connection owns a single-shot
 // WebSocket instance internally and tests are strictly single-threaded.
 // Each test MUST call MockWebSocket::reset() before constructing Connection.
-template<typename ControlRing, typename MessageRing>
+template<
+    typename ControlRing,
+    lcr::buffer::ProducerSpscRingConcept MessageRing
+>
 class MockWebSocket {
 public:
     MockWebSocket(ControlRing& control_ring, MessageRing& message_ring, telemetry::WebSocket& telemetry) noexcept

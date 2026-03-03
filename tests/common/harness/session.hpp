@@ -13,8 +13,10 @@
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
+#include "wirekrak/core/policy/protocol/session_bundle.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+#include "lcr/buffer/concepts.hpp"
 #include "common/mock_websocket.hpp"
 #include "common/json_helpers.hpp"
 #include "common/test_check.hpp"
@@ -58,12 +60,12 @@ namespace harness {
 
 template<
     transport::WebSocketConcept WS,
-    typename MessageRing,
-    typename Bundle = policy::protocol::SessionDefault
+    lcr::buffer::ConsumerSpscRingConcept MessageRing,
+    policy::protocol::SessionBundleConcept PolicyBundle = policy::protocol::SessionDefault
 >
 struct Session {
 
-    using SessionUnderTest = kraken::Session<WS, MessageRing, Bundle>;
+    using SessionUnderTest = kraken::Session<WS, MessageRing, PolicyBundle>;
     SessionUnderTest session;
 
     Session()

@@ -96,7 +96,7 @@ concept ConnectionBundleConcept =
 // ============================================================================
 
 template<
-    LivenessConcept LivenessT = liveness::Disabled
+    LivenessConcept LivenessT = DefaultLiveness
 >
 struct connection_bundle {
 

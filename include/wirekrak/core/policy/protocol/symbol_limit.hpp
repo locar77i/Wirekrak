@@ -83,14 +83,42 @@ using HardTrade32Book8 =
 // ------------------------------------------------------------
 
 template<class T>
-concept SymbolLimitConcept =
+concept HasSymbolLimitMembers =
     requires {
-        { T::mode } -> std::convertible_to<LimitMode>;
-        { T::max_trade } -> std::convertible_to<std::size_t>;
-        { T::max_book } -> std::convertible_to<std::size_t>;
-        { T::max_global } -> std::convertible_to<std::size_t>;
-        { T::enabled } -> std::convertible_to<bool>;
-        { T::hard } -> std::convertible_to<bool>;
+        { T::mode } -> std::same_as<const LimitMode&>;
+        { T::max_trade } -> std::same_as<const std::size_t&>;
+        { T::max_book } -> std::same_as<const std::size_t&>;
+        { T::max_global } -> std::same_as<const std::size_t&>;
+        { T::enabled } -> std::same_as<const bool&>;
+        { T::hard } -> std::same_as<const bool&>;
     };
 
+template<class T>
+concept SymbolLimitConcept =
+    HasSymbolLimitMembers<T>
+    &&
+    (
+        T::enabled == (T::mode != LimitMode::None)
+    )
+    &&
+    (
+        T::hard == (T::mode == LimitMode::Hard)
+    )
+    &&
+    (
+        // Mode None → all limits must be zero
+        (
+            T::mode == LimitMode::None &&
+            T::max_trade == 0 &&
+            T::max_book == 0 &&
+            T::max_global == 0
+        )
+        ||
+        // Mode Hard → global must be consistent
+        (
+            T::mode == LimitMode::Hard &&
+            T::max_global >= T::max_trade &&
+            T::max_global >= T::max_book
+        )
+    );
 } // namespace wirekrak::core::policy::protocol

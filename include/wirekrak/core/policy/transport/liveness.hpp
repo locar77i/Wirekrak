@@ -103,9 +103,9 @@ template<typename P>
 concept HasLivenessMembers =
 requires {
     // Structural requirements only
-    { P::enabled } -> std::convertible_to<const bool&>;
+    { P::enabled } -> std::same_as<const bool&>;
     { P::timeout } -> std::convertible_to<std::chrono::milliseconds>;
-    { P::warning_percent } -> std::convertible_to<std::uint32_t>;
+    { P::warning_percent } -> std::same_as<const std::uint32_t&>;
 };
 
 template<typename P>

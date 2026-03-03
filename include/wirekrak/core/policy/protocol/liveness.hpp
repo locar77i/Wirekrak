@@ -60,10 +60,14 @@ struct Active {
 // ----------------------------------------------------------------------------
 
 template<class T>
-concept LivenessConcept =
+concept HasLivenessMember =
     requires {
-        { T::proactive } -> std::convertible_to<bool>;
+        { T::proactive } -> std::same_as<const bool&>;
     };
+
+template<class T>
+concept LivenessConcept =
+    HasLivenessMember<T>;
 
 
 // ----------------------------------------------------------------------------
