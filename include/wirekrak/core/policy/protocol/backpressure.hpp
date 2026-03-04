@@ -74,6 +74,9 @@ struct ZeroTolerance {
 
 };
 
+// Assert that ZeroTolerance satisfies the BackpressureConcept
+static_assert(BackpressureConcept<ZeroTolerance>, "ZeroTolerance does not satisfy BackpressureConcept");
+
 
 // ------------------------------------------------------------
 // Strict
@@ -105,6 +108,9 @@ struct Strict {
         os << "- Behavior    : Slightly delayed activation\n\n";
     }
 };
+
+// Assert that Strict satisfies the BackpressureConcept
+static_assert(BackpressureConcept<Strict<>>, "Strict does not satisfy BackpressureConcept");
 
 
 // ------------------------------------------------------------
@@ -138,6 +144,18 @@ struct Relaxed {
     }
 };
 
+// Assert that Relaxed satisfies the BackpressureConcept
+static_assert(BackpressureConcept<Relaxed<>>, "Relaxed does not satisfy BackpressureConcept");
+
 } // namespace backpressure
+
+
+// ----------------------------------------------------------------------------
+// Default
+// ----------------------------------------------------------------------------
+
+using DefaultBackpressure = backpressure::Strict<>;
+// Assert that DefaultBackpressure satisfies the BackpressureConcept
+static_assert(BackpressureConcept<DefaultBackpressure>, "DefaultBackpressure does not satisfy BackpressureConcept");
 
 } // namespace wirekrak::core::policy::protocol

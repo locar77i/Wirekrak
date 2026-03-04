@@ -75,7 +75,9 @@ constexpr std::size_t ESCALATION_THRESHOLD = HYSTERESIS_DEACTIVATION_THRESHOLD +
 
 using MyWebSocketPolicies =
     policy::transport::websocket_bundle<
-        policy::transport::backpressure::Strict<HYSTERESIS_DEACTIVATION_THRESHOLD>
+        policy::transport::backpressure::Strict<
+            HYSTERESIS_DEACTIVATION_THRESHOLD
+        >
     >;
 
 using MySessionPolicies =

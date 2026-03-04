@@ -68,7 +68,7 @@ using MyConnectionPolicies =
 // when transport liveness monitoring is disabled.
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Strict<>,
+        policy::protocol::DefaultBackpressure,
         policy::protocol::liveness::Active
     >;
 

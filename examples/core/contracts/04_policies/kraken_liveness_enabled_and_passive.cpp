@@ -71,7 +71,7 @@ using MyConnectionPolicies =
 
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Strict<>,
+        policy::protocol::DefaultBackpressure,
         policy::protocol::liveness::Passive
     >;
 

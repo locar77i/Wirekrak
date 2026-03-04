@@ -45,8 +45,7 @@ The policy is:
  Example
 -------------------------------------------------------------------------------
 
-using MyTransportPolicies = transport::connection_bundle<
-    backpressure::Strict<>,
+using MyConnectionPolicies = transport::connection_bundle<
     liveness::Enabled<std::chrono::seconds(15), 0.8>
 >;
 

@@ -72,16 +72,14 @@ static preset::DefaultMessageRing message_ring(memory_pool);
 
 using PassivePolicies =
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Strict<>,
-        policy::protocol::liveness::Passive,
-        policy::protocol::NoSymbolLimits
+        policy::protocol::DefaultBackpressure,
+        policy::protocol::liveness::Passive
     >;
 
 using ActivePolicies =
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Strict<>,
-        policy::protocol::liveness::Active,
-        policy::protocol::NoSymbolLimits
+        policy::protocol::DefaultBackpressure,
+        policy::protocol::liveness::Active
     >;
 
 using PassiveSession =

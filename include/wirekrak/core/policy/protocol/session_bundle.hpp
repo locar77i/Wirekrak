@@ -34,21 +34,24 @@ A valid SessionBundleConcept must define:
     using backpressure;
     using liveness;
     using symbol_limit;
+    using replay;
 
 And each must satisfy the corresponding policy concept:
 
-    backpressure  -> BackpressurePolicy
+    backpressure  -> BackpressureConcept
     liveness      -> LivenessConcept
     symbol_limit  -> SymbolLimitConcept
+    replay        -> ReplayConcept
 
 -------------------------------------------------------------------------------
  Example
 -------------------------------------------------------------------------------
 
 using MyBundle = session_bundle<
-    backpressure::Strict<>,
+    DefaultBackpressure,
     DefaultLiveness,
-    NoSymbolLimits
+    DefaultSymbolLimit,
+    DefaultReplay
 >;
 
 static_assert(SessionBundleConcept<MyBundle>);
@@ -72,6 +75,7 @@ static_assert(SessionBundleConcept<MyBundle>);
 #include "wirekrak/core/policy/protocol/backpressure.hpp"
 #include "wirekrak/core/policy/protocol/liveness.hpp"
 #include "wirekrak/core/policy/protocol/symbol_limit.hpp"
+#include "wirekrak/core/policy/protocol/replay.hpp"
 
 
 namespace wirekrak::core::policy::protocol {
@@ -86,6 +90,7 @@ concept HasSessionBundleMembers =
         typename T::backpressure;
         typename T::liveness;
         typename T::symbol_limit;
+        typename T::replay;
     };
 
 
@@ -98,7 +103,8 @@ concept SessionBundleConcept =
     HasSessionBundleMembers<T> &&
     BackpressureConcept<typename T::backpressure> &&
     LivenessConcept<typename T::liveness> &&
-    SymbolLimitConcept<typename T::symbol_limit>;
+    SymbolLimitConcept<typename T::symbol_limit> &&
+    ReplayConcept<typename T::replay>;
 
 
 
@@ -112,15 +118,17 @@ concept SessionBundleConcept =
 // ============================================================================
 
 template<
-    BackpressureConcept BackpressureT = backpressure::Strict<>,
-    LivenessConcept LivenessT        = DefaultLiveness,
-    SymbolLimitConcept SymbolLimitT  = NoSymbolLimits
+    BackpressureConcept BackpressureT = DefaultBackpressure,
+    LivenessConcept LivenessT         = DefaultLiveness,
+    SymbolLimitConcept SymbolLimitT   = DefaultSymbolLimit,
+    ReplayConcept ReplayT             = DefaultReplay
 >
 struct session_bundle {
 
     using backpressure = BackpressureT;
     using liveness     = LivenessT;
     using symbol_limit = SymbolLimitT;
+    using replay       = ReplayT;
 
     // Future policy additions go here
 
@@ -134,6 +142,7 @@ struct session_bundle {
         backpressure::dump(os);
         liveness::dump(os);
         symbol_limit::dump(os);
+        replay::dump(os);
     }
 };
 

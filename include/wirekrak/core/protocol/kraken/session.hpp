@@ -261,7 +261,7 @@ public:
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
         WK_INFO("[SESSION] Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         // 1) Hard symbol limit enforcement (compile-time removable)
-        if constexpr (symbol_limit_policy::enabled && symbol_limit_policy::hard) {
+        if constexpr (SymbolLimitPolicy::enabled && SymbolLimitPolicy::hard) {
             if (!hard_symbol_limit_enforcement_<RequestT>(req)) {
                 WK_WARN("[SESSION:" << channel_name_of_v<RequestT> << "] Subscription rejected due to hard symbol limit enforcement (" << req.symbols.size() << " symbol(s) omitted)");
                 return ctrl::INVALID_REQ_ID;
@@ -280,10 +280,12 @@ public:
         }
         // 4) Replace request symbols with accepted set
         req.symbols = std::move(accepted_symbols);
-        // 5) Register in replay DB using filtered request
-        // Store protocol intent for deterministic replay after reconnect.
-        // Only acknowledged subscriptions will be replayed.
-        replay_db_.add(req);
+        // 5) Register in replay DB using filtered request (only if replay enabled)
+        if constexpr (ReplayPolicy::enabled) {
+            // Store protocol intent for deterministic replay after reconnect.
+            // Only acknowledged subscriptions will be replayed.
+            replay_db_.add(req);
+        }
         // 6) Send JSON BEFORE moving req.symbols
         WK_DEBUG("[SESSION] Sending subscribe message: " << req.to_json());
         if (!send_request_(req)) {
@@ -306,21 +308,21 @@ public:
         // Check limits
         if constexpr (channel_of_v<RequestT> == Channel::Trade) { // Check trade limits
 
-            if (symbol_limit_policy::max_trade > 0 && trade_now + requested > symbol_limit_policy::max_trade) {
-                WK_WARN("[SESSION:trade] Symbol limit exceeded (" << "active: " << trade_now << ", requested: " << requested << ", max: " << symbol_limit_policy::max_trade << ")");
+            if (SymbolLimitPolicy::max_trade > 0 && trade_now + requested > SymbolLimitPolicy::max_trade) {
+                WK_WARN("[SESSION:trade] Symbol limit exceeded (" << "active: " << trade_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_trade << ")");
                 return false;
             }
         }
         else if constexpr (channel_of_v<RequestT> == Channel::Book) { // Check book limits
 
-            if (symbol_limit_policy::max_book > 0 && book_now + requested > symbol_limit_policy::max_book) {
-                WK_WARN("[SESSION:book] Symbol limit exceeded (" << "active: " << book_now << ", requested: " << requested << ", max: " << symbol_limit_policy::max_book << ")");
+            if (SymbolLimitPolicy::max_book > 0 && book_now + requested > SymbolLimitPolicy::max_book) {
+                WK_WARN("[SESSION:book] Symbol limit exceeded (" << "active: " << book_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_book << ")");
                 return false;
             }
         }
         // Check global limits
-        if (symbol_limit_policy::max_global > 0 && global_now + requested > symbol_limit_policy::max_global) {
-            WK_WARN("[SESSION] Global symbol limit exceeded (" << "active: " << global_now << ", requested: " << requested << ", max: " << symbol_limit_policy::max_global << ")");
+        if (SymbolLimitPolicy::max_global > 0 && global_now + requested > SymbolLimitPolicy::max_global) {
+            WK_WARN("[SESSION] Global symbol limit exceeded (" << "active: " << global_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_global << ")");
             return false;
         }
         return true;
@@ -345,13 +347,12 @@ public:
             return ctrl::INVALID_REQ_ID;
         }
         // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        std::vector<Symbol> cancelled = subscription_manager_for_<RequestT>().register_unsubscription(
-            std::move(req.symbols),
-            req.req_id.value()
-        );
-        // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect
-        for (const auto& symbol : cancelled) {
-            replay_db_.remove_symbol<RequestT>(symbol);
+        std::vector<Symbol> cancelled = subscription_manager_for_<RequestT>().register_unsubscription(std::move(req.symbols), req.req_id.value());
+        // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect (only if replay enabled)
+        if constexpr (ReplayPolicy::enabled) {
+            for (const auto& symbol : cancelled) {
+                replay_db_.remove_symbol<RequestT>(symbol);
+            }
         }
         return req.req_id.value();
     }
@@ -458,8 +459,11 @@ public:
             }
             else {
                 trade_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
-                if (ack.success) {
-                    replay_db_.remove_symbol<schema::trade::Subscribe>(ack.symbol);
+                // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
+                if constexpr (ReplayPolicy::enabled) {
+                    if (ack.success) {
+                        replay_db_.remove_symbol<schema::trade::Subscribe>(ack.symbol);
+                    }
                 }
             }
         }}
@@ -486,8 +490,11 @@ public:
             }
             else {
                 book_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
-                if (ack.success) {
-                    replay_db_.remove_symbol<schema::book::Subscribe>(ack.symbol);
+                // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
+                if constexpr (ReplayPolicy::enabled) {
+                    if (ack.success) {
+                        replay_db_.remove_symbol<schema::book::Subscribe>(ack.symbol);
+                    }
                 }
             }
         }}
@@ -638,9 +645,10 @@ public:
 
 private:
     // Public policy aliases for cleaner access
-    using backpressure_policy  = typename PolicyBundle::backpressure;
-    using liveness_policy      = typename PolicyBundle::liveness;
-    using symbol_limit_policy  = typename PolicyBundle::symbol_limit;
+    using BackpressurePolicy  = typename PolicyBundle::backpressure;
+    using LivenessPolicy      = typename PolicyBundle::liveness;
+    using SymbolLimitPolicy   = typename PolicyBundle::symbol_limit;
+    using ReplayPolicy        = typename PolicyBundle::replay;
 
 private:
     // Sequence generator for request IDs
@@ -693,6 +701,16 @@ private:
 private:
     inline void handle_connect_() {
         WK_TRACE("[SESSION] handle connect (transport_epoch = " << transport_epoch() << ")");
+        if constexpr (ReplayPolicy::enabled) {
+            WK_DEBUG("[SESSION] Subscription replay is enabled (subscriptions will be re-sent after reconnect)");
+            do_replay_();
+        }
+        else {
+            WK_DEBUG("[SESSION] Subscription replay is disabled (no subscriptions will be re-sent after reconnect)");
+        }
+    }
+
+    inline void do_replay_() noexcept {
         // Replay subscriptions if this is a reconnect (epoch > 1)
         if (transport_epoch() > 1) {
             // 1) Replay trade subscriptions
@@ -732,8 +750,10 @@ private:
         }
         // 2) Replace request symbols with accepted set
         req.symbols = std::move(accepted_symbols);
-        // 3) Register in replay DB using filtered request
-        replay_db_.add(req);
+        // 3) Register in replay DB using filtered request (only if replay enabled)
+        if constexpr (ReplayPolicy::enabled) {
+            replay_db_.add(req);
+        }
         // 4) Send JSON BEFORE moving req.symbols
         WK_DEBUG("[SESSION] Sending re-subscribe message: " << req.to_json());
         (void)send_request_(req);
@@ -755,7 +775,10 @@ private:
                 // we cannot infer channel from notice, so we try all managers
                 (void)trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
                 (void)book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                (void)replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                // Try process rejection in replay DB to prevent replay of failed subscriptions after reconnect (only if replay enabled)
+                if constexpr (ReplayPolicy::enabled) {
+                    (void)replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                }
             }
         }
     }
@@ -775,7 +798,7 @@ private:
             // Currently no user-defined hook for retry scheduled
             break;
         case transport::connection::Signal::LivenessThreatened:
-            if constexpr (liveness_policy::proactive) {
+            if constexpr (LivenessPolicy::proactive) {
                 ping();
             }
             break;
@@ -785,7 +808,7 @@ private:
             break;
         case transport::connection::Signal::BackpressureCleared:
             WK_DEBUG("[SESSION] Transport backpressure cleared - resuming normal processing (consecutive backpressure frames: "
-                << overload_state_.transport.count() << " < threshold: " << backpressure_policy::escalation_threshold << ")");
+                << overload_state_.transport.count() << " < threshold: " << BackpressurePolicy::escalation_threshold << ")");
             overload_state_.transport.set_active(false);
             break;
         default:
@@ -808,12 +831,12 @@ private:
         using core::policy::BackpressureMode;
 
         // ZeroTolerance is handled by transport layer (force close on backpressure), so we do not need to do anything here.
-        if constexpr (backpressure_policy::mode == BackpressureMode::ZeroTolerance) {
+        if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
             return false;
         }
 
-        if (overload_state_.transport.count() >= backpressure_policy::escalation_threshold) [[unlikely]] {
-            if constexpr (backpressure_policy::mode == BackpressureMode::Strict) {
+        if (overload_state_.transport.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
+            if constexpr (BackpressurePolicy::mode == BackpressureMode::Strict) {
                 WK_WARN("[SESSION] Transport backpressure has been active for " << overload_state_.transport.count() << " consecutive polls (strict backpressure policy)");
             }
             else {
@@ -831,7 +854,7 @@ private:
     inline bool enforce_user_backpressure_policy_() noexcept {
         using core::policy::BackpressureMode;
 
-        if constexpr (backpressure_policy::mode == BackpressureMode::ZeroTolerance) {
+        if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
                 << overload_state_.user.count() << " consecutive overloaded polls).");
             connection_.close();
@@ -839,7 +862,7 @@ private:
             return true;
         }
 
-        if (overload_state_.user.count() >= backpressure_policy::escalation_threshold) [[unlikely]] {
+        if (overload_state_.user.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
                 << overload_state_.user.count() << " consecutive overloaded polls).");
             connection_.close();

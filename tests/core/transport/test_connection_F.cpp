@@ -135,11 +135,10 @@ void test_connection_liveness_edges()
             WebSocketUnderTest,
             MessageRingUnderTest,
             policy::transport::connection_bundle<
-                policy::transport::liveness::Enabled<5000, 70>
+                policy::transport::liveness::Enabled<5000, 70>  // 5s timeout, warning at 70% of timeout (3.5s)
             >
         >;
     MyConnectionHarness h;
-    //test::ConnectionHarness h(std::chrono::seconds(5), 0.7);
 
     // -------------------------------------------------------------------------
     // Connect
