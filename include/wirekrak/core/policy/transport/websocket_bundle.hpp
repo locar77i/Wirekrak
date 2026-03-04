@@ -120,9 +120,9 @@ struct websocket_bundle {
 // Default Bundle
 // ============================================================================
 
-using WebsocketDefault = websocket_bundle<>;
+using DefaultWebsocket = websocket_bundle<>;
 
 // Compile-time self-check
-static_assert(WebSocketBundleConcept<WebsocketDefault>, "WebsocketDefault does not satisfy WebSocketBundleConcept");
+static_assert(WebSocketBundleConcept<DefaultWebsocket>, "DefaultWebsocket does not satisfy WebSocketBundleConcept");
 
 } // namespace wirekrak::core::policy::transport

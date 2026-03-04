@@ -61,7 +61,7 @@ namespace harness {
 template<
     transport::WebSocketConcept WS,
     lcr::buffer::ConsumerSpscRingConcept MessageRing,
-    policy::protocol::SessionBundleConcept PolicyBundle = policy::protocol::SessionDefault
+    policy::protocol::SessionBundleConcept PolicyBundle = policy::protocol::DefaultSession
 >
 struct Session {
 

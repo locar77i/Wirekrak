@@ -156,7 +156,7 @@ using WebSocketUnderTest =
     winhttp::WebSocketImpl<
         ControlRingUnderTest,
         MessageRingUnderTest,
-        policy::transport::WebsocketDefault
+        policy::transport::DefaultWebsocket
     >;
 
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept

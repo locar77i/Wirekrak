@@ -2,39 +2,54 @@
 // Core Contracts Example - ZeroTolerance Backpressure Policy
 // ============================================================================
 //
-// POLICY BEHAVIOR
-// ---------------
-// ZeroTolerance represents the strictest correctness guarantee:
-//
-//   - On first transport saturation, the connection is force-closed.
-//   - No hysteresis.
-//   - No recovery window.
-//   - No tolerance for overload.
-//
-// This policy assumes that transport backpressure indicates a violation
-// of system capacity assumptions.
-//
-// DESIGN PHILOSOPHY
-// -----------------
-// ZeroTolerance prioritizes correctness over availability.
-//
-// If the protocol cannot keep up with the incoming message rate,
-// the system is considered compromised and the connection is terminated
-// immediately to preserve deterministic behavior.
-//
-// USE CASE
-// --------
-// - Ultra-low-latency trading systems
-// - Environments where message loss or delay is unacceptable
-// - Strict correctness-first deployments
+// POLICY CONFIGURATION
+// --------------------
+// Transport Backpressure : ZeroTolerance
+// Protocol Backpressure  : ZeroTolerance
 //
 // EXPECTED BEHAVIOR
 // -----------------
-// - Under sustained high load, connection closes immediately.
-// - No BackpressureCleared event will ever be emitted.
-// - Escalation is transport-driven.
+// - The example issues multiple subscriptions to generate high message traffic.
+// - If the transport message ring becomes saturated:
 //
-// This example demonstrates the most conservative safety model.
+//     * The overload condition is detected immediately
+//     * The connection is force-closed
+//     * No recovery window is provided
+//
+// - The connection does NOT attempt to stabilize or clear backpressure.
+//
+// As a result:
+//
+//     * BackpressureDetected may be emitted
+//     * The transport is closed immediately afterwards
+//     * No BackpressureCleared event is ever emitted
+//
+// OBSERVATION GUIDE
+// -----------------
+// During sustained high throughput:
+//
+// - Once the message ring capacity is exceeded:
+//       immediate transport shutdown
+//
+// - The connection transitions to the disconnect / retry cycle
+//   depending on the configured retry policy.
+//
+// DESIGN PURPOSE
+// --------------
+// This example demonstrates the strictest backpressure safety model.
+//
+// The ZeroTolerance policy assumes that transport saturation represents
+// a violation of system capacity assumptions.
+//
+// Instead of attempting recovery, the system immediately terminates the
+// connection to preserve deterministic behavior and prevent uncontrolled
+// overload propagation.
+//
+// This configuration is useful for:
+//
+// - Ultra-low-latency trading systems
+// - Deterministic environments with strict capacity guarantees
+// - Deployments prioritizing correctness over availability
 //
 // ============================================================================
 #include "common/run_multi_subscription_example.hpp"
@@ -74,7 +89,7 @@ using MySession =
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(argc, argv,
-        "Wirekrak Core - Protocol Backpressure Example (ZeroTolerance)\n"
-        "Demonstrates explicit backpressure handling with multiple subscriptions.\n"
+        "Wirekrak Core - ZeroTolerance Backpressure Policy Example\n"
+        "Immediate connection shutdown on overload.\n"
     );
 }

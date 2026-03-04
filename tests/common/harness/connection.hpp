@@ -84,7 +84,7 @@ namespace harness {
 template<
     WebSocketConcept WS   = WebSocketUnderTest,
     lcr::buffer::ConsumerSpscRingConcept MessageRing = MessageRingUnderTest,
-    policy::transport::ConnectionBundleConcept PolicyBundle = policy::transport::ConnectionDefault
+    policy::transport::ConnectionBundleConcept PolicyBundle = policy::transport::DefaultConnection
 >
 struct Connection {
     // -------------------------------------------------------------------------

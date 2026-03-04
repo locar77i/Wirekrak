@@ -92,8 +92,8 @@ namespace wirekrak::core::protocol::kraken {
 template<
     transport::WebSocketConcept WS,
     lcr::buffer::ConsumerSpscRingConcept MessageRing,
-    policy::protocol::SessionBundleConcept PolicyBundle = policy::protocol::SessionDefault,
-    policy::transport::ConnectionBundleConcept ConnectionPolicyBundle = policy::transport::ConnectionDefault
+    policy::protocol::SessionBundleConcept PolicyBundle = policy::protocol::DefaultSession,
+    policy::transport::ConnectionBundleConcept ConnectionPolicyBundle = policy::transport::DefaultConnection
 >
 class Session {
 public:

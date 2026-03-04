@@ -4,19 +4,51 @@
 //
 // POLICY CONFIGURATION
 // --------------------
-// Transport Liveness  : Enabled
-// Protocol Liveness   : Passive
+// Transport Liveness : Enabled (10s timeout, 80% warning threshold)
+// Protocol Liveness  : Passive
+//
+// Backpressure Policy: Strict
 //
 // EXPECTED BEHAVIOR
 // -----------------
-// - After connection, no subscriptions are issued.
-// - No protocol traffic occurs.
-// - Transport liveness window expires.
-// - LivenessExpired is emitted.
-// - Connection closes.
-// - Reconnect cycle begins.
+// - The example establishes a WebSocket connection.
+// - No subscriptions are issued.
+// - No protocol traffic is generated.
 //
-// This demonstrates transport-driven liveness enforcement.
+// Because the transport layer monitors activity:
+//
+//     * The liveness warning window is reached
+//     * A LivenessThreatened signal is emitted
+//     * The liveness timeout expires
+//     * The Connection closes the transport
+//     * The retry cycle begins
+//
+// OBSERVATION GUIDE
+// -----------------
+// After the connection is established:
+//
+// - Around 8 seconds of inactivity:
+//       LivenessThreatened signal
+//
+// - Around 10 seconds of inactivity:
+//       LivenessExpired event
+//       transport disconnect
+//       reconnect cycle
+//
+// DESIGN PURPOSE
+// --------------
+// This example demonstrates transport-driven liveness enforcement.
+//
+// The protocol-level liveness policy is Passive, meaning:
+//
+//     * The Session observes liveness signals
+//     * It does not actively intervene
+//     * Recovery is entirely handled by the transport layer
+//
+// This configuration is useful when:
+//
+// - Transport reliability mechanisms are trusted
+// - The protocol layer should remain purely reactive
 //
 // ============================================================================
 
@@ -34,7 +66,7 @@ using namespace wirekrak::core;
 
 using MyConnectionPolicies =
     policy::transport::connection_bundle<
-        policy::transport::liveness::Enabled<10000, 80> // 10s timeout
+        policy::transport::liveness::Enabled<10000, 80> // 10s timeout, 80% warning threshold
     >;
 
 using MySessionPolicies =

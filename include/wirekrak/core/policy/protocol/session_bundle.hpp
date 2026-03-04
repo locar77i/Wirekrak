@@ -141,9 +141,9 @@ struct session_bundle {
 // Default Bundle
 // ============================================================================
 
-using SessionDefault = session_bundle<>;
+using DefaultSession = session_bundle<>;
 
-// Assert that SessionDefault satisfies the SessionBundleConcept concept
-static_assert(SessionBundleConcept<SessionDefault>, "SessionDefault does not satisfy SessionBundleConcept concept");
+// Assert that DefaultSession satisfies the SessionBundleConcept concept
+static_assert(SessionBundleConcept<DefaultSession>, "DefaultSession does not satisfy SessionBundleConcept concept");
 
 } // namespace wirekrak::core::policy::protocol

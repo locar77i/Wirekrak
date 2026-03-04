@@ -10,7 +10,7 @@ Defines the policy bundle and bundle concept for transport-level Connection.
 The Connection represents a logical transport connection and owns:
 
   • WebSocket lifecycle
-  • Reconnection strategy
+  • Reconnection mode
   • Liveness monitoring
   • Observable connection signals
 
@@ -57,6 +57,7 @@ And that type must satisfy:
 #include <ostream>
 
 #include "wirekrak/core/policy/transport/liveness.hpp"
+#include "wirekrak/core/policy/transport/retry.hpp"
 
 
 namespace wirekrak::core::policy::transport {
@@ -69,6 +70,7 @@ template<typename T>
 concept HasConnectionBundleMembers =
 requires {
     typename T::liveness;
+    typename T::retry;
 };
 
 // -----------------------------------------------------------------------------
@@ -78,8 +80,8 @@ requires {
 template<typename T>
 concept ConnectionBundleConcept =
     HasConnectionBundleMembers<T> &&
-    LivenessConcept<typename T::liveness>;
-
+    LivenessConcept<typename T::liveness> &&
+    RetryConcept<typename T::retry>;
 
 // ============================================================================
 // Connection Policy Bundle
@@ -97,11 +99,13 @@ concept ConnectionBundleConcept =
 // ============================================================================
 
 template<
-    LivenessConcept LivenessT = DefaultLiveness
+    LivenessConcept LivenessT = DefaultLiveness,
+    RetryConcept RetryT = DefaultRetry
 >
 struct connection_bundle {
 
     using liveness = LivenessT;
+    using retry = RetryT;
 
     // Future connection-level policies go here
 
@@ -113,6 +117,7 @@ struct connection_bundle {
     static void dump(std::ostream& os) {
         os << "\n=== Transport Connection Policies ===\n";
         liveness::dump(os);
+        retry::dump(os);
     }
 };
 
@@ -121,9 +126,9 @@ struct connection_bundle {
 // Default Bundle
 // ============================================================================
 
-using ConnectionDefault = connection_bundle<>;
+using DefaultConnection = connection_bundle<>;
 
 // Compile-time self-check
-static_assert(ConnectionBundleConcept<ConnectionDefault>, "ConnectionDefault does not satisfy ConnectionBundleConcept");
+static_assert(ConnectionBundleConcept<DefaultConnection>, "DefaultConnection does not satisfy ConnectionBundleConcept");
 
 } // namespace wirekrak::core::policy::transport

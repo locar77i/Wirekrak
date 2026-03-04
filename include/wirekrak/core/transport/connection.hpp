@@ -116,7 +116,7 @@ namespace wirekrak::core::transport {
 template <
     WebSocketConcept WS,
     lcr::buffer::ConsumerSpscRingConcept MessageRing,
-    policy::transport::ConnectionBundleConcept PolicyBundle = policy::transport::ConnectionDefault
+    policy::transport::ConnectionBundleConcept PolicyBundle = policy::transport::DefaultConnection
 >
 class Connection {
 public:
@@ -272,7 +272,7 @@ public:
             }
             // === Liveness timeout check ===
             if (!liveness_timeout_emitted_ && is_liveness_stale_()) {
-                WK_DEBUG("[CONN] Liveness timeout: No protocol traffic observed within liveness window (Forcing reconnect).");
+                WK_DEBUG("[CONN] Liveness timeout: No protocol traffic observed within liveness window");
                 liveness_timeout_emitted_ = true;
                 transition_(Event::LivenessExpired, Error::Timeout);
             }
@@ -416,6 +416,7 @@ private:
     
     // Liveness policy instance
     using LivenessPolicy = typename PolicyBundle::liveness;
+    using RetryPolicy = typename PolicyBundle::retry;
 
     // Liveness configuration
     static constexpr auto message_timeout_ = LivenessPolicy::timeout;
@@ -708,6 +709,19 @@ private:
     // protocol violations, and intentional shutdowns are never retried.
     [[nodiscard]]
     inline bool should_retry_(Error error) const noexcept {
+        // Policy override: never retry
+        if constexpr (RetryPolicy::mode == policy::RetryMode::Never) {
+            WK_TRACE("[CONN] Retry policy forbids retries (" << to_string(error) << " should retry? -> NO)");
+            return false;
+        }
+
+        // Policy override: always retry
+        if constexpr (RetryPolicy::mode == policy::RetryMode::Always) {
+            WK_TRACE("[CONN] Retry policy forces retries (" << to_string(error) << " should retry? -> YES)");
+            return true;
+        }
+
+        // policy::RetryMode::RetryableOnly
         switch (error) {
             // expected external conditions -> retry
             case Error::ConnectionFailed:
@@ -716,7 +730,7 @@ private:
             case Error::RemoteClosed:
             // “unknown but bad” failure -> retry (conservative default)
             case Error::TransportFailure:
-                WK_TRACE("[CONN] should retry after '" << to_string(error) << "'? -> YES");
+                WK_TRACE("[CONN] Should retry after '" << to_string(error) << "'? -> YES");
                 return true;
 
             // caller or logic errors -> no retry
@@ -729,7 +743,7 @@ private:
             // Explicit shutdown intent -> no retry
             case Error::LocalShutdown:
             default:
-                WK_TRACE("[CONN] should retry after '" << to_string(error) << "'? -> NO");
+                WK_TRACE("[CONN] Should retry after '" << to_string(error) << "'? -> NO");
                 return false;
         }
     }
@@ -770,63 +784,62 @@ private:
         emit_(connection::Signal::RetryImmediate);
         retry_root_error_ = error;
         retry_attempts_ = 1;
-        // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
+        next_retry_ = {}; // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
     }
 
     // Schedule next retry with backoff
     void schedule_next_retry_() noexcept {
-        WK_DEBUG("[CONN] Scheduling next reconnection attempt with backoff.");
-        emit_(connection::Signal::RetryScheduled);
-        retry_attempts_++;
-        auto now = std::chrono::steady_clock::now();
-        auto delay = backoff_(retry_root_error_, retry_attempts_);
-        next_retry_ = now + delay;
-        WK_INFO("[CONN] Next reconnection attempt in " << delay.count() << " ms");
-/*
-        // convert to seconds for logging
-        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(delay);
-        if (seconds.count() == 1) {
-            WK_INFO("[CONN] Next reconnection attempt in 1 second.");
-        } else if (seconds.count() > 1) {
-            WK_INFO("[CONN] Next reconnection attempt in " << seconds.count() << " seconds.");
+        // If retry is disabled, schedule logic should never occur (compiled-out)
+        if constexpr (RetryPolicy::mode == policy::RetryMode::Never) {
+            set_state_(State::Disconnected);
+            return;
         }
-*/
+        else {
+            // Respect retry attempt limit
+            if constexpr (RetryPolicy::max_attempts > 0) {
+                if (retry_attempts_ >= RetryPolicy::max_attempts) {
+                    WK_DEBUG("[CONN] Maximum retry attempts reached (no further retries)");
+                    set_state_(State::Disconnected);
+                    return;
+                }
+            }
+            // Schedule next retry with backoff
+            WK_DEBUG("[CONN] Scheduling next reconnection attempt with backoff.");
+            emit_(connection::Signal::RetryScheduled);
+            auto now = std::chrono::steady_clock::now();
+            auto delay = backoff_(retry_root_error_, retry_attempts_);
+            retry_attempts_++;
+            next_retry_ = now + delay;
+            WK_INFO("[CONN] Next reconnection attempt in " << delay.count() << " ms");
+        }
     }
 
     [[nodiscard]]
     inline std::chrono::milliseconds backoff_(Error error, int attempt) const noexcept {
-        // Clamp exponent to avoid overflow / long stalls
-        attempt = std::min(attempt, 6); // 100 * 2^6 = 6400ms → capped
-        // Determine backoff based on error type
-        switch (error) {
-            // --- Fast retry ---------------------------------------------------
-            case Error::RemoteClosed:
-            case Error::Timeout: 
-            case Error::Backpressure: 
-            {
-                constexpr std::chrono::milliseconds base{50};
-                constexpr std::chrono::milliseconds max{1000};
-                auto delay = base * (1 << attempt);
-                return std::min(delay, max);
+        // If retry is disabled, backoff logic should never occur (compiled-out)
+        if constexpr (RetryPolicy::mode == policy::RetryMode::Never) {
+            return std::chrono::milliseconds::max();
+        }
+        else {
+            attempt = std::min(attempt, static_cast<int>(RetryPolicy::max_exponent));
+            // Determine backoff based on error type
+            switch (error) {
+                // --- Fast retry ---------------------------------------------------
+                case Error::RemoteClosed:
+                case Error::Timeout: 
+                case Error::Backpressure: 
+                    return RetryPolicy::compute_backoff(RetryPolicy::fast_base, RetryPolicy::fast_cap, attempt);
+                // --- Moderate retry -----------------------------------------------
+                case Error::ConnectionFailed:
+                case Error::HandshakeFailed:
+                    return RetryPolicy::compute_backoff(RetryPolicy::normal_base, RetryPolicy::normal_cap, attempt);
+                // --- Conservative retry -------------------------------------------
+                case Error::TransportFailure:
+                    return RetryPolicy::compute_backoff(RetryPolicy::slow_base, RetryPolicy::slow_cap, attempt);
+                // --- Should never retry -------------------------------------------
+                default:
+                    return std::chrono::milliseconds::max();
             }
-            // --- Moderate retry -----------------------------------------------
-            case Error::ConnectionFailed:
-            case Error::HandshakeFailed: {
-                constexpr std::chrono::milliseconds base{100};
-                constexpr std::chrono::milliseconds max{5000};
-                auto delay = base * (1 << attempt);
-                return std::min(delay, max);
-            }
-            // --- Conservative retry -------------------------------------------
-            case Error::TransportFailure: {
-                constexpr std::chrono::milliseconds base{200};
-                constexpr std::chrono::milliseconds max{10000};
-                auto delay = base * (1 << attempt);
-                return std::min(delay, max);
-            }
-            // --- Should never retry -------------------------------------------
-            default:
-                return std::chrono::milliseconds::max();
         }
     }
 };

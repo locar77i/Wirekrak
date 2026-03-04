@@ -46,11 +46,11 @@
 // This makes each example a pure policy demonstration.
 //
 // ============================================================================ 
-#include <atomic>
-#include <csignal>
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include <atomic>
+#include <csignal>
 
 #include "wirekrak/core.hpp"
 #include "lcr/memory/block_pool.hpp"
@@ -58,6 +58,7 @@
 #include "common/loop/helpers.hpp"
 
 using namespace wirekrak::core;
+
 
 // -----------------------------------------------------------------------------
 // Lifecycle control
@@ -73,7 +74,7 @@ void on_signal(int) {
 // Generic runner
 // -----------------------------------------------------------------------------
 template<typename Session, typename MessageRing>
-int run_multi_subscription_example(int argc, char** argv, const char* title) {
+int run_retry_example(int argc, char** argv, const char* title) {
     using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
@@ -81,8 +82,8 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     // -------------------------------------------------------------------------
     std::signal(SIGINT, on_signal);
 
-    char description[] =    "This example runs indefinitely until interrupted.\n"
-                            "Press Ctrl+C to unsubscribe and exit cleanly.\n"
+    char description[] =    "This example cannot be terminated via Ctrl+C\n"
+                            "The only exit path is a real disconnect followed by a successful reconnect.\n"
                             "Let's enjoy trading with Wirekrak!";
 
     // -------------------------------------------------------------------------
@@ -100,13 +101,7 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     // The example will subscribe to all of them, which may trigger different policies
     // depending on the configuration.
     // Adjust the list as needed to explore different scenarios.
-    const std::vector<std::string> symbols = {
-        "BTC/USD", "BTC/EUR",
-        "ETH/USD", "ETH/EUR",
-        "SOL/USD", "SOL/EUR",
-        "XRP/USD", "XRP/EUR",
-        "USDT/USD", "USDT/EUR"
-    };
+    const std::vector<std::string> symbols = {"BTC/EUR"};
 
     // -------------------------------------------------------------------------
     // Global memory block pool
@@ -126,8 +121,7 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     Session session(message_ring);
 
     // Subscription parameters
-    std::size_t depth = 1000; // Use max depth for this example
-    bool snapshot = true; // Request snapshot for this example
+    bool snapshot = false; // Request no snapshot to keep the replay output manageable and observable
 
     // -------------------------------------------------------------------------
     // Connect
@@ -137,28 +131,37 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     }
 
     // -------------------------------------------------------------------------
-    // Explicit subscriptions
+    // Subscribe ONCE to trade updates (no snapshot)
+    // (no snapshot to avoid burst output and keep replay observable)
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        book::Subscribe{ .symbols = symbols, .depth = depth, .snapshot = snapshot }
-    );
-
-    (void)session.subscribe(
-        trade::Subscribe{ .symbols = symbols, .snapshot = snapshot }
+        trade::Subscribe{ .symbols  = symbols, .snapshot = snapshot }
     );
 
     // -------------------------------------------------------------------------
-    // Poll-driven execution loop
+    // Main polling loop (runs until reconnect observed)
     // -------------------------------------------------------------------------
-    // NOTE:
-    // Under Strict policy, sustained transport backpressure will escalate after N
-    // consecutive overloaded polls. This example intentionally stresses the system.
+    std::cout << "\n[example] Disconnect your network to simulate a transport failure.\n";
+    std::cout << "[example] Reconnect it to observe retry / replay behavior.\n\n";
+
+    // Wait for a few transport lifetimes to prove rejection is not replayed
     int idle_spins = 0;
     bool did_work = false;
+    auto epoch = session.transport_epoch();
+    while (epoch == 1 && session.is_active()) {
+        epoch = session.poll();
+        did_work = loop::drain_and_print_messages(session);
+        loop::manage_idle_spins(did_work, idle_spins);
+    }
+
+    // -------------------------------------------------------------------------
+    // Post-disconnect observation window
+    // -------------------------------------------------------------------------
+    std::cout << "\n[example] Observing the retry / replay behavior...\n";
+
     while (running.load(std::memory_order_relaxed) && session.is_active()) {
         (void)session.poll();
-        did_work = loop::drain_messages(session);
-        // Yield to avoid busy-waiting when idle
+        did_work = loop::drain_and_print_messages(session);
         loop::manage_idle_spins(did_work, idle_spins);
     }
 
@@ -166,9 +169,6 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     // Explicit unsubscription
     // -------------------------------------------------------------------------
     if (session.is_connected()) {
-        (void)session.unsubscribe(
-            book::Unsubscribe{ .symbols = symbols, .depth = depth }
-        );
         (void)session.unsubscribe(
             trade::Unsubscribe{ .symbols = symbols }
         );
@@ -179,7 +179,7 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     // -------------------------------------------------------------------------
     while (!session.is_idle()) {
         (void)session.poll();
-        loop::drain_messages(session);
+        loop::drain_and_print_messages(session);
         std::this_thread::yield();
     }
 

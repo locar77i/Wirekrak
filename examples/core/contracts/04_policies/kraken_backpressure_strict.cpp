@@ -2,37 +2,61 @@
 // Core Contracts Example - Strict Backpressure Policy
 // ============================================================================
 //
-// POLICY BEHAVIOR
-// ---------------
-// Strict policy activates immediately on first overload detection,
-// but allows stabilized recovery before clearing the condition.
+// POLICY CONFIGURATION
+// --------------------
+// Transport Backpressure : Strict
+//     activation_threshold   = 1 overload event
+//     deactivation_threshold = 8 recovery signals
 //
-//   - Activation threshold: 1 overload event
-//   - Deactivation threshold: N consecutive recoveries
-//   - Escalation handled by the session after persistent overload
-//
-// DESIGN PHILOSOPHY
-// -----------------
-// Strict policy enforces immediate visibility of backpressure while
-// still allowing transient oscillations to settle before recovery.
-//
-// This prevents noise from short-lived ring saturation while still
-// surfacing overload deterministically.
-//
-// USE CASE
-// --------
-// - Low-latency systems with bounded tolerance
-// - Environments requiring deterministic overload visibility
-// - Systems that prefer session-level decision control
+// Protocol Backpressure : Strict
+//     escalation_threshold = 24 consecutive overload signals
 //
 // EXPECTED BEHAVIOR
 // -----------------
-// - BackpressureDetected emitted immediately.
-// - BackpressureCleared emitted only after stabilized recovery.
-// - Session escalates if overload persists across configured threshold.
+// - The example issues multiple subscriptions to generate message traffic.
+// - High throughput may saturate the transport message ring.
 //
-// This example demonstrates deterministic overload handling with
+// With the Strict transport policy:
+//
+//     * BackpressureDetected is emitted immediately on the first overload
+//     * The overload condition remains active until recovery stabilizes
+//     * BackpressureCleared is emitted only after consecutive recoveries
+//
+// With the Strict protocol policy:
+//
+//     * The Session observes transport backpressure signals
+//     * If overload persists long enough, the Session escalates the condition
+//
+// This ensures that overload is surfaced deterministically while still
+// preventing oscillation during recovery.
+//
+// OBSERVATION GUIDE
+// -----------------
+// During high message throughput:
+//
+// - First overload event:
+//       BackpressureDetected signal
+//
+// - After the system recovers and the message ring drains:
+//
+//       BackpressureCleared signal
+//
+// If overload persists beyond the escalation threshold, the Session
+// performs protocol-level mitigation.
+//
+// DESIGN PURPOSE
+// --------------
+// This example demonstrates deterministic overload detection with
 // stabilization semantics.
+//
+// The Strict policy provides immediate visibility of resource saturation
+// while still allowing recovery to settle before clearing the condition.
+//
+// This configuration is useful for:
+//
+// - Ultra-low-latency systems
+// - Deterministic overload monitoring
+// - Systems where the protocol layer controls mitigation strategy
 //
 // ============================================================================
 #include "common/run_multi_subscription_example.hpp"
@@ -80,7 +104,7 @@ using MySession =
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(argc, argv,
-        "Wirekrak Core - Protocol Backpressure Example (Strict)\n"
-        "Demonstrates explicit backpressure handling with multiple subscriptions.\n"
+        "Wirekrak Core - Strict Backpressure Policy Example\n"
+        "Demonstrates deterministic overload detection.\n"
     );
 }

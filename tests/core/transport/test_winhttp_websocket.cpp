@@ -119,7 +119,7 @@ using WebSocketUnderTest =
     winhttp::WebSocketImpl<
         ControlRingUnderTest,
         MessageRingUnderTest,
-        policy::transport::WebsocketDefault,
+        policy::transport::DefaultWebsocket,
         winhttp::FakeApi
     >;
 

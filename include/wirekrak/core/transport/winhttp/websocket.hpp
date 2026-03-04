@@ -66,7 +66,7 @@ namespace wirekrak::core::transport::winhttp {
 template<
     typename ControlRing,
     lcr::buffer::ProducerSpscRingConcept MessageRing,
-    policy::transport::WebSocketBundleConcept PolicyBundle = policy::transport::WebsocketDefault,
+    policy::transport::WebSocketBundleConcept PolicyBundle = policy::transport::DefaultWebsocket,
     ApiConcept Api = RealApi
 >
 class WebSocketImpl {

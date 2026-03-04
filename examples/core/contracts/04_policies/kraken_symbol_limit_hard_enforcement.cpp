@@ -1,38 +1,56 @@
 // ============================================================================
-// Core Contracts Example - Hard Symbol Limit Policy
+// Core Contracts Example - Protocol Symbol Limit (Hard Enforcement)
 // ============================================================================
 //
-// POLICY BEHAVIOR
-// ---------------
-// Hard SymbolLimit enforces compile-time subscription capacity constraints.
+// POLICY CONFIGURATION
+// --------------------
+// Protocol Symbol Limit : Hard
 //
-// - Subscriptions exceeding limits are rejected immediately.
-// - No transport message is sent.
-// - No partial allocation occurs.
-// - No replay DB mutation occurs.
-// - Deterministic behavior.
+// Limits:
+//   max_trade  = 2
+//   max_book   = 1
+//   max_global = 2
 //
-// DESIGN PHILOSOPHY
-// -----------------
-// Capacity assumptions are part of the system contract.
-//
-// The Session enforces subscription limits before interacting with the
-// transport layer, preserving protocol correctness and preventing
-// overload amplification.
-//
-// USE CASE
-// --------
-// - Exchange-imposed subscription caps
-// - Risk-controlled deployments
-// - Multi-tenant systems
+// Backpressure Policy   : Strict
+// Protocol Liveness     : Passive
 //
 // EXPECTED BEHAVIOR
 // -----------------
-// - Oversized subscription attempts are rejected synchronously.
-// - req_id == INVALID_REQ_ID.
-// - No network activity occurs.
+// - The example issues multiple subscription requests.
+// - When a request exceeds the configured symbol limits:
 //
-// This example demonstrates compile-time capacity enforcement.
+//     * The request is rejected immediately.
+//     * No transport message is sent.
+//     * The replay database is not mutated.
+//     * No partial allocation occurs.
+//
+// - The rejection is deterministic and synchronous.
+//
+// OBSERVATION GUIDE
+// -----------------
+// Observe the subscription requests printed by the example:
+//
+// - Valid requests within capacity are accepted.
+// - Requests exceeding limits return:
+//
+//     req_id == INVALID_REQ_ID
+//
+// This indicates the request was rejected before reaching the
+// transport layer.
+//
+// DESIGN PURPOSE
+// --------------
+// This example demonstrates deterministic capacity enforcement
+// performed by the Session before interacting with the transport.
+//
+// Hard symbol limits are useful when:
+//
+// - Exchanges impose subscription caps
+// - Systems require strict resource control
+// - Multi-tenant environments must prevent overload
+//
+// By rejecting oversized requests early, the system preserves
+// protocol correctness and prevents overload amplification.
 //
 // ============================================================================
 
@@ -70,7 +88,7 @@ using MySession =
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(argc, argv,
-        "Wirekrak Core - Protocol Symbol Limit Hard Enforcement Example\n"
-        "Demonstrates hard symbol limit enforcement with multiple subscriptions.\n"
+        "Wirekrak Core - Protocol Hard Symbol Limit Example\n"
+        "Demonstrates deterministic subscription capacity enforcement.\n"
     );
 }
