@@ -227,10 +227,9 @@ public:
             // 5) If the subscription is now empty, remove it from the table
             if (sub_it->second.empty()) {
                 subscriptions_.erase(sub_it);
-                WK_TRACE("[REPLAY:" << to_string(channel_) << "] Removed empty subscription (req_id=" << req_id << ")");
+                WK_DEBUG("[REPLAY:" << to_string(channel_) << "] Removed empty subscription (req_id=" << req_id << ")");
             }
         }
-        log_state_();
     }
 
     [[nodiscard]]

@@ -11,6 +11,7 @@
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe_ack.hpp"
 #include "wirekrak/core/config/protocol.hpp"
 #include "lcr/local/ring.hpp"
+#include "lcr/memory/footprint.hpp"
 
 
 namespace wirekrak::core::protocol::kraken {
@@ -66,6 +67,26 @@ struct Context {
             book_ring.empty() &&
             book_subscribe_ring.empty() &&
             book_unsubscribe_ring.empty();
+    }
+
+    // =========================================================================
+    // Memory Footprint
+    // =========================================================================
+
+    [[nodiscard]]
+    inline auto memory_usage() const noexcept {
+        lcr::memory::footprint fp;
+        fp.add_static(sizeof(*this));
+        fp.add_dynamic(pong_slot);
+        fp.add_dynamic(status_slot);
+        fp.add_dynamic(rejection_ring);
+        fp.add_dynamic(trade_ring);
+        fp.add_dynamic(trade_subscribe_ring);
+        fp.add_dynamic(trade_unsubscribe_ring);
+        fp.add_dynamic(book_ring);
+        fp.add_dynamic(book_subscribe_ring);
+        fp.add_dynamic(book_unsubscribe_ring);
+        return fp;
     }
 };
 

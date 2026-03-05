@@ -6,6 +6,8 @@
 #include <utility>
 #include <type_traits>
 
+#include "lcr/memory/footprint.hpp"
+
 
 namespace lcr {
 namespace local {
@@ -59,6 +61,7 @@ public:
     ring& operator=(const ring&) = delete;
 
     // Push (copy)
+    [[nodiscard]]
     inline bool push(const T& item) noexcept {
         const size_t next = (head_ + 1) & MASK;
         if (next == tail_) [[unlikely]]
@@ -69,6 +72,7 @@ public:
     }
 
     // Push (move)
+    [[nodiscard]]
     inline bool push(T&& item) noexcept {
         const size_t next = (head_ + 1) & MASK;
         if (next == tail_) [[unlikely]]
@@ -80,6 +84,7 @@ public:
 
     // Emplace
     template <typename... Args>
+    [[nodiscard]]
     inline bool emplace_push(Args&&... args) noexcept {
         const size_t next = (head_ + 1) & MASK;
         if (next == tail_) [[unlikely]]
@@ -90,6 +95,7 @@ public:
     }
 
     // Pop
+    [[nodiscard]]
     inline bool pop(T& out) noexcept {
         if (tail_ == head_) [[unlikely]]
             return false; // empty
@@ -98,28 +104,43 @@ public:
         return true;
     }
 
-    inline bool empty() const noexcept { return head_ == tail_; }
+    [[nodiscard]]
+    inline bool empty() const noexcept {
+        return head_ == tail_;
+    }
 
+    [[nodiscard]]
     inline bool full() const noexcept {
         return ((head_ + 1) & MASK) == tail_;
     }
 
-    inline constexpr size_t capacity() const noexcept { return Capacity; }
+    [[nodiscard]]
+    inline constexpr size_t capacity() const noexcept {
+        return Capacity - 1;
+    }
 
+    [[nodiscard]]
     inline size_t size() const noexcept {
-        return (head_ >= tail_) ? (head_ - tail_)
-                                : (Capacity - (tail_ - head_));
+        return (head_ >= tail_) ? (head_ - tail_) : (Capacity - (tail_ - head_));
     }
 
     inline void clear() noexcept {
         head_ = tail_ = 0;
     }
 
+    [[nodiscard]]
+    inline memory::footprint memory_usage() const noexcept {
+        return memory::footprint{
+            .static_bytes = sizeof(ring<T, Capacity>),
+            .dynamic_bytes = 0
+        };
+    }
+
 private:
     static constexpr size_t MASK = Capacity - 1;
     alignas(64) std::array<T, Capacity> buffer_{};
-    size_t head_{0};
-    size_t tail_{0};
+    alignas(64) size_t head_{0};
+    alignas(64) size_t tail_{0};
 };
 
 

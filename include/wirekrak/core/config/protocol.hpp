@@ -23,12 +23,12 @@ Design principles:
 // -----------------------------------------------------------------------------
 // Control-plane messages (low frequency)
 // -----------------------------------------------------------------------------
-inline constexpr static std::size_t REJECTION_RING_CAPACITY  = 1 << 5; // 32
+inline constexpr static std::size_t REJECTION_RING_CAPACITY  = 1 << 6; // 64
 
 // -----------------------------------------------------------------------------
 // Subscription acknowledgements (very low frequency)
 // -----------------------------------------------------------------------------
-inline constexpr static std::size_t ACK_RING_CAPACITY        = 1 << 5; // 32
+inline constexpr static std::size_t ACK_RING_CAPACITY        = 1 << 8; // 256
 
 // -----------------------------------------------------------------------------
 // High-throughput market data
@@ -40,13 +40,13 @@ inline constexpr static std::size_t BOOK_RING_CAPACITY       = 1 << 10; // 1024
 // -----------------------------------------------------------------------------
 // Transmission buffer capacity
 // -----------------------------------------------------------------------------
-inline constexpr static std::size_t TX_BUFFER_CAPACITY = 4096;
+inline constexpr static std::size_t TX_BUFFER_CAPACITY       =  1 << 18; // 256 KiB
 
 
 // -----------------------------------------------------------------------------
 // Message batch processing limits
 // -----------------------------------------------------------------------------
 
-inline constexpr static std::size_t MAX_MESSAGES_PER_POLL = 128; // Tunable limit for batch processing in poll()
+inline constexpr static std::size_t MAX_MESSAGES_PER_POLL    = 1 << 7; // 128 -> Tunable limit for batch processing in poll()
 
 } // namespace wirekrak::core::config::protocol

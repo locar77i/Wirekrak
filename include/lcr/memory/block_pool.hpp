@@ -148,16 +148,11 @@ public:
     [[nodiscard]]
     inline footprint memory_usage() const noexcept {
         footprint fp;
-
-        // Static memory (the pool object itself)
-        fp.static_bytes = sizeof(block_pool);
-
-        // Dynamic memory for node array
-        fp.dynamic_bytes += block_count_ * sizeof(node);
-
-        // Dynamic memory for each block's internal allocation
-        fp.dynamic_bytes += block_count_ * block_size_;
-
+        fp.add_static(sizeof(*this));
+        fp.add_dynamic(block_count_ * sizeof(node));
+        for (std::size_t i = 0; i < block_count_; ++i) {
+            fp.add_dynamic(blocks_[i].block);
+        }
         return fp;
     }
 

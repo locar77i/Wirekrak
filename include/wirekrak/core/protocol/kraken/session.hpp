@@ -60,6 +60,7 @@ Data-plane model:
 #include <chrono>
 #include <utility>
 #include <ostream>
+#include <memory>
 
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
@@ -78,6 +79,7 @@ Data-plane model:
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "wirekrak/core/config/protocol.hpp"
 #include "wirekrak/core/config/backpressure.hpp"
+#include "lcr/memory/footprint.hpp"
 #include "lcr/local/raw_buffer.hpp"
 #include "lcr/local/ring.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
@@ -103,8 +105,8 @@ public:
     Session(MessageRing& ring)
         : telemetry_()
         , connection_(ring, telemetry_)
-        , ctx_{}
-        , ctx_view_{ctx_}
+        , ctx_(std::make_unique<Context>())
+        , ctx_view_(*ctx_)
         , parser_(ctx_view_)
     {}
 
@@ -140,9 +142,9 @@ public:
     // -----------------------------------------------------------------------------
     [[nodiscard]]
     inline bool try_load_pong(schema::system::Pong& out) noexcept {
-        if (ctx_.pong_slot.has()) [[likely]] {
-            out = ctx_.pong_slot.value();
-            ctx_.pong_slot.reset(); // Clear after reading to prevent stale data
+        if (ctx_->pong_slot.has()) [[likely]] {
+            out = ctx_->pong_slot.value();
+            ctx_->pong_slot.reset(); // Clear after reading to prevent stale data
             return true;
         }
         return false;
@@ -169,9 +171,9 @@ public:
     // -----------------------------------------------------------------------------
     [[nodiscard]]
     inline bool try_load_status(schema::status::Update& out) noexcept {
-        if (ctx_.status_slot.has()) [[likely]] {
-            out = ctx_.status_slot.value();
-            ctx_.status_slot.reset(); // Clear after reading to prevent stale data
+        if (ctx_->status_slot.has()) [[likely]] {
+            out = ctx_->status_slot.value();
+            ctx_->status_slot.reset(); // Clear after reading to prevent stale data
             return true;
         }
         return false;
@@ -209,14 +211,14 @@ public:
 
     [[nodiscard]]
     inline bool pop_trade_message(schema::trade::Response& out) noexcept {
-        return ctx_.trade_ring.pop(out);
+        return ctx_->trade_ring.pop(out);
     }
 
     // Convenience method to drain all available messages with a user-provided callback
     template<class F>
     void drain_trade_messages(F&& f) noexcept(noexcept(f(std::declval<const schema::trade::Response&>()))) {
         schema::trade::Response msg;
-        while (ctx_.trade_ring.pop(msg)) {
+        while (ctx_->trade_ring.pop(msg)) {
             std::forward<F>(f)(msg);
         }
     }
@@ -231,14 +233,14 @@ public:
 
     [[nodiscard]]
     inline bool pop_book_message(schema::book::Response& out) noexcept {
-        return ctx_.book_ring.pop(out);
+        return ctx_->book_ring.pop(out);
     }
 
     // Convenience method to drain all available messages with a user-provided callback
     template<class F>
     void drain_book_messages(F&& f) noexcept(noexcept(f(std::declval<const schema::book::Response&>()))) {
         schema::book::Response msg;
-        while (ctx_.book_ring.pop(msg)) {
+        while (ctx_->book_ring.pop(msg)) {
             std::forward<F>(f)(msg);
         }
     }
@@ -259,11 +261,12 @@ public:
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
         static_assert(requires { req.symbols; }, "Request must expose a member called `symbols`");
-        WK_INFO("[SESSION] Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        //WK_INFO("[SESSION] Subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        WK_INFO("[SESSION] Subscribing to channel '" << channel_name_of_v<RequestT> << "' (total: " << req.symbols.size() << " symbol/s)");
         // 1) Hard symbol limit enforcement (compile-time removable)
         if constexpr (SymbolLimitPolicy::enabled && SymbolLimitPolicy::hard) {
             if (!hard_symbol_limit_enforcement_<RequestT>(req)) {
-                WK_WARN("[SESSION:" << channel_name_of_v<RequestT> << "] Subscription rejected due to hard symbol limit enforcement (" << req.symbols.size() << " symbol(s) omitted)");
+                WK_WARN("[SESSION:" << channel_name_of_v<RequestT> << "] Subscription rejected due to hard symbol limit enforcement (" << req.symbols.size() << " symbol/s omitted)");
                 return ctrl::INVALID_REQ_ID;
             }
         }
@@ -287,7 +290,7 @@ public:
             replay_db_.add(req);
         }
         // 6) Send JSON BEFORE moving req.symbols
-        WK_DEBUG("[SESSION] Sending subscribe message: " << req.to_json());
+        WK_DEBUG("[SESSION] Sending subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
         if (!send_request_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
@@ -334,7 +337,8 @@ public:
         static_assert(request::ValidRequestIntent<RequestT>,
             "Invalid request type: a request must define exactly one intent tag (subscribe_tag, unsubscribe_tag, control_tag...)"
         );
-         WK_INFO("[SESSION] Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        //WK_INFO("[SESSION] Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        WK_INFO("[SESSION] Unsubscribing from channel '" << channel_name_of_v<RequestT> << "' (total: " << req.symbols.size() << " symbol/s)");
         // 1) Assign req_id if missing
         if (!req.req_id.has()) {
             req.req_id = req_id_seq_.next();
@@ -342,7 +346,7 @@ public:
         // 2) Send JSON BEFORE moving req.symbols
         // TODO: Maybe we can add a policy to control whether JSON is generated before or after manager registration (which modifies the symbol list)?
         // For now, we send the user's original intent even if some symbols are filtered by the manager.
-        WK_DEBUG("[SESSION] Sending unsubscribe message: " << req.to_json());
+        WK_DEBUG("[SESSION] Sending unsubscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
         if (!send_request_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
@@ -425,7 +429,7 @@ public:
         // ===============================================================================
         { // === Process rejection ring ===
         schema::rejection::Notice notice;
-        while (ctx_.rejection_ring.pop(notice)) {
+        while (ctx_->rejection_ring.pop(notice)) {
             // 1) Apply internal protocol correctness handling
             handle_rejection_(notice);
             // 2) Forward to user-visible rejection buffer (lossless)
@@ -441,7 +445,7 @@ public:
         // ===============================================================================
         { // === Process trade subscribe ring ===
         schema::trade::SubscribeAck ack;
-        while (ctx_.trade_subscribe_ring.pop(ack)) {
+        while (ctx_->trade_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SESSION] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
             }
@@ -451,7 +455,7 @@ public:
         }}
         { // === Process trade unsubscribe ring ===
         schema::trade::UnsubscribeAck ack;
-        while (ctx_.trade_unsubscribe_ring.pop(ack)) {
+        while (ctx_->trade_unsubscribe_ring.pop(ack)) {
             WK_TRACE("[SESSION] Processing trade unsubscribe ACK for symbol {" << ack.symbol << "}");
             //dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
@@ -472,7 +476,7 @@ public:
         // ===============================================================================
         { // === Process book subscribe ring ===
         schema::book::SubscribeAck ack;
-        while (ctx_.book_subscribe_ring.pop(ack)) {
+        while (ctx_->book_subscribe_ring.pop(ack)) {
             if (!ack.req_id.has()) [[unlikely]] {
                 WK_WARN("[SESSION] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
             }
@@ -482,7 +486,7 @@ public:
         }}
         { // === Process book unsubscribe ring ===
         schema::book::UnsubscribeAck ack;
-        while (ctx_.book_unsubscribe_ring.pop(ack)) {
+        while (ctx_->book_unsubscribe_ring.pop(ack)) {
             WK_TRACE("[SESSION] Processing book unsubscribe ACK for symbol {" << ack.symbol << "}");
             //dispatcher_.remove_symbol_handlers<schema::book::UnsubscribeAck>(ack.symbol);
             if (!ack.req_id.has()) [[unlikely]] {
@@ -594,7 +598,7 @@ public:
     inline bool is_idle() const noexcept {
         return
             connection_.is_idle() &&
-            ctx_.empty() &&
+            ctx_->empty() &&
             user_rejection_buffer_.empty() &&
             !trade_channel_manager_.has_pending_requests() &&
             !book_channel_manager_.has_pending_requests();
@@ -624,6 +628,15 @@ public:
     [[nodiscard]]
     inline transport::telemetry::Connection& telemetry() noexcept {
         return connection_.telemetry();
+    }
+
+    [[nodiscard]]
+    inline lcr::memory::footprint memory_usage() const noexcept {
+        lcr::memory::footprint fp;
+        fp.add_static(sizeof(*this));
+        fp.add(ctx_);
+        fp.add_dynamic(connection_);
+        return fp;
     }
 
     inline static void dump_configuration(std::ostream& os) noexcept {
@@ -662,7 +675,7 @@ private:
     lcr::local::raw_buffer<config::protocol::TX_BUFFER_CAPACITY> tx_buffer_{};
 
     // Session context (owning)
-    Context ctx_;
+    std::unique_ptr<Context> ctx_;
 
     // Session context view (non-owning)
     ContextView ctx_view_;
@@ -740,7 +753,8 @@ private:
 
     template <request::Subscription RequestT>
     void re_subscribe_(RequestT req) {
-        WK_INFO("[SESSION] Re-subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        //WK_INFO("[SESSION] Re-subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
+        WK_INFO("[SESSION] Re-subscribing to channel '" << channel_name_of_v<RequestT> << "' (total: " << req.symbols.size() << " symbol/s)");
         // 1) Register subscription with manager (internal filtering)
         auto& mgr = subscription_manager_for_<RequestT>();
         auto accepted_symbols = mgr.register_subscription(std::move(req.symbols), req.req_id.value());
@@ -755,7 +769,7 @@ private:
             replay_db_.add(req);
         }
         // 4) Send JSON BEFORE moving req.symbols
-        WK_DEBUG("[SESSION] Sending re-subscribe message: " << req.to_json());
+        WK_DEBUG("[SESSION] Sending re-subscribe message: " << req.symbols.size() << " symbol/s");
         (void)send_request_(req);
     }
 
@@ -942,7 +956,7 @@ private:
 #endif
         // 3. Send the request
         std::string_view msg{buffer, size};
-        WK_DEBUG("[SESSION] Sending request: " << msg);
+        WK_TRACE("[SESSION] Sending json request (payload: " << lcr::format_bytes_exact(size) << ")");
         if (!connection_.send(msg)) {
             WK_ERROR("[SESSION] Failed to send request (req_id=" << lcr::to_string(req.req_id) << ") - " << msg);
             return false;
@@ -967,7 +981,7 @@ private:
         // 2. Serialize to JSON (into stack buffer to avoid heap allocation)
         const std::size_t required = req.max_json_size();
         if (required > config::protocol::TX_BUFFER_CAPACITY) [[unlikely]] {
-            WK_FATAL("[SESSION] JSON exceeds TX buffer capacity");
+            WK_FATAL("[SESSION] JSON exceeds TX buffer capacity");  // TODO: handle error more gracefully (bad result on examples with large symbol lists & buffer overflow)
             return false;
         }
         tx_buffer_.reset();
@@ -978,7 +992,7 @@ private:
     #endif
         // 3. Send the request
         std::string_view msg{tx_buffer_.data(), tx_buffer_.size()};
-        WK_DEBUG("[SESSION] Sending request: " << msg);
+        WK_TRACE("[SESSION] Sending json request (payload: " << lcr::format_bytes_exact(size) << ")");
         if (!connection_.send(msg)) {
             WK_ERROR("[SESSION] Failed to send request (req_id=" << lcr::to_string(req.req_id) << ") - " << msg);
             return false;

@@ -56,6 +56,8 @@
 #include "lcr/memory/block_pool.hpp"
 #include "common/cli/minimal.hpp"
 #include "common/loop/helpers.hpp"
+#include "common/kraken_pairs.hpp"
+
 
 using namespace wirekrak::core;
 
@@ -96,23 +98,14 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     // Dump the session configuration (policies) for observability
     Session::dump_configuration(std::cout);
 
-    // Define a list of high-volume symbols to stress the system.
-    // The example will subscribe to all of them, which may trigger different policies
-    // depending on the configuration.
-    // Adjust the list as needed to explore different scenarios.
-    const std::vector<std::string> symbols = {
-        "BTC/USD", "BTC/EUR",
-        "ETH/USD", "ETH/EUR",
-        "SOL/USD", "SOL/EUR",
-        "XRP/USD", "XRP/EUR",
-        "USDT/USD", "USDT/EUR"
-    };
+    // List of high-volume symbols to stress the system.
+    const std::vector<std::string>& symbols = wirekrak::symbols::kraken::top200;
 
     // -------------------------------------------------------------------------
     // Global memory block pool
     // -------------------------------------------------------------------------
     constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
-    constexpr static std::size_t BLOCK_COUNT = 24;
+    constexpr static std::size_t BLOCK_COUNT = 512;
     static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 
     // -----------------------------------------------------------------------------
@@ -202,6 +195,12 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     // -------------------------------------------------------------------------
     std::cout << "\n[3] Block Pool Memory Usage >>\n";
     memory_pool.memory_usage().debug_dump(std::cout);
+
+    // -------------------------------------------------------------------------
+    // Dump session memory usage
+    // -------------------------------------------------------------------------
+    std::cout << "\n[4] Session Memory Usage >>\n";
+    session.memory_usage().debug_dump(std::cout);
 
     std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
     return 0;

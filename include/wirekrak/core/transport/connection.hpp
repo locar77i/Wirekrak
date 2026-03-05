@@ -105,6 +105,7 @@ No level-based liveness or health state is exposed.
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "wirekrak/core/config/transport/connection.hpp"
 #include "wirekrak/core/telemetry.hpp"
+#include "lcr/memory/footprint.hpp"
 #include "lcr/buffer/concepts.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/optional.hpp"
@@ -374,6 +375,14 @@ public:
     [[nodiscard]]
     inline telemetry::Connection& telemetry() noexcept {
         return telemetry_;
+    }
+
+    [[nodiscard]]
+    inline lcr::memory::footprint memory_usage() const noexcept {
+        lcr::memory::footprint fp;
+        fp.add_static(sizeof(*this));
+        fp.add(ws_);
+        return fp;
     }
 
     inline static void dump_configuration(std::ostream& os) noexcept {

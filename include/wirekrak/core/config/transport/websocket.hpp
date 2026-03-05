@@ -99,9 +99,9 @@ Do not modify casually.
 namespace wirekrak::core::config {
 namespace transport {
 
-inline constexpr static std::size_t CONTROL_RING_CAPACITY =  128;    // Capacity of the control event ring buffer (number of events)
+inline constexpr static std::size_t CONTROL_RING_CAPACITY = 1 << 8;    // 256 control events (number of events)
 
-inline constexpr static std::size_t MESSAGE_RING_CAPACITY = 1024;    // Capacity of the I/O message ring buffer (number of slots)
+inline constexpr static std::size_t MESSAGE_RING_CAPACITY = 1 << 10;   // 1024 messages (number of slots)
 
 namespace websocket {
 

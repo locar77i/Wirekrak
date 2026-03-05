@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <type_traits>
 
 #include "lcr/format.hpp"
@@ -18,7 +19,11 @@ struct footprint {
         return static_bytes + dynamic_bytes;
     }
 
-    /// Merge another footprint into this one
+    template<typename T>
+    static constexpr bool has_memory_usage =
+        requires(const T& t) { t.memory_usage(); };
+
+/*
     inline constexpr void add(const footprint& other) noexcept {
         static_bytes += other.static_bytes;
         dynamic_bytes += other.dynamic_bytes;
@@ -26,10 +31,17 @@ struct footprint {
 
     template <typename T>
     inline constexpr void add(const T& component) noexcept {
-        if constexpr (requires { component.memory_usage(); }) {
+        if constexpr (has_memory_usage<T>) {
             add(component.memory_usage());
-        } else {
-            static_assert(sizeof(T) == 0, "Type passed to add_component() must have memory_usage()");
+        }
+    }
+*/
+    template <typename T>
+    inline constexpr void add(const std::unique_ptr<T>& ptr) noexcept {
+        if constexpr (has_memory_usage<T>) {
+            if (ptr) {
+                add_dynamic(ptr->memory_usage().total_bytes());
+            }
         }
     }
 
@@ -40,11 +52,8 @@ struct footprint {
     // Generic helper for subcomponents that expose memory_usage()
     template <typename T>
     inline constexpr void add_static(const T& component) noexcept {
-        if constexpr (requires { component.memory_usage(); }) {
-            const auto sub = component.memory_usage();
-            static_bytes += sub.static_bytes;
-        } else {
-            static_assert(sizeof(T) == 0, "Type passed to add_static() must implement memory_usage()");
+        if constexpr (has_memory_usage<T>) {
+            static_bytes += component.memory_usage().static_bytes;
         }
     }
 
@@ -55,12 +64,14 @@ struct footprint {
     // Generic helper for subcomponents that expose memory_usage()
     template <typename T>
     inline constexpr void add_dynamic(const T& component) noexcept {
-        if constexpr (requires { component.memory_usage(); }) {
-            const auto sub = component.memory_usage();
-            dynamic_bytes += sub.total_bytes();
-        } else {
-            static_assert(sizeof(T) == 0, "Type passed to add_dynamic() must implement memory_usage()");
+        if constexpr (has_memory_usage<T>) {
+            dynamic_bytes += component.memory_usage().dynamic_bytes;
         }
+    }
+
+    inline void assert_under_limit(std::uint64_t static_limit, std::uint64_t dynamic_limit) const {
+        assert(static_bytes <= static_limit && "Static memory usage exceeded limit: " + format_bytes(static_bytes) + " > " + format_bytes(static_limit));
+        assert(dynamic_bytes <= dynamic_limit && "Dynamic memory usage exceeded limit: " + format_bytes(dynamic_bytes) + " > " + format_bytes(dynamic_limit));
     }
 
     // debug dump method for easy logging

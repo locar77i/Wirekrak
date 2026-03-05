@@ -217,7 +217,8 @@ private:
                 r = trade::subscribe_ack::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.trade_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] Trade subscribe ring full - message has not been delivered.");
+                        WK_WARN("[PARSER] Trade subscribe ring full - message has not been delivered (size: " << ctx_view_.trade_subscribe_ring.size()
+                            << ", capacity: " << ctx_view_.trade_subscribe_ring.capacity() << ").");
                         return Result::Backpressure;
                     }
                     return Result::Delivered;
@@ -229,7 +230,8 @@ private:
                 r = book::subscribe_ack::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.book_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] Book subscribe ring full - message has not been delivered.");
+                        WK_WARN("[PARSER] Book subscribe ring full - message has not been delivered (size: " << ctx_view_.book_subscribe_ring.size()
+                            << ", capacity: " << ctx_view_.book_subscribe_ring.capacity() << ").");
                         return Result::Backpressure;
                     }
                     return Result::Delivered;
@@ -241,7 +243,8 @@ private:
                 r = rejection_notice::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] Rejection ring full - message has not been delivered.");
+                        WK_WARN("[PARSER] Rejection ring full - message has not been delivered (size: " << ctx_view_.rejection_ring.size()
+                            << ", capacity: " << ctx_view_.rejection_ring.capacity() << ").");
                         return Result::Backpressure;
                     }
                     return Result::Delivered;
@@ -262,7 +265,8 @@ private:
                 r = trade::unsubscribe_ack::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.trade_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] Trade unsubscribe ring full - message has not been delivered.");
+                        WK_WARN("[PARSER] Trade unsubscribe ring full - message has not been delivered (size: " << ctx_view_.trade_unsubscribe_ring.size()
+                            << ", capacity: " << ctx_view_.trade_unsubscribe_ring.capacity() << ").");
                         return Result::Backpressure;
                     }
                     return Result::Delivered;
@@ -274,7 +278,8 @@ private:
                 r = book::unsubscribe_ack::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.book_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] Book unsubscribe ring full - message has not been delivered.");
+                        WK_WARN("[PARSER] Book unsubscribe ring full - message has not been delivered (size: " << ctx_view_.book_unsubscribe_ring.size()
+                            << ", capacity: " << ctx_view_.book_unsubscribe_ring.capacity() << ").");
                         return Result::Backpressure;
                     }
                     return Result::Delivered;
@@ -286,7 +291,8 @@ private:
                 r = rejection_notice::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
-                        WK_WARN("[PARSER] Rejection ring full - message has not been delivered.");
+                        WK_WARN("[PARSER] Rejection ring full - message has not been delivered (size: " << ctx_view_.rejection_ring.size()
+                            << ", capacity: " << ctx_view_.rejection_ring.capacity() << ").");
                         return Result::Backpressure;
                     }
                     return Result::Delivered;

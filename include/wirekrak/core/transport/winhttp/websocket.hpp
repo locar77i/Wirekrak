@@ -42,6 +42,7 @@ is validated independently from the operating system and network stack.
 #include "wirekrak/core/config/transport/websocket.hpp"
 #include "wirekrak/core/config/backpressure.hpp"
 #include "wirekrak/core/telemetry.hpp"
+#include "lcr/memory/footprint.hpp"
 #include "lcr/buffer/concepts.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/log/logger.hpp"
@@ -202,6 +203,14 @@ public:
     [[nodiscard]]
     inline telemetry::WebSocket& telemetry() noexcept {
         return telemetry_;
+    }
+
+    [[nodiscard]]
+    inline lcr::memory::footprint memory_usage() const noexcept {
+        return lcr::memory::footprint{
+            .static_bytes = sizeof(*this),
+            .dynamic_bytes = 0
+        };
     }
 
     inline static void dump_configuration(std::ostream& os) noexcept {

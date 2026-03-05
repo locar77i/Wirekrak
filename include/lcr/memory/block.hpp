@@ -105,10 +105,12 @@ public:
 
     [[nodiscard]]
     inline footprint memory_usage() const noexcept {
-        return footprint{
-            .static_bytes = sizeof(block),
-            .dynamic_bytes = capacity_
-        };
+        footprint fp;
+        fp.add_static(sizeof(*this));
+        if (data_) {
+            fp.add_dynamic(capacity_);
+        }
+        return fp;
     }
 
 private:
