@@ -1,5 +1,74 @@
 #pragma once
 
+// ============================================================================
+// Protocol Symbol Limit Policy
+// ============================================================================
+//
+// Controls compile-time subscription capacity limits enforced by the Session.
+//
+// Symbol limits allow the application to define deterministic bounds on the
+// number of active market data subscriptions. This prevents accidental
+// overload, protects system resources, and enforces exchange-imposed limits.
+//
+// The policy is evaluated before subscription requests are sent to the
+// transport layer, ensuring that invalid requests are rejected locally and
+// never reach the exchange.
+//
+// DESIGN GOALS
+// ------------
+// • Compile-time configurable limits
+// • Deterministic enforcement
+// • Zero runtime overhead when disabled
+// • No dynamic allocation
+// • Protocol correctness preserved
+//
+// POLICY MODES
+// ------------
+//
+// None
+//   - No subscription limits are enforced.
+//   - The Session forwards all subscription requests to the transport.
+//
+// Hard
+//   - Subscription requests exceeding configured limits are rejected
+//     immediately by the Session.
+//   - No transport message is sent.
+//   - No partial allocation occurs.
+//   - Replay database and managers remain unchanged.
+//
+// LIMIT TYPES
+// -----------
+//
+// MaxTrade
+//   Maximum number of trade channel symbols.
+//
+// MaxBook
+//   Maximum number of book channel symbols.
+//
+// MaxGlobal
+//   Maximum total number of symbols across all channels.
+//
+// The global limit must always be greater than or equal to the per-channel
+// limits to maintain internal consistency.
+//
+// EXAMPLE
+// -------
+//
+//   SymbolLimitPolicy<LimitMode::Hard, 100, 50, 120>
+//
+//   - Up to 100 trade symbols allowed
+//   - Up to 50 book symbols allowed
+//   - Up to 120 symbols total across all channels
+//
+// USE CASES
+// ---------
+// • Enforcing exchange subscription caps
+// • Protecting systems from excessive subscription fan-out
+// • Risk-controlled deployments
+// • Multi-tenant environments with bounded capacity
+//
+// ============================================================================
+
 #include <cstddef>
 #include <concepts>
 #include <ostream>

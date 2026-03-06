@@ -290,47 +290,11 @@ public:
             replay_db_.add(req);
         }
         // 6) Send JSON BEFORE moving req.symbols
-        WK_DEBUG("[SESSION] Sending subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
-        if (!send_request_(req)) {
+        if (!emit_subscription_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
         return req.req_id.value();
     }
-
-    // ------------------------------------------------------------
-    // Hard symbol limit enforcement
-    // ------------------------------------------------------------
-    template <request::Subscription RequestT>
-    [[nodiscard]]
-    inline bool hard_symbol_limit_enforcement_(const RequestT& req) const noexcept {
-        const std::size_t requested = req.symbols.size();
-        // Current logical symbol counts
-        const std::size_t trade_now = trade_channel_manager_.total_symbols();
-        const std::size_t book_now = book_channel_manager_.total_symbols();
-        const std::size_t global_now = trade_now + book_now;
-        // Check limits
-        if constexpr (channel_of_v<RequestT> == Channel::Trade) { // Check trade limits
-
-            if (SymbolLimitPolicy::max_trade > 0 && trade_now + requested > SymbolLimitPolicy::max_trade) {
-                WK_WARN("[SESSION:trade] Symbol limit exceeded (" << "active: " << trade_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_trade << ")");
-                return false;
-            }
-        }
-        else if constexpr (channel_of_v<RequestT> == Channel::Book) { // Check book limits
-
-            if (SymbolLimitPolicy::max_book > 0 && book_now + requested > SymbolLimitPolicy::max_book) {
-                WK_WARN("[SESSION:book] Symbol limit exceeded (" << "active: " << book_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_book << ")");
-                return false;
-            }
-        }
-        // Check global limits
-        if (SymbolLimitPolicy::max_global > 0 && global_now + requested > SymbolLimitPolicy::max_global) {
-            WK_WARN("[SESSION] Global symbol limit exceeded (" << "active: " << global_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_global << ")");
-            return false;
-        }
-        return true;
-    }
-
 
     template <request::Unsubscription RequestT>
     inline ctrl::req_id_t unsubscribe(RequestT req) {
@@ -662,6 +626,7 @@ private:
     using LivenessPolicy      = typename PolicyBundle::liveness;
     using SymbolLimitPolicy   = typename PolicyBundle::symbol_limit;
     using ReplayPolicy        = typename PolicyBundle::replay;
+    using BatchingPolicy      = typename PolicyBundle::batching;
 
 private:
     // Sequence generator for request IDs
@@ -884,6 +849,73 @@ private:
             return true;
         }
         return false;
+    }
+
+    // ------------------------------------------------------------
+    // Batching policy enforcement
+    // ------------------------------------------------------------
+    template <request::Subscription RequestT>
+    [[nodiscard]]
+    bool emit_subscription_(RequestT req) noexcept {
+        if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Immediate) {
+            WK_DEBUG("[SESSION] Sending subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
+            return send_request_(req);
+        }
+        else if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Batch) {
+            // TODO:
+            // Implement subscription batching:
+            //   - Split req.symbols into batches of BatchingPolicy::batch_size
+            //   - Send each batch immediately
+            //   - Preserve req_id semantics
+
+            WK_WARN("[SESSION] Batching policy 'Batch' not implemented yet");
+            return send_request_(req);
+        }
+        else {
+            // TODO:
+            // Implement paced batching:
+            //   - Split req.symbols into batches
+            //   - Enqueue batches
+            //   - Send batches gradually during poll()
+
+            WK_WARN("[SESSION] Batching policy 'Paced' not implemented yet");
+            return send_request_(req);
+        }
+        return false; // Unreachable
+    }
+
+    // ------------------------------------------------------------
+    // Hard symbol limit enforcement
+    // ------------------------------------------------------------
+    template <request::Subscription RequestT>
+    [[nodiscard]]
+    inline bool hard_symbol_limit_enforcement_(const RequestT& req) const noexcept {
+        const std::size_t requested = req.symbols.size();
+        // Current logical symbol counts
+        const std::size_t trade_now = trade_channel_manager_.total_symbols();
+        const std::size_t book_now = book_channel_manager_.total_symbols();
+        const std::size_t global_now = trade_now + book_now;
+        // Check limits
+        if constexpr (channel_of_v<RequestT> == Channel::Trade) { // Check trade limits
+
+            if (SymbolLimitPolicy::max_trade > 0 && trade_now + requested > SymbolLimitPolicy::max_trade) {
+                WK_WARN("[SESSION:trade] Symbol limit exceeded (" << "active: " << trade_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_trade << ")");
+                return false;
+            }
+        }
+        else if constexpr (channel_of_v<RequestT> == Channel::Book) { // Check book limits
+
+            if (SymbolLimitPolicy::max_book > 0 && book_now + requested > SymbolLimitPolicy::max_book) {
+                WK_WARN("[SESSION:book] Symbol limit exceeded (" << "active: " << book_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_book << ")");
+                return false;
+            }
+        }
+        // Check global limits
+        if (SymbolLimitPolicy::max_global > 0 && global_now + requested > SymbolLimitPolicy::max_global) {
+            WK_WARN("[SESSION] Global symbol limit exceeded (" << "active: " << global_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_global << ")");
+            return false;
+        }
+        return true;
     }
 
     // Helpers to get the correct subscription manager

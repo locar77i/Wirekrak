@@ -76,6 +76,7 @@ static_assert(SessionBundleConcept<MyBundle>);
 #include "wirekrak/core/policy/protocol/liveness.hpp"
 #include "wirekrak/core/policy/protocol/symbol_limit.hpp"
 #include "wirekrak/core/policy/protocol/replay.hpp"
+#include "wirekrak/core/policy/protocol/batching.hpp"
 
 
 namespace wirekrak::core::policy::protocol {
@@ -91,6 +92,7 @@ concept HasSessionBundleMembers =
         typename T::liveness;
         typename T::symbol_limit;
         typename T::replay;
+        typename T::batching;
     };
 
 
@@ -104,7 +106,8 @@ concept SessionBundleConcept =
     BackpressureConcept<typename T::backpressure> &&
     LivenessConcept<typename T::liveness> &&
     SymbolLimitConcept<typename T::symbol_limit> &&
-    ReplayConcept<typename T::replay>;
+    ReplayConcept<typename T::replay> &&
+    BatchingConcept<typename T::batching>;
 
 
 
@@ -121,7 +124,8 @@ template<
     BackpressureConcept BackpressureT = DefaultBackpressure,
     LivenessConcept LivenessT         = DefaultLiveness,
     SymbolLimitConcept SymbolLimitT   = DefaultSymbolLimit,
-    ReplayConcept ReplayT             = DefaultReplay
+    ReplayConcept ReplayT             = DefaultReplay,
+    BatchingConcept BatchingT         = DefaultBatching
 >
 struct session_bundle {
 
@@ -129,6 +133,7 @@ struct session_bundle {
     using liveness     = LivenessT;
     using symbol_limit = SymbolLimitT;
     using replay       = ReplayT;
+    using batching     = BatchingT;
 
     // Future policy additions go here
 
@@ -143,6 +148,7 @@ struct session_bundle {
         liveness::dump(os);
         symbol_limit::dump(os);
         replay::dump(os);
+        batching::dump(os);
     }
 };
 
