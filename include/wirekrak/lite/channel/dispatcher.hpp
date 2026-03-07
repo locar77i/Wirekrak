@@ -4,7 +4,11 @@
 #include <vector>
 #include <functional>
 
+#include "wirekrak/lite/symbol.hpp"
+
+// ---- Core includes ----
 #include "wirekrak/core/symbol/intern.hpp"
+// ---- LCR includes ----
 #include "lcr/log/logger.hpp"
 
 
@@ -80,7 +84,7 @@ public:
           • That callback may be associated with N symbols
           • The callback will be invoked once per matching message
     */
-    inline void add(const std::vector<wirekrak::core::Symbol>& symbols, Callback cb) {
+    inline void add(const std::vector<Symbol>& symbols, Callback cb) {
         WK_TRACE("[DISPATCHER] Adding callbacks for " << symbols.size() << " symbol(s)");
 
         for (const auto& s : symbols) {
@@ -126,7 +130,7 @@ public:
     // Removal by symbol (COLD PATH, Lite policy)
     // -------------------------------------------------------------------------
 
-    inline void remove(wirekrak::core::Symbol symbol) {
+    inline void remove(Symbol symbol) {
         WK_TRACE("[DISPATCHER] Removing callbacks by symbol (symbol=" << symbol << ")");
 
         wirekrak::core::SymbolId sid = wirekrak::core::intern_symbol(symbol);
@@ -139,7 +143,7 @@ public:
         symbols_map_.erase(it);
     }
 
-    inline void remove(const std::vector<wirekrak::core::Symbol>& symbols) {
+    inline void remove(const std::vector<Symbol>& symbols) {
         WK_TRACE("[DISPATCHER] Removing callbacks for " << symbols.size() << " symbol(s)");
 
         for (const auto& symbol : symbols) {

@@ -121,38 +121,38 @@ struct Session {
     // -------------------------------------------------------------------------
     // Subscribe/Unsubscribe helpers
     // -------------------------------------------------------------------------
-    inline ctrl::req_id_t subscribe_trade(std::vector<std::string> symbols) {
+    inline ctrl::req_id_t subscribe_trade(std::vector<Symbol> symbols) {
         schema::trade::Subscribe req{.symbols = std::move(symbols)};
         return session.subscribe(req);
     }
 
-    inline ctrl::req_id_t subscribe_trade(std::initializer_list<std::string> symbols) {
-        return subscribe_trade(std::vector<std::string>{symbols});
+    inline ctrl::req_id_t subscribe_trade(std::initializer_list<Symbol> symbols) {
+        return subscribe_trade(std::vector<Symbol>{symbols});
     }
 
-    inline ctrl::req_id_t subscribe_trade(const std::string& symbol) {
-        return subscribe_trade(std::vector<std::string>{symbol});
+    inline ctrl::req_id_t subscribe_trade(const Symbol& symbol) {
+        return subscribe_trade(std::vector<Symbol>{symbol});
     }
 
-    inline ctrl::req_id_t unsubscribe_trade(const std::string& symbol) {
+    inline ctrl::req_id_t unsubscribe_trade(const Symbol& symbol) {
         schema::trade::Unsubscribe unsub{.symbols = {symbol}};
         return session.unsubscribe(unsub);
     }
 
-    inline ctrl::req_id_t subscribe_book(std::vector<std::string> symbols, int depth) {
+    inline ctrl::req_id_t subscribe_book(std::vector<Symbol> symbols, int depth) {
         schema::book::Subscribe sub{.symbols = std::move(symbols), .depth = depth};
         return session.subscribe(sub);
     }
 
-    inline ctrl::req_id_t subscribe_book(std::initializer_list<std::string> symbols, int depth) {
-        return subscribe_book(std::vector<std::string>{symbols}, depth);
+    inline ctrl::req_id_t subscribe_book(std::initializer_list<Symbol> symbols, int depth) {
+        return subscribe_book(std::vector<Symbol>{symbols}, depth);
     }
 
-    inline ctrl::req_id_t subscribe_book(const std::string& symbol, int depth) {
-        return subscribe_book(std::vector<std::string>{std::move(symbol)}, depth);
+    inline ctrl::req_id_t subscribe_book(const Symbol& symbol, int depth) {
+        return subscribe_book(std::vector<Symbol>{std::move(symbol)}, depth);
     }
 
-    inline ctrl::req_id_t unsubscribe_book(const std::string& symbol, int depth) {
+    inline ctrl::req_id_t unsubscribe_book(const Symbol& symbol, int depth) {
         schema::book::Unsubscribe unsub{.symbols = {symbol}, .depth = depth};
         return session.unsubscribe(unsub);
     }
@@ -160,7 +160,7 @@ struct Session {
     // -------------------------------------------------------------------------
     // Subscribe/Unsubscribe ACK helpers
     // -------------------------------------------------------------------------
-    inline void confirm_trade_subscription(ctrl::req_id_t req_id, const std::string& sym) {
+    inline void confirm_trade_subscription(ctrl::req_id_t req_id, const Symbol& sym) {
         assert(session.ws() && "harness::Session::confirm_trade_subscription() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For trade subscriptions req_id should be >= 10");
@@ -168,7 +168,7 @@ struct Session {
         (void)session.poll();
     }
 
-    inline void confirm_trade_unsubscription(ctrl::req_id_t req_id, const std::string& sym) {
+    inline void confirm_trade_unsubscription(ctrl::req_id_t req_id, const Symbol& sym) {
         assert(session.ws() && "harness::Session::confirm_trade_unsubscription() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For trade unsubscriptions req_id should be >= 10");
@@ -176,7 +176,7 @@ struct Session {
         (void)session.poll();
     }
 
-    inline void confirm_book_subscription(ctrl::req_id_t req_id, const std::string& sym, int depth) {
+    inline void confirm_book_subscription(ctrl::req_id_t req_id, const Symbol& sym, int depth) {
         assert(session.ws() && "harness::Session::confirm_book_subscription() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For book subscriptions req_id should be >= 10");
@@ -184,7 +184,7 @@ struct Session {
         (void)session.poll();
     }
 
-    inline void confirm_book_unsubscription(ctrl::req_id_t req_id, const std::string& sym, int depth) {
+    inline void confirm_book_unsubscription(ctrl::req_id_t req_id, const Symbol& sym, int depth) {
         assert(session.ws() && "harness::Session::confirm_book_unsubscription() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For book unsubscriptions req_id should be >= 10");
@@ -196,7 +196,7 @@ struct Session {
     // Rejection helpers
     // -------------------------------------------------------------------------
 
-    inline void reject(std::string_view method, ctrl::req_id_t req_id, const std::string& sym, std::string_view error) {
+    inline void reject(std::string_view method, ctrl::req_id_t req_id, const Symbol& sym, std::string_view error) {
         assert(session.ws() && "harness::Session::reject() called with null transport");
         assert(req_id != ctrl::INVALID_REQ_ID && "Request ID cannot be invalid");
         assert(req_id >= 10 && "For rejection notices, req_id should be >= 10");
@@ -204,19 +204,19 @@ struct Session {
         (void)session.poll();
     }
 
-    inline void reject_trade_subscription(ctrl::req_id_t req_id, const std::string& sym) {
+    inline void reject_trade_subscription(ctrl::req_id_t req_id, const Symbol& sym) {
         reject("subscribe", req_id, sym, "Subscription rejected");
     }
 
-    inline void reject_trade_unsubscription(ctrl::req_id_t req_id, const std::string& sym) {
+    inline void reject_trade_unsubscription(ctrl::req_id_t req_id, const Symbol& sym) {
         reject("unsubscribe", req_id, sym, "Unsubscription rejected");
     }
 
-    inline void reject_book_subscription(ctrl::req_id_t req_id, const std::string& sym) {
+    inline void reject_book_subscription(ctrl::req_id_t req_id, const Symbol& sym) {
         reject("subscribe", req_id, sym, "Subscription rejected");
     }
 
-    inline void reject_book_unsubscription(ctrl::req_id_t req_id, const std::string& sym) {
+    inline void reject_book_unsubscription(ctrl::req_id_t req_id, const Symbol& sym) {
         reject("unsubscribe", req_id, sym, "Unsubscription rejected");
     }
 };

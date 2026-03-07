@@ -71,6 +71,8 @@ int main(int argc, char** argv) {
     );
     params.dump("=== Runtime Parameters ===", std::cout);
 
+    auto symbols = to_symbols(params.symbols);
+
     // -------------------------------------------------------------------------
     // Signal handling (explicit termination)
     // -------------------------------------------------------------------------
@@ -91,7 +93,7 @@ int main(int argc, char** argv) {
     int messages_received = 0;
 
     (void)session.subscribe(
-        trade::Subscribe{ .symbols = params.symbols }
+        trade::Subscribe{ .symbols = symbols }
     );
 
     // -------------------------------------------------------------------------
@@ -118,7 +120,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     if (session.is_connected()) {
         (void)session.unsubscribe(
-            trade::Unsubscribe{ .symbols = params.symbols }
+            trade::Unsubscribe{ .symbols = symbols }
         );
     }
 

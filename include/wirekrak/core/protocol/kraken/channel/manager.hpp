@@ -158,7 +158,7 @@ public:
         }
 
         if (pending_subscribe_symbols() == 0) {
-            WK_INFO("[SUBMGR:" << to_string(channel_) << "] All pending subscriptions have been acknowledged");
+            WK_INFO("[SUBMGR:" << to_string(channel_) << "] All pending subscriptions have been acknowledged (active: " << active_symbols_.size() << " symbol/s)");
         }
     }
 
@@ -176,7 +176,7 @@ public:
         }
 
         if (pending_unsubscribe_symbols() == 0) {
-            WK_INFO("[SUBMGR:" << to_string(channel_) << "] All pending unsubscriptions have been acknowledged");
+            WK_INFO("[SUBMGR:" << to_string(channel_) << "] All pending unsubscriptions have been acknowledged (active: " << active_symbols_.size() << " symbol/s)");
         }
     }
 

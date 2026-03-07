@@ -30,8 +30,8 @@ These tests validate:
 // Utility
 // ------------------------------------------------------------
 
-static std::string random_symbol(std::mt19937& rng) {
-    static const std::vector<std::string> syms = {
+static Symbol random_symbol(std::mt19937& rng) {
+    static const std::vector<Symbol> syms = {
         "BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD"
     };
     std::uniform_int_distribution<> dist(0, syms.size() - 1);
@@ -138,8 +138,8 @@ void test_cross_channel_long_run_fuzz() {
 
     std::mt19937 rng(SEED);
 
-    std::vector<std::pair<ctrl::req_id_t, std::string>> trade_pending;
-    std::vector<std::pair<ctrl::req_id_t, std::string>> book_pending;
+    std::vector<std::pair<ctrl::req_id_t, Symbol>> trade_pending;
+    std::vector<std::pair<ctrl::req_id_t, Symbol>> book_pending;
 
     std::uniform_int_distribution<> action(0, 7);
     std::uniform_int_distribution<> coin(0, 1);
@@ -572,7 +572,7 @@ void test_replay_with_delayed_ack_simulation() {
     // Store delayed ACKs (req_id, symbol, is_trade, is_success)
     struct DelayedAck {
         ctrl::req_id_t req_id;
-        std::string sym;
+        Symbol sym;
         bool is_trade;
         bool success;
     };

@@ -99,7 +99,7 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     Session::dump_configuration(std::cout);
 
     // List of high-volume symbols to stress the system.
-    const std::vector<std::string>& symbols = wirekrak::symbols::kraken::top200;
+    const auto& symbols = wirekrak::symbols::kraken::top200;
 
     // -------------------------------------------------------------------------
     // Global memory block pool

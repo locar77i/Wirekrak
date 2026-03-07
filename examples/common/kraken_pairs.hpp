@@ -2,6 +2,8 @@
 
 #include <vector>
 
+#include "wirekrak/core/symbol.hpp"
+
 
 namespace wirekrak::symbols {
 
@@ -18,7 +20,7 @@ namespace kraken {
 | Top 10 pairs
 |--------------------------------------------------------------------------
 */
-static const std::vector<std::string> top10 = {
+static const std::vector<core::Symbol> top10 = {
     "BTC/USD", "BTC/EUR",
     "ETH/USD", "ETH/EUR",
     "SOL/USD", "SOL/EUR",
@@ -32,7 +34,7 @@ static const std::vector<std::string> top10 = {
 | Top 20 pairs
 |--------------------------------------------------------------------------
 */
-static const std::vector<std::string> top20 = {
+static const std::vector<core::Symbol> top20 = {
     
     "BTC/USD","BTC/EUR",
     "ETH/USD","ETH/EUR",
@@ -53,7 +55,7 @@ static const std::vector<std::string> top20 = {
 | Top 50 pairs
 |--------------------------------------------------------------------------
 */
-static const std::vector<std::string> top50 = {
+static const std::vector<core::Symbol> top50 = {
     
     "BTC/USD","BTC/EUR",
     "ETH/USD","ETH/EUR",
@@ -92,7 +94,7 @@ static const std::vector<std::string> top50 = {
 | Top 100 pairs
 |--------------------------------------------------------------------------
 */
-static const std::vector<std::string> top100 = {
+static const std::vector<core::Symbol> top100 = {
 
     "BTC/USD","BTC/EUR",
     "ETH/USD","ETH/EUR",
@@ -157,7 +159,7 @@ static const std::vector<std::string> top100 = {
 
 
 
-static const std::vector<std::string> top200 = {
+static const std::vector<core::Symbol> top200 = {
 
 "BTC/USD","BTC/EUR","BTC/USDT","BTC/USDC",
 "ETH/USD","ETH/EUR","ETH/USDT","ETH/USDC",
@@ -268,7 +270,7 @@ static const std::vector<std::string> top200 = {
 |--------------------------------------------------------------------------
 */
 
-static const std::vector<std::string> all = {
+static const std::vector<core::Symbol> all = {
     "0G/EUR",
     "0G/USD",
     "1INCH/EUR",

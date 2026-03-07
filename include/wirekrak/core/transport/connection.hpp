@@ -273,7 +273,7 @@ public:
             }
             // === Liveness timeout check ===
             if (!liveness_timeout_emitted_ && is_liveness_stale_()) {
-                WK_DEBUG("[CONN] Liveness timeout: No protocol traffic observed within liveness window");
+                WK_WARN("[CONN] Liveness timeout: No protocol traffic observed within liveness window");
                 liveness_timeout_emitted_ = true;
                 transition_(Event::LivenessExpired, Error::Timeout);
             }

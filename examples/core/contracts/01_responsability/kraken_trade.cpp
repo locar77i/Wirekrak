@@ -85,6 +85,8 @@ int main(int argc, char** argv) {
 
     params.dump("=== Runtime Parameters ===", std::cout);
 
+    auto symbols = to_symbols(params.symbols);
+
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
@@ -101,7 +103,7 @@ int main(int argc, char** argv) {
     // Explicit protocol subscription
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        trade::Subscribe{ .symbols = params.symbols, .snapshot = params.snapshot }
+        trade::Subscribe{ .symbols = symbols, .snapshot = params.snapshot }
     );
 
     // -------------------------------------------------------------------------
@@ -121,7 +123,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     if (session.is_connected()) {
         (void)session.unsubscribe(
-            trade::Unsubscribe{ .symbols = params.symbols }
+            trade::Unsubscribe{ .symbols = symbols }
         );
     }
 

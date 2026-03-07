@@ -6,6 +6,7 @@
 #include <chrono>
 #include <memory>
 
+#include "wirekrak/core/symbol.hpp"
 #include "wirekrak/lite/domain/trade.hpp"
 #include "wirekrak/lite/domain/book_level.hpp"
 #include "wirekrak/lite/error.hpp"

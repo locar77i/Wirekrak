@@ -71,6 +71,8 @@ int main(int argc, char** argv) {
     );
     params.dump("=== Runtime Parameters ===", std::cout);
 
+    auto symbols = to_symbols(params.symbols);
+
     // -------------------------------------------------------------------------
     // Signal handling (explicit termination)
     // -------------------------------------------------------------------------
@@ -91,7 +93,7 @@ int main(int argc, char** argv) {
     int messages_received = 0;
 
     (void)session.subscribe(
-        book::Subscribe{ .symbols = params.symbols }
+        book::Subscribe{ .symbols = symbols }
     );
 
     // -------------------------------------------------------------------------
@@ -116,7 +118,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     if (session.is_connected()) {
         (void)session.unsubscribe(
-            book::Unsubscribe{ .symbols = params.symbols }
+            book::Unsubscribe{ .symbols = symbols }
         );
     }
 

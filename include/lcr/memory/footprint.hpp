@@ -70,8 +70,8 @@ struct footprint {
     }
 
     inline void assert_under_limit(std::uint64_t static_limit, std::uint64_t dynamic_limit) const {
-        assert(static_bytes <= static_limit && "Static memory usage exceeded limit: " + format_bytes(static_bytes) + " > " + format_bytes(static_limit));
-        assert(dynamic_bytes <= dynamic_limit && "Dynamic memory usage exceeded limit: " + format_bytes(dynamic_bytes) + " > " + format_bytes(dynamic_limit));
+        assert(static_bytes <= static_limit && "lcr::memory::footprint - static memory usage exceeded limit");
+        assert(dynamic_bytes <= dynamic_limit && "lcr::memory::footprint - dynamic memory usage exceeded limit");
     }
 
     // debug dump method for easy logging

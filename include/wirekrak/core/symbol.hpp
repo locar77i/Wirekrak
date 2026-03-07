@@ -3,36 +3,35 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <sstream>
+
+#include "wirekrak/common/symbol.hpp"
+#include "lcr/local/string.hpp"
+
 
 namespace wirekrak::core {
 
-using Symbol = std::string;
+//using Symbol = std::string;
+inline constexpr std::size_t MAX_SYMBOL_LENGTH = 16;
+using Symbol = lcr::local::string<MAX_SYMBOL_LENGTH>; // max 16 chars after escaping (worst case)
 
-inline std::string to_string(const std::vector<std::string>& symbols) {
-    std::ostringstream os;
-    os << '{';
-    bool first = true;
-    for (const auto& s : symbols) {
-        if (!first) os << ", ";
-        os << s;
-        first = false;
-    }
-    os << '}';
-    return os.str();
+
+inline Symbol to_symbol(const std::string& s) {
+    return wirekrak::to_local_string<MAX_SYMBOL_LENGTH>(s);
 }
 
-inline std::string to_string(const std::vector<std::string_view>& symbols) {
-    std::ostringstream os;
-    os << '{';
-    bool first = true;
-    for (auto sv : symbols) {
-        if (!first) os << ", ";
-        os << sv;
-        first = false;
-    }
-    os << '}';
-    return os.str();
+
+inline std::string to_std_string(const Symbol& s) {
+    return wirekrak::to_std_string<MAX_SYMBOL_LENGTH>(s);
 }
+
+
+inline std::vector<Symbol> to_symbols(const std::vector<std::string>& src) {
+    return wirekrak::to_local_strings<MAX_SYMBOL_LENGTH>(src);
+}
+
+inline std::vector<std::string> to_std_strings(const std::vector<Symbol>& src) {
+    return wirekrak::to_std_strings<MAX_SYMBOL_LENGTH>(src);
+}
+
 
 } // namespace wirekrak::core

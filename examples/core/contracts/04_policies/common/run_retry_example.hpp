@@ -101,7 +101,7 @@ int run_retry_example(int argc, char** argv, const char* title) {
     // The example will subscribe to all of them, which may trigger different policies
     // depending on the configuration.
     // Adjust the list as needed to explore different scenarios.
-    const std::vector<std::string> symbols = {"BTC/EUR"};
+    const std::vector<Symbol> symbols = {"BTC/EUR"};
 
     // -------------------------------------------------------------------------
     // Global memory block pool

@@ -72,6 +72,8 @@ int main(int argc, char** argv) {
     );
     params.dump("=== Runtime Parameters ===", std::cout);
 
+    auto symbols = to_symbols(params.symbols);
+
     // -------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------
@@ -89,7 +91,7 @@ int main(int argc, char** argv) {
     // (no snapshot to avoid burst output and keep replay observable)
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        trade::Subscribe{ .symbols  = params.symbols, .snapshot = false }
+        trade::Subscribe{ .symbols = symbols, .snapshot = false }
     );
 
     // -------------------------------------------------------------------------
@@ -125,7 +127,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     if (session.is_connected()) {
         (void)session.unsubscribe(
-            trade::Unsubscribe{ .symbols = params.symbols }
+            trade::Unsubscribe{ .symbols = symbols }
         );
     }
 

@@ -25,8 +25,8 @@ using namespace wirekrak::core::protocol::kraken::test;
 // Utility
 // ------------------------------------------------------------
 
-static std::string random_symbol(std::mt19937& rng) {
-    static const std::vector<std::string> syms = {
+static Symbol random_symbol(std::mt19937& rng) {
+    static const std::vector<Symbol> syms = {
         "BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD"
     };
     std::uniform_int_distribution<> dist(0, syms.size() - 1);
@@ -268,7 +268,7 @@ void test_replay_db_saturation_limit() {
     constexpr uint32_t SEED = 777;
     constexpr int SYMBOL_UNIVERSE = 5;
 
-    std::vector<std::string> symbols = {
+    std::vector<Symbol> symbols = {
         "BTC/USD",
         "ETH/USD",
         "SOL/USD",
@@ -280,7 +280,7 @@ void test_replay_db_saturation_limit() {
     std::uniform_int_distribution<> pick(0, SYMBOL_UNIVERSE - 1);
     std::uniform_int_distribution<> coin(0, 1);
 
-    std::vector<std::pair<ctrl::req_id_t, std::string>> pending;
+    std::vector<std::pair<ctrl::req_id_t, Symbol>> pending;
 
     // ------------------------------------------------------------
     // Phase 1 - Saturation spam
@@ -468,8 +468,8 @@ void test_saturation_race_overlap() {
     std::uniform_int_distribution<> action(0, 9);
     std::uniform_int_distribution<> coin(0, 1);
 
-    std::vector<std::pair<ctrl::req_id_t, std::string>> trade_pending;
-    std::vector<std::pair<ctrl::req_id_t, std::string>> book_pending;
+    std::vector<std::pair<ctrl::req_id_t, Symbol>> trade_pending;
+    std::vector<std::pair<ctrl::req_id_t, Symbol>> book_pending;
 
     std::uint64_t last_epoch = h.session.transport_epoch();
 
@@ -628,7 +628,7 @@ void test_hard_limit_enforcement() {
 
     constexpr std::size_t MAX_SYMBOLS = 5;
 
-    std::vector<std::string> symbols = {
+    std::vector<Symbol> symbols = {
         "BTC/USD", "ETH/USD", "SOL/USD",
         "LTC/USD", "XRP/USD", "ADA/USD",
         "DOT/USD"

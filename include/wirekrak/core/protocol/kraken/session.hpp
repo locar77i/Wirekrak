@@ -747,7 +747,7 @@ private:
     }
 
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
-        WK_TRACE("[SESSION] Handling rejection notice for symbol {" << (notice.symbol.has() ? notice.symbol.value() : "N/A" )
+        WK_TRACE("[SESSION] Handling rejection notice for symbol {" << (notice.symbol.has() ? notice.symbol.value() : Symbol("N/A") )
             << "} (req_id=" << (notice.req_id.has() ? notice.req_id.value() : ctrl::INVALID_REQ_ID) << ") - " << notice.error);
         if (notice.req_id.has()) {
             if (notice.symbol.has()) {

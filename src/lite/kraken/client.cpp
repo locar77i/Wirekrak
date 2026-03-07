@@ -40,6 +40,7 @@ static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 // -----------------------------------------------------------------------------
 static preset::DefaultMessageRing message_ring(memory_pool);
 
+
 // -----------------------------
 // Impl
 // -----------------------------
@@ -80,8 +81,9 @@ struct Client::Impl {
         while (session.pop_rejection(rejection_msg)) {
             // 1) Remove any callbacks associated with this symbol to prevent future invocations
             if (rejection_msg.symbol.has()) {
-                trade_dispatcher.remove(rejection_msg.symbol.value());
-                book_dispatcher.remove(rejection_msg.symbol.value());
+                auto s = to_std_string(rejection_msg.symbol.value());
+                trade_dispatcher.remove(s);
+                book_dispatcher.remove(s);
             }
             // 2) Emit error callback if provided
             if (error_cb) {
@@ -211,7 +213,7 @@ void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb
         for (const auto* trade : msg.trades) {
             cb(domain::Trade{
                 .trade_id     = trade->trade_id,
-                .symbol       = trade->symbol,
+                .symbol       = trade->symbol.c_str(),
                 .price        = trade->price,
                 .quantity     = trade->qty,
                 .taker_side   = (trade->side == kraken::Side::Buy) ? Side::Buy : Side::Sell,
@@ -224,7 +226,7 @@ void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb
 
     // Make a copy ONLY for Core (to remove in the future)
     // Core consumes by value, Lite owns original
-    auto symbols_for_core = symbols;
+    auto symbols_for_core = core::to_symbols(symbols);
 
     // 1) Submit intent to Core
     impl_->session.subscribe(
@@ -236,7 +238,11 @@ void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb
 }
 
 void Client::unsubscribe_trades(const std::vector<std::string>& symbols) {
-    impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = std::move(symbols) });
+    // Make a copy ONLY for Core (to remove in the future)
+    // Core consumes by value, Lite owns original
+    auto symbols_for_core = core::to_symbols(symbols);
+
+    impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = std::move(symbols_for_core) });
     // Optional: if Kraken rejects later, rejection handling will clean this anyway
     // Lite removes behavior immediately on unsubscribe intent, not on ACK.
     impl_->trade_dispatcher.remove(symbols);
@@ -259,7 +265,7 @@ void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, b
         const auto emit_levels = [&](const auto& levels, Side book_side) {
             for (const auto& lvl : levels) {
                 cb(domain::BookLevel{
-                    .symbol       = resp.book.symbol,
+                    .symbol       = resp.book.symbol.c_str(),
                     .book_side    = book_side,
                     .price        = lvl.price,
                     .quantity     = lvl.qty,
@@ -278,7 +284,7 @@ void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, b
 
     // Make a copy ONLY for Core (to remove in the future)
     // Core consumes by value, Lite owns original
-    auto symbols_for_core = symbols;
+    auto symbols_for_core = core::to_symbols(symbols);
 
     // 1) Submit intent to Core
     impl_->session.subscribe(
@@ -290,7 +296,11 @@ void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, b
 }
 
 void Client::unsubscribe_book(const std::vector<std::string>& symbols) {
-    impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols) });
+    // Make a copy ONLY for Core (to remove in the future)
+    // Core consumes by value, Lite owns original
+    auto symbols_for_core = core::to_symbols(symbols);
+
+    impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols_for_core) });
     // Optional: if Kraken rejects later, rejection handling will clean this anyway
     // Lite removes behavior immediately on unsubscribe intent, not on ACK.
     impl_->book_dispatcher.remove(symbols);

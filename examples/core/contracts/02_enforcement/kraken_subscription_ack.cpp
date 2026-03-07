@@ -67,6 +67,8 @@ int main(int argc, char** argv) {
     );
     params.dump("=== Runtime Parameters ===", std::cout);
 
+    auto symbols = to_symbols(params.symbols);
+
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
@@ -83,18 +85,18 @@ int main(int argc, char** argv) {
     // Issue duplicate subscribe requests
     // -------------------------------------------------------------------------
     (void)session.subscribe(
-        trade::Subscribe{ .symbols = params.symbols }
+        trade::Subscribe{ .symbols = symbols }
     );
 
     (void)session.subscribe(
-        trade::Subscribe{ .symbols = params.symbols }
+        trade::Subscribe{ .symbols = symbols }
     );
 
     // -------------------------------------------------------------------------
     // Immediately unsubscribe
     // -------------------------------------------------------------------------
     (void)session.unsubscribe(
-        trade::Unsubscribe{ .symbols = params.symbols }
+        trade::Unsubscribe{ .symbols = symbols }
     );
 
     // -------------------------------------------------------------------------
