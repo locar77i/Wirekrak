@@ -33,6 +33,7 @@ is validated independently from the operating system and network stack.
 #include <atomic>
 #include <vector>
 #include <cassert>
+#include <immintrin.h>
 
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
@@ -53,11 +54,16 @@ is validated independently from the operating system and network stack.
 
 
 // helper to convert UTF-8 string to wide string
-inline std::wstring to_wide(const std::string& utf8) {
-    if (utf8.empty()) return L"";
-    int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), NULL, 0);
-    std::wstring out(size, 0);
-    MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), &out[0], size);
+inline std::wstring to_wide(std::string_view utf8) {
+    if (utf8.empty()) [[unlikely]] {
+        return {};
+    }
+    int size = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
+    if (size <= 0) [[unlikely]] {
+        return {};
+    }
+    std::wstring out(size, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), out.data(), size);
     return out;
 }
 
@@ -87,7 +93,7 @@ public:
     }
 
     [[nodiscard]]
-    inline Error connect(const std::string& host, const std::string& port, const std::string& path) noexcept {
+    inline Error connect(std::string_view host, std::uint16_t port, std::string_view path, bool secure) noexcept {
         hSession_ = WinHttpOpen(
             L"Wirekrak/1.0",
             WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
@@ -100,24 +106,30 @@ public:
             return Error::TransportFailure;
         }
 
-        hConnect_ = WinHttpConnect(hSession_, to_wide(host).c_str(), std::stoi(port), 0);
+        host_w_ = to_wide(host);
+        path_w_ = to_wide(path);
+
+        hConnect_ = WinHttpConnect(hSession_, host_w_.c_str(), port, 0);
         if (!hConnect_) {
             WK_ERROR("[WS] WinHttpConnect failed");
             return Error::ConnectionFailed;
         }
 
+        DWORD flags = secure ? WINHTTP_FLAG_SECURE : 0;
+
         hRequest_ = WinHttpOpenRequest(
             hConnect_,
             L"GET",
-            to_wide(path).c_str(),
+            path_w_.c_str(),
             nullptr,
             WINHTTP_NO_REFERER,
             WINHTTP_DEFAULT_ACCEPT_TYPES,
-            WINHTTP_FLAG_SECURE
+            flags
         );
+
         if (!hRequest_) {
             WK_ERROR("[WS] WinHttpOpenRequest failed");
-            return Error::TransportFailure;;
+            return Error::TransportFailure;
         }
 
         if (!WinHttpSetOption(hRequest_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) {
@@ -161,7 +173,7 @@ public:
         WK_TRACE("[WS:API] Sending message ... (size " << msg.size() << ")");
         const DWORD result = api_.websocket_send(
             hWebSocket_,
-            WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE,
+            WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE,
             const_cast<char*>(msg.data()),
             static_cast<DWORD>(msg.size())
         );
@@ -234,6 +246,9 @@ private:
     // Compile-time API policy (default: RealApi)
     Api api_;
 
+    std::wstring host_w_;
+    std::wstring path_w_;
+
     // WinHTTP handles
     HINTERNET hSession_   = nullptr;
     HINTERNET hConnect_   = nullptr;
@@ -280,11 +295,13 @@ private:
 
             // === Lazy slot acquisition (start of new message) ===
             if (!current_slot) [[likely]] {
-                current_slot = acquire_slot_();
-                assert(current_slot->size() == 0 && "On receive loop - acquired slot should be empty");
+                current_slot = acquire_slot_(); 
                 if (!current_slot) [[unlikely]] {
                     continue; // backpressure handling (no slot available)
                 }
+#ifndef NDEBUG
+                assert(current_slot->size() == 0 && "On receive loop - acquired slot should be empty");
+#endif
             }
             // === Reactive growth (ONLY if not starting a new message and capacity isexhausted) ===
             else if (current_slot->remaining() < config::transport::websocket::MIN_FRAME_SIZE) [[unlikely]] {
@@ -355,7 +372,7 @@ private:
             auto total_bytes = current_slot->commit(bytes);
 
             // === Handle final message frame ===
-            if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE)  [[likely]] {
+            if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE) [[likely]] {
                 if (fragments > 0) {
                     WK_TRACE("[WS] Received final message fragment (size " << bytes << ", total message size " << total_bytes << ", fragments " << fragments << ")");
                     WK_TL1( telemetry_.rx_fragments_total.inc() );
@@ -408,16 +425,8 @@ private:
                             " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
                     }
                 }
-                // Slow down reader slightly to give it a chance to catch up before retrying
-                std::this_thread::yield();
-/*
-                if (backpressure_.attempts < 10) { // Light backoff for initial attempts to reduce CPU pressure
-                    std::this_thread::yield();
-                }
-                else { // Stronger backoff after multiple attempts to reduce scheduler dependency
-                    std::this_thread::sleep_for(std::chrono::microseconds(10));
-                }
-*/
+                // Slightly relax the cput to give it a chance to catch up before retrying
+                _mm_pause();
                 return nullptr;
             }
         }

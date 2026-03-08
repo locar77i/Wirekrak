@@ -51,7 +51,7 @@ int main() {
     telemetry::WebSocket telemetry;
     preset::transport::DefaultWebSocket ws(control_ring, message_ring, telemetry);
 
-    if (ws.connect("ws.kraken.com", "443", "/v2") != Error::None) {
+    if (ws.connect("ws.kraken.com", 443, "/v2", true) != Error::None) {
         std::cerr << "Connect failed" << std::endl;
         return 1;
     }

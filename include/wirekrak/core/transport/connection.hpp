@@ -134,7 +134,7 @@ public:
 
     // Connection lifecycle
     [[nodiscard]]
-    inline Error open(const std::string& url) noexcept {
+    inline Error open(std::string_view url) noexcept {
         WK_DEBUG("[CONN] Connecting to: " << url);
         WK_TL1( telemetry_.open_calls_total.inc() ); // This represents explicit caller intent
 
@@ -154,12 +154,13 @@ public:
             return last_error_;
         }
         parsed_url_ = std::move(tmp);
+        auto& url_data = parsed_url_.value();
         // 2) Enter FSM: all preconditions satisfied, begin connection attempt
         transition_(Event::OpenRequested);
         // 3) Create a fresh transport instance
         create_transport_();
         // 4) Attempt reconnection
-        last_error_ = ws_->connect(parsed_url_.value().host, parsed_url_.value().port, parsed_url_.value().path);
+        last_error_ = ws_->connect(url_data.host, url_data.port, url_data.path, url_data.secure);
         if (last_error_ != Error::None) {
             WK_ERROR("[CONN] Connection failed (" << to_string(last_error_) << ")");
             // Transport connection attempt failed (initial connect path)
@@ -403,7 +404,7 @@ public:
 
 private:
     std::string last_url_;                          // for logging / retry callbacks
-    lcr::optional<ParsedUrl> parsed_url_;           // Invariant: parsed_url_.has() == true -> Valid endpoint
+    lcr::optional<ParsedUrl> parsed_url_;           // Invariant: .has() == true -> Valid endpoint
 
     // Control event queue (for signaling events like close and error)
     lcr::lockfree::spsc_ring<websocket::Event, config::transport::CONTROL_RING_CAPACITY> control_ring_;
@@ -766,14 +767,15 @@ private:
             WK_WARN("[CONN] reconnect() called while not waiting to reconnect (state: " << to_string(get_state_()) << "). Ignoring.");
             return false;
         }
-        // INVARIANT: parsed_url_ must be valid here
+        // INVARIANT: the parsed url must be valid here
         assert(parsed_url_.has() && "reconnect cannot be called without the parsed url data");
+        auto& url_data = parsed_url_.value();
         // 1) Retry delay elapsed -> FSM may initiate reconnection attempt
         transition_(Event::RetryTimerExpired);
         // 2) Create a fresh transport instance
         create_transport_();
         // 3) Attempt reconnection
-        last_error_ = ws_->connect(parsed_url_.value().host, parsed_url_.value().port, parsed_url_.value().path);
+        last_error_ = ws_->connect(url_data.host, url_data.port, url_data.path, url_data.secure);
         if (last_error_ != Error::None) {
             WK_ERROR("[CONN] Reconnection failed (" << to_string(last_error_) << ")");
             // Reconnection attempt failed -> apply backoff-based retry policy

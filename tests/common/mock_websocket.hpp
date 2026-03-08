@@ -43,7 +43,7 @@ public:
     // transport::WebSocket API
     // ---------------------------------------------------------------------
 
-    inline Error connect(const std::string&, const std::string&, const std::string&) noexcept {
+    inline Error connect(std::string_view, std::uint16_t, std::string_view, bool) noexcept {
         WK_DEBUG("[MockWebSocket] connect() called");
         connected_ = (next_connect_result_ == Error::None);
         return next_connect_result_;

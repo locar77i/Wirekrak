@@ -54,7 +54,6 @@ Data-plane model:
 ===============================================================================
 */
 
-#include <string>
 #include <string_view>
 #include <functional>
 #include <chrono>
@@ -112,7 +111,7 @@ public:
 
     // open connection
     [[nodiscard]]
-    inline bool connect(const std::string& url) {
+    inline bool connect(std::string_view url) {
         return connection_.open(url) == transport::Error::None;
     }
 

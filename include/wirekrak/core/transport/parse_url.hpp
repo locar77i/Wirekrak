@@ -1,8 +1,8 @@
 #pragma once
 
-#include <string>
-#include <cstdlib>
 #include <cstddef>
+#include <cstdint>
+#include <string_view>
 
 #include "wirekrak/core/transport/error.hpp"
 
@@ -11,10 +11,10 @@ namespace wirekrak::core::transport {
 
     // Contains parsed URL components
     struct ParsedUrl {
-        bool secure;          // true = wss, false = ws
-        std::string host;
-        std::string port;
-        std::string path;
+        bool secure;                 // true = wss, false = ws
+        std::string_view host;
+        std::uint16_t port;
+        std::string_view path;
     };
 
 
@@ -25,22 +25,28 @@ namespace wirekrak::core::transport {
     // ws:// and wss:// URLs used by exchanges and rejects malformed inputs without
     // attempting full RFC compliance.
     //
+    // Properties:
+    //  • Zero allocations
+    //  • Zero copies
+    //  • No exceptions
+    //  • Deterministic validation
+    //
     // Example inputs:
     //   wss://ws.kraken.com/v2
     //   ws://example.com:8080/stream
     // ---------------------------------------------------------------------
     [[nodiscard]]
-    inline Error parse_url(const std::string& url, ParsedUrl& out) noexcept {
+    inline Error parse_url(std::string_view url, ParsedUrl& out) noexcept {
         out = ParsedUrl{};
         // 1) Extract scheme
         constexpr std::string_view ws  = "ws://";
         constexpr std::string_view wss = "wss://";
-        size_t pos = 0;
-        if (url.compare(0, ws.size(), ws) == 0) {
+        std::size_t pos = 0;
+        if (url.starts_with(ws)) {
             out.secure = false;
             pos = ws.size();
         }
-        else if (url.compare(0, wss.size(), wss) == 0) {
+        else if (url.starts_with(wss)) {
             out.secure = true;
             pos = wss.size();
         }
@@ -48,44 +54,44 @@ namespace wirekrak::core::transport {
             return Error::InvalidUrl;
         }
         // 2) Extract host[:port]
-        size_t slash = url.find('/', pos);
-        std::string hostport = (slash == std::string::npos) ? url.substr(pos) : url.substr(pos, slash - pos);
-        if (hostport.empty()) {
+        std::size_t slash = url.find('/', pos);
+        std::string_view hostport = (slash == std::string_view::npos) ? url.substr(pos) : url.substr(pos, slash - pos);
+        if (hostport.empty()) [[unlikely]] {
             return Error::InvalidUrl;
         }
         // 3) Split host and port
-        size_t colon = hostport.find(':');
-        if (colon != std::string::npos) {
+        std::size_t colon = hostport.find(':');
+        if (colon != std::string_view::npos) {
             out.host = hostport.substr(0, colon);
-            out.port = hostport.substr(colon + 1);
-        } else {
-            out.host = hostport;
-            out.port = (out.secure) ? "443" : "80";
-        }
-        // 4) Path (default "/" if missing)
-        out.path = (slash == std::string::npos) ? "/" : url.substr(slash);
-
-        // Invariants check --------------------------------
-
-        // Validate host
-        if (out.host.empty() || out.port.empty()) {
-            return Error::InvalidUrl;
-        }
-        // Validate port - must be numeric and in range
-        for (char c : out.port) {
-            if (c < '0' || c > '9') {
+            std::string_view port_str = hostport.substr(colon + 1);
+            // Validate port (invariant: must be numeric, non-zero and within valid range)
+            if (port_str.empty()) [[unlikely]] {
                 return Error::InvalidUrl;
             }
+            std::uint32_t port = 0;
+            for (char c : port_str) {
+                if (c < '0' || c > '9') [[unlikely]] {
+                    return Error::InvalidUrl;
+                }
+                port = port * 10 + (c - '0');
+                if (port >= 65535) [[unlikely]] {
+                    return Error::InvalidUrl;
+                }
+            }
+            if (port == 0) [[unlikely]] {
+                return Error::InvalidUrl;
+            }
+            out.port = static_cast<std::uint16_t>(port);
+        } else {
+            out.host = hostport;
+            out.port = (out.secure) ? 443 : 80; // default ports
         }
-        const unsigned long p = std::strtoul(out.port.c_str(), nullptr, 10);
-        if (p == 0 || p > 65535) {
+        // 4) Path (default "/" if missing)
+        out.path = (slash == std::string_view::npos) ? std::string_view("/") : url.substr(slash);
+        // Validate path (invariant: must start with '/')
+        if (out.path.empty() || out.path[0] != '/') [[unlikely]] {
             return Error::InvalidUrl;
         }
-        // Validate path
-        if (out.path.empty() || out.path[0] != '/') {
-            return Error::InvalidUrl;
-        }
-        // ---------------------------------------------------
 
         return Error::None;
     }

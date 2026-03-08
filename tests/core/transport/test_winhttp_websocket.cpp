@@ -166,7 +166,7 @@ void test_close_called_once() {
     ws.test_api().results.push(ERROR_SUCCESS);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE);
 
-    //if (!ws.connect("x", "443", "/"))
+    // ws.connect("x", 443, "/", true))
     ws.test_start_receive_loop();
 
     // Wait for receive loop to start (better synchronization than sleep)
@@ -213,7 +213,7 @@ void test_error_triggers_close() {
     ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
 
-    //if (!ws.connect("x", "443", "/"))
+    // ws.connect("x", 443, "/", true))
     ws.test_start_receive_loop();
 
     // Wait until receive loop is active
@@ -283,7 +283,7 @@ void test_message_delivery_to_ring() {
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
     ws.test_api().payloads.push("test_message");
 
-    //if (!ws.connect("x", "443", "/"))
+    // ws.connect("x", 443, "/", true))
     ws.test_start_receive_loop();
 
     // Wait until receive loop is active
@@ -387,7 +387,7 @@ void test_error_then_close_ordering() {
     ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
 
-    //if (!ws.connect("x", "443", "/"))
+    // ws.connect("x", 443, "/", true))
     ws.test_start_receive_loop();
 
     // Wait until receive loop has actually started
@@ -463,7 +463,7 @@ void test_multiple_messages() {
     ws.test_api().results.push(ERROR_SUCCESS);
     ws.test_api().types.push(WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE);
 
-    //if (!ws.connect("x", "443", "/"))
+    // ws.connect("x", 443, "/", true))
     ws.test_start_receive_loop();
 
     // Wait until receive loop is active
