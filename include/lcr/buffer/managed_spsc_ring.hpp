@@ -121,6 +121,11 @@ public:
     [[nodiscard]]
     inline Slot* acquire_producer_slot() noexcept {
         return ring_.acquire_producer_slot();
+        Slot* slot = ring_.acquire_producer_slot();
+        if (slot) [[likely]] { // Ensure slot is always clean when handed to producer
+            slot->reset(pool_);
+        }
+        return slot;
     }
 
     /*
@@ -149,6 +154,24 @@ public:
         assert(slot && "reserve() called with null slot");
 #endif
         return slot->reserve(len, pool_);
+    }
+
+    /*
+        Discard a producer-acquired slot that will not be committed.
+
+        This method must be used when the producer abandons a slot after it has
+        already been acquired but before commit_producer_slot() is called.
+
+        Behavior:
+            • Calls slot.reset(pool_) to return any external memory to the pool
+            • Clears slot state so that it can be safely reused by the producer
+
+        Important: The slot must NOT have been committed
+    */
+    inline void discard_producer_slot(Slot* slot) noexcept {
+        if (slot) [[likely]] {
+            slot->reset(pool_);
+        }
     }
 
     // =========================================================================

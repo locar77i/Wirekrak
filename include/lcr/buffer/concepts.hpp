@@ -171,6 +171,9 @@ concept ProducerSpscRingConcept =
 
     // Publish the slot (makes it visible to the consumer)
     { ring.commit_producer_slot() } noexcept -> std::same_as<void>;
+
+    // Discard a producer-acquired slot without publishing it
+    { ring.discard_producer_slot(slot) } noexcept -> std::same_as<void>;
 };
 
 

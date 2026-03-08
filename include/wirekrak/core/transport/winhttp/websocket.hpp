@@ -281,7 +281,8 @@ private:
             // === Lazy slot acquisition (start of new message) ===
             if (!current_slot) [[likely]] {
                 current_slot = acquire_slot_();
-                if (! current_slot) [[unlikely]] {
+                assert(current_slot->size() == 0 && "On receive loop - acquired slot should be empty");
+                if (!current_slot) [[unlikely]] {
                     continue; // backpressure handling (no slot available)
                 }
             }
@@ -291,6 +292,7 @@ private:
                 promotion_result_type r = message_ring_.reserve(current_slot, config::transport::websocket::FRAME_SIZE_HINT);
                 if (r > promotion_result_type::Success) [[unlikely]] {
                     handle_fatal_error_("[WS] Failed to grow message slot for incoming message (reserve failed)", Error::ProtocolError);
+                    message_ring_.discard_producer_slot(current_slot);
                     current_slot = nullptr;
                     break;
                 }
@@ -302,6 +304,7 @@ private:
                 handle_fatal_error_("[WS] Failed to receive incoming message (size exceeds buffer capacity)"
                     " - transport correctness compromised (message will be truncated)", Error::ProtocolError);
                 // abandon current slot (not committed)
+                message_ring_.discard_producer_slot(current_slot);
                 current_slot = nullptr;
                 break;
             }
@@ -327,6 +330,7 @@ private:
                 running_.store(false, std::memory_order_release);
                 signal_close_();
                 // abandon current slot (not committed)
+                message_ring_.discard_producer_slot(current_slot);
                 current_slot = nullptr;
                 break;
             }
@@ -342,6 +346,7 @@ private:
                 running_.store(false, std::memory_order_release);
                 signal_close_();
                 // abandon current slot (not committed)
+                message_ring_.discard_producer_slot(current_slot);
                 current_slot = nullptr;
                 break;
             }
@@ -358,11 +363,10 @@ private:
                 WK_TL1( telemetry_.rx_message_bytes.set(total_bytes) );
                 WK_TL1( telemetry_.messages_rx_total.inc() );
                 WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
-                // Commit the complete message to the ring buffer
+                // Commit the complete message to the ring buffer (and reset state for the next message)
                 message_ring_.commit_producer_slot();
-                // Reset for the next message
-                fragments = 0;
                 current_slot = nullptr;
+                fragments = 0;
             }
             else // === Handle message fragments ===
             if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
