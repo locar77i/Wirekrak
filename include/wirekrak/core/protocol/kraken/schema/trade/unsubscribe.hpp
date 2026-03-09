@@ -20,7 +20,7 @@ namespace trade {
 struct Unsubscribe {
     using unsubscribe_tag = void;
 
-    std::vector<Symbol> symbols;
+    Symbols symbols;
     lcr::optional<ctrl::req_id_t> req_id{};
 
     // ---------------------------------------------------------------------

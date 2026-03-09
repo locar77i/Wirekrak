@@ -472,6 +472,11 @@ private:
             WK_ERROR("[WS] Cannot connect to remote host");
             return Error::ConnectionFailed;
 
+        case ERROR_WINHTTP_INVALID_SERVER_RESPONSE: // ERR_INVALID_RESPONSE 12152 (invalid response)
+            // Protocol error or unexpected server response
+            WK_ERROR("[WS] Invalid response from server");
+            return Error::ProtocolError;
+
         default:
             // Anything else is unexpected
             WK_ERROR("[WS] Receive failed with error code " << error);

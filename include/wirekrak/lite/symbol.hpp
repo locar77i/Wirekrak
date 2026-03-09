@@ -1,15 +1,14 @@
 #pragma once
 
 #include <string>
-#include <string_view>
 #include <vector>
-#include <sstream>
-#include <cassert>
 
 
 namespace wirekrak::lite {
 
 using Symbol = std::string;
+
+using Symbols = std::vector<Symbol>;
 
 
 } // namespace wirekrak::lite

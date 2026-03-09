@@ -314,7 +314,7 @@ public:
             return ctrl::INVALID_REQ_ID;
         }
         // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        std::vector<Symbol> cancelled = subscription_manager_for_<RequestT>().register_unsubscription(std::move(req.symbols), req.req_id.value());
+        Symbols cancelled = subscription_manager_for_<RequestT>().register_unsubscription(std::move(req.symbols), req.req_id.value());
         // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect (only if replay enabled)
         if constexpr (ReplayPolicy::enabled) {
             for (const auto& symbol : cancelled) {

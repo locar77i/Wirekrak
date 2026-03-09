@@ -203,7 +203,7 @@ void Client::on_error(error_handler cb) {
 // Trade subscriptions
 // -----------------------------
 
-void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb, bool snapshot) {
+void Client::subscribe_trades(Symbols symbols, trade_handler cb, bool snapshot) {
     // ---------------------------------------------------------------------
     // Mapping: Kraken trade response → Lite domain::Trade
     // ---------------------------------------------------------------------
@@ -237,7 +237,7 @@ void Client::subscribe_trades(std::vector<std::string> symbols, trade_handler cb
     impl_->trade_dispatcher.add(std::move(symbols), std::move(emit_trades));
 }
 
-void Client::unsubscribe_trades(const std::vector<std::string>& symbols) {
+void Client::unsubscribe_trades(const Symbols& symbols) {
     // Make a copy ONLY for Core (to remove in the future)
     // Core consumes by value, Lite owns original
     auto symbols_for_core = core::to_symbols(symbols);
@@ -253,7 +253,7 @@ void Client::unsubscribe_trades(const std::vector<std::string>& symbols) {
 // Book subscriptions
 // -----------------------------
 
-void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, bool snapshot) {
+void Client::subscribe_book(Symbols symbols, book_handler cb, bool snapshot) {
     // ---------------------------------------------------------------------
     // Mapping: Kraken book response → Lite domain::BookLevel
     // ---------------------------------------------------------------------
@@ -295,7 +295,7 @@ void Client::subscribe_book(std::vector<std::string> symbols, book_handler cb, b
     impl_->book_dispatcher.add(std::move(symbols), std::move(emit_book_levels));
 }
 
-void Client::unsubscribe_book(const std::vector<std::string>& symbols) {
+void Client::unsubscribe_book(const Symbols& symbols) {
     // Make a copy ONLY for Core (to remove in the future)
     // Core consumes by value, Lite owns original
     auto symbols_for_core = core::to_symbols(symbols);

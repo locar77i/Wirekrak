@@ -58,7 +58,7 @@ public:
     // ------------------------------------------------------------
 
     [[nodiscard]]
-    inline std::vector<Symbol> register_subscription(std::vector<Symbol> symbols, ctrl::req_id_t req_id) noexcept {
+    inline Symbols register_subscription(Symbols symbols, ctrl::req_id_t req_id) noexcept {
         WK_TRACE("[SUBMGR:" << to_string(channel_) << "] Registering subscription request (req_id=" << req_id << ")");
 
         std::size_t write = 0;
@@ -99,12 +99,12 @@ public:
     }
 
     [[nodiscard]]
-    std::vector<Symbol> register_unsubscription(std::vector<Symbol> symbols, ctrl::req_id_t req_id) noexcept {
+    Symbols register_unsubscription(Symbols symbols, ctrl::req_id_t req_id) noexcept {
         WK_TRACE("[SUBMGR:" << to_string(channel_) << "] Registering unsubscription request (req_id=" << req_id << ")");
-        std::vector<Symbol> filtered;
+        Symbols filtered;
         filtered.reserve(symbols.size());
 
-        std::vector<Symbol> cancelled;
+        Symbols cancelled;
 
         for (const auto& symbol : symbols) {
             // 0) Get symbol ID

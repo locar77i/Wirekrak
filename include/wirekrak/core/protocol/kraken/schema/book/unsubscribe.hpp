@@ -33,7 +33,7 @@ namespace book {
 struct Unsubscribe {
     using unsubscribe_tag = void;
 
-    std::vector<Symbol> symbols;
+    Symbols symbols;
     lcr::optional<std::uint32_t> depth{};
     lcr::optional<ctrl::req_id_t> req_id{};
 

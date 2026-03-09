@@ -84,7 +84,7 @@ public:
           • That callback may be associated with N symbols
           • The callback will be invoked once per matching message
     */
-    inline void add(const std::vector<Symbol>& symbols, Callback cb) {
+    inline void add(const Symbols& symbols, Callback cb) {
         WK_TRACE("[DISPATCHER] Adding callbacks for " << symbols.size() << " symbol(s)");
 
         for (const auto& s : symbols) {
@@ -143,7 +143,7 @@ public:
         symbols_map_.erase(it);
     }
 
-    inline void remove(const std::vector<Symbol>& symbols) {
+    inline void remove(const Symbols& symbols) {
         WK_TRACE("[DISPATCHER] Removing callbacks for " << symbols.size() << " symbol(s)");
 
         for (const auto& symbol : symbols) {

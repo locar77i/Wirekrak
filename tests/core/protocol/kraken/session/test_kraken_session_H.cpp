@@ -26,7 +26,7 @@ using namespace wirekrak::core::protocol::kraken::test;
 // ------------------------------------------------------------
 
 static Symbol random_symbol(std::mt19937& rng) {
-    static const std::vector<Symbol> syms = {
+    static const Symbols syms = {
         "BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD"
     };
     std::uniform_int_distribution<> dist(0, syms.size() - 1);
@@ -268,7 +268,7 @@ void test_replay_db_saturation_limit() {
     constexpr uint32_t SEED = 777;
     constexpr int SYMBOL_UNIVERSE = 5;
 
-    std::vector<Symbol> symbols = {
+    Symbols symbols = {
         "BTC/USD",
         "ETH/USD",
         "SOL/USD",
@@ -628,7 +628,7 @@ void test_hard_limit_enforcement() {
 
     constexpr std::size_t MAX_SYMBOLS = 5;
 
-    std::vector<Symbol> symbols = {
+    Symbols symbols = {
         "BTC/USD", "ETH/USD", "SOL/USD",
         "LTC/USD", "XRP/USD", "ADA/USD",
         "DOT/USD"
