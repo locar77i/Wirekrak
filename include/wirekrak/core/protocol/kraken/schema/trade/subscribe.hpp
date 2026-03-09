@@ -21,7 +21,7 @@ namespace trade {
 struct Subscribe {
     using subscribe_tag = void;
 
-    Symbols symbols;
+    RequestSymbols symbols;
     lcr::optional<bool> snapshot{};
     lcr::optional<ctrl::req_id_t> req_id{};
 

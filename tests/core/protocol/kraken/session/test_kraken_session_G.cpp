@@ -31,7 +31,7 @@ These tests validate:
 // ------------------------------------------------------------
 
 static Symbol random_symbol(std::mt19937& rng) {
-    static const Symbols syms = {
+    static const RequestSymbols syms = {
         "BTC/USD", "ETH/USD", "SOL/USD", "LTC/USD"
     };
     std::uniform_int_distribution<> dist(0, syms.size() - 1);

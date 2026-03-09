@@ -32,7 +32,7 @@ namespace book {
 struct Subscribe {
     using subscribe_tag = void;
 
-    Symbols symbols;
+    RequestSymbols symbols;
     lcr::optional<std::uint32_t> depth{};     // default: 10
     lcr::optional<bool> snapshot{};           // default: true
     lcr::optional<ctrl::req_id_t> req_id{};

@@ -91,7 +91,7 @@ private:
 
 private:
     mutable std::shared_mutex mutex_;
-    Symbols symbols_; // permanent storage of symbol names
+    std::vector<Symbol> symbols_; // permanent storage of symbol names
     std::unordered_map<std::string_view, SymbolId, SvHasher, SvEqual> map_;
 };
 

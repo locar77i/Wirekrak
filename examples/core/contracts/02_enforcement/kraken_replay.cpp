@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
     );
     params.dump("=== Runtime Parameters ===", std::cout);
 
-    auto symbols = to_symbols(params.symbols);
+    auto symbols = to_request_symbols(params.symbols);
 
     // -------------------------------------------------------------
     // Session setup

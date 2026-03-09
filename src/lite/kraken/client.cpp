@@ -81,9 +81,9 @@ struct Client::Impl {
         while (session.pop_rejection(rejection_msg)) {
             // 1) Remove any callbacks associated with this symbol to prevent future invocations
             if (rejection_msg.symbol.has()) {
-                auto s = to_std_string(rejection_msg.symbol.value());
-                trade_dispatcher.remove(s);
-                book_dispatcher.remove(s);
+                Symbol symbol = rejection_msg.symbol.value().c_str();
+                trade_dispatcher.remove(symbol);
+                book_dispatcher.remove(symbol);
             }
             // 2) Emit error callback if provided
             if (error_cb) {
@@ -226,7 +226,7 @@ void Client::subscribe_trades(Symbols symbols, trade_handler cb, bool snapshot) 
 
     // Make a copy ONLY for Core (to remove in the future)
     // Core consumes by value, Lite owns original
-    auto symbols_for_core = core::to_symbols(symbols);
+    auto symbols_for_core = core::to_request_symbols(symbols);
 
     // 1) Submit intent to Core
     impl_->session.subscribe(
@@ -240,7 +240,7 @@ void Client::subscribe_trades(Symbols symbols, trade_handler cb, bool snapshot) 
 void Client::unsubscribe_trades(const Symbols& symbols) {
     // Make a copy ONLY for Core (to remove in the future)
     // Core consumes by value, Lite owns original
-    auto symbols_for_core = core::to_symbols(symbols);
+    auto symbols_for_core = core::to_request_symbols(symbols);
 
     impl_->session.unsubscribe(schema::trade::Unsubscribe{ .symbols = std::move(symbols_for_core) });
     // Optional: if Kraken rejects later, rejection handling will clean this anyway
@@ -284,7 +284,7 @@ void Client::subscribe_book(Symbols symbols, book_handler cb, bool snapshot) {
 
     // Make a copy ONLY for Core (to remove in the future)
     // Core consumes by value, Lite owns original
-    auto symbols_for_core = core::to_symbols(symbols);
+    auto symbols_for_core = core::to_request_symbols(symbols);
 
     // 1) Submit intent to Core
     impl_->session.subscribe(
@@ -298,7 +298,7 @@ void Client::subscribe_book(Symbols symbols, book_handler cb, bool snapshot) {
 void Client::unsubscribe_book(const Symbols& symbols) {
     // Make a copy ONLY for Core (to remove in the future)
     // Core consumes by value, Lite owns original
-    auto symbols_for_core = core::to_symbols(symbols);
+    auto symbols_for_core = core::to_request_symbols(symbols);
 
     impl_->session.unsubscribe(schema::book::Unsubscribe{ .symbols = std::move(symbols_for_core) });
     // Optional: if Kraken rejects later, rejection handling will clean this anyway

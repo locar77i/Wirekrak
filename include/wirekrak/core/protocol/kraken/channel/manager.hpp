@@ -58,7 +58,7 @@ public:
     // ------------------------------------------------------------
 
     [[nodiscard]]
-    inline Symbols register_subscription(Symbols symbols, ctrl::req_id_t req_id) noexcept {
+    inline RequestSymbols register_subscription(RequestSymbols symbols, ctrl::req_id_t req_id) noexcept {
         WK_TRACE("[SUBMGR:" << to_string(channel_) << "] Registering subscription request (req_id=" << req_id << ")");
 
         std::size_t write = 0;
@@ -87,8 +87,8 @@ public:
             }
             ++write;
         }
-        // Resize to filtered size and register pending subscribe
-        symbols.resize(write);
+        // Truncate to accepted symbols and register pending subscribe
+        symbols.erase(symbols.begin() + write, symbols.end());
         if (!symbols.empty()) {
             pending_subscriptions_.add(req_id, symbols);
         }
@@ -99,12 +99,10 @@ public:
     }
 
     [[nodiscard]]
-    Symbols register_unsubscription(Symbols symbols, ctrl::req_id_t req_id) noexcept {
+    RequestSymbols register_unsubscription(RequestSymbols symbols, ctrl::req_id_t req_id) noexcept {
         WK_TRACE("[SUBMGR:" << to_string(channel_) << "] Registering unsubscription request (req_id=" << req_id << ")");
-        Symbols filtered;
-        filtered.reserve(symbols.size());
-
-        Symbols cancelled;
+        RequestSymbols filtered;
+        RequestSymbols cancelled;
 
         for (const auto& symbol : symbols) {
             // 0) Get symbol ID

@@ -53,7 +53,7 @@ public:
     // ------------------------------------------------------------
     // Add a new pending request
     // ------------------------------------------------------------
-    inline void add(ctrl::req_id_t req_id, const Symbols& symbols) noexcept {
+    inline void add(ctrl::req_id_t req_id, const RequestSymbols& symbols) noexcept {
         auto& vec = requests_[req_id];
 
         for (const auto& symbol : symbols) {

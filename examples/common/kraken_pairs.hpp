@@ -20,7 +20,7 @@ namespace kraken {
 | Top 10 pairs
 |--------------------------------------------------------------------------
 */
-static const std::vector<core::Symbol> top10 = {
+static const core::RequestSymbols top10 = {
     "BTC/USD", "BTC/EUR",
     "ETH/USD", "ETH/EUR",
     "SOL/USD", "SOL/EUR",
@@ -34,7 +34,7 @@ static const std::vector<core::Symbol> top10 = {
 | Top 20 pairs
 |--------------------------------------------------------------------------
 */
-static const std::vector<core::Symbol> top20 = {
+static const core::RequestSymbols top20 = {
     
     "BTC/USD","BTC/EUR",
     "ETH/USD","ETH/EUR",
@@ -55,7 +55,7 @@ static const std::vector<core::Symbol> top20 = {
 | Top 50 pairs
 |--------------------------------------------------------------------------
 */
-static const std::vector<core::Symbol> top50 = {
+static const core::RequestSymbols top50 = {
     
     "BTC/USD","BTC/EUR",
     "ETH/USD","ETH/EUR",
@@ -94,7 +94,7 @@ static const std::vector<core::Symbol> top50 = {
 | Top 100 pairs
 |--------------------------------------------------------------------------
 */
-static const std::vector<core::Symbol> top100 = {
+static const core::RequestSymbols top100 = {
 
     "BTC/USD","BTC/EUR",
     "ETH/USD","ETH/EUR",
@@ -159,7 +159,7 @@ static const std::vector<core::Symbol> top100 = {
 
 
 
-static const std::vector<core::Symbol> top200 = {
+static const core::RequestSymbols top200 = {
 
 "BTC/USD","BTC/EUR","BTC/USDT","BTC/USDC",
 "ETH/USD","ETH/EUR","ETH/USDT","ETH/USDC",

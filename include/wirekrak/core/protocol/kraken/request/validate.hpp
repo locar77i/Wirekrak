@@ -13,7 +13,7 @@ namespace wirekrak::core::protocol::kraken::request {
 // Validate common Kraken request invariants (Debug only)
 // ------------------------------------------------------------
 
-inline void validate_symbols(const Symbols& symbols) {
+inline void validate_symbols(const RequestSymbols& symbols) {
 #ifndef NDEBUG
     assert(!symbols.empty() && "Kraken request requires at least one symbol");
 

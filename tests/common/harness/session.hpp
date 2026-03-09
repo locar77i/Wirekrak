@@ -121,17 +121,17 @@ struct Session {
     // -------------------------------------------------------------------------
     // Subscribe/Unsubscribe helpers
     // -------------------------------------------------------------------------
-    inline ctrl::req_id_t subscribe_trade(Symbols symbols) {
+    inline ctrl::req_id_t subscribe_trade(RequestSymbols symbols) {
         schema::trade::Subscribe req{.symbols = std::move(symbols)};
         return session.subscribe(req);
     }
 
     inline ctrl::req_id_t subscribe_trade(std::initializer_list<Symbol> symbols) {
-        return subscribe_trade(Symbols{symbols});
+        return subscribe_trade(RequestSymbols{symbols});
     }
 
     inline ctrl::req_id_t subscribe_trade(const Symbol& symbol) {
-        return subscribe_trade(Symbols{symbol});
+        return subscribe_trade(RequestSymbols{symbol});
     }
 
     inline ctrl::req_id_t unsubscribe_trade(const Symbol& symbol) {
@@ -139,17 +139,17 @@ struct Session {
         return session.unsubscribe(unsub);
     }
 
-    inline ctrl::req_id_t subscribe_book(Symbols symbols, int depth) {
+    inline ctrl::req_id_t subscribe_book(RequestSymbols symbols, int depth) {
         schema::book::Subscribe sub{.symbols = std::move(symbols), .depth = depth};
         return session.subscribe(sub);
     }
 
     inline ctrl::req_id_t subscribe_book(std::initializer_list<Symbol> symbols, int depth) {
-        return subscribe_book(Symbols{symbols}, depth);
+        return subscribe_book(RequestSymbols{symbols}, depth);
     }
 
     inline ctrl::req_id_t subscribe_book(const Symbol& symbol, int depth) {
-        return subscribe_book(Symbols{std::move(symbol)}, depth);
+        return subscribe_book(RequestSymbols{std::move(symbol)}, depth);
     }
 
     inline ctrl::req_id_t unsubscribe_book(const Symbol& symbol, int depth) {
