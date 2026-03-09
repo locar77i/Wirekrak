@@ -303,7 +303,7 @@ private:
                 assert(current_slot->size() == 0 && "On receive loop - acquired slot should be empty");
 #endif
             }
-            // === Reactive growth (ONLY if not starting a new message and capacity isexhausted) ===
+            // === Reactive growth (ONLY if not starting a new message and capacity is exhausted) ===
             else if (current_slot->remaining() < config::transport::websocket::MIN_FRAME_SIZE) [[unlikely]] {
                 static constexpr std::size_t growth_hint = 16 * 1024;
                 promotion_result_type r = message_ring_.reserve(current_slot, config::transport::websocket::FRAME_SIZE_HINT);

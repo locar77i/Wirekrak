@@ -318,7 +318,7 @@ public:
     }
 
     [[nodiscard]]
-    inline const std::chrono::steady_clock::time_point last_message_ts() const noexcept {
+    inline std::chrono::steady_clock::time_point last_message_ts() const noexcept {
         return last_message_ts_;
     }
 

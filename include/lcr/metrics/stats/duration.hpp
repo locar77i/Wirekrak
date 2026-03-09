@@ -136,10 +136,10 @@ struct alignas(64) duration {
     }
 
 private:
-    counter<T> total_ns_{};
-    counter<T> samples_{};
-    gauge<T>   min_ns_{std::numeric_limits<T>::max()};
-    gauge<T>   max_ns_{};
+    counter64 total_ns_{};
+    counter64 samples_{};
+    gauge<T>  min_ns_{std::numeric_limits<T>::max()};
+    gauge<T>  max_ns_{};
 };
 
 // Fixed-width specialization for hot path

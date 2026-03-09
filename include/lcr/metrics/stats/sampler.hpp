@@ -107,10 +107,10 @@ struct alignas(64) sampler {
     }
 
 private:
-    counter<T>  total_{};
-    counter<T>  samples_{};
-    gauge<T>    min_{std::numeric_limits<T>::max()};
-    gauge<T>    max_{};
+    counter64 total_{};
+    counter64 samples_{};
+    gauge<T>  min_{std::numeric_limits<T>::max()};
+    gauge<T>  max_{};
 };
 using sampler32 = sampler<uint32_t>;
 static_assert(std::is_standard_layout_v<sampler32>, "sampler32 must be standard layout");

@@ -104,11 +104,11 @@ struct alignas(64) size {
     }
 
 private:
-    gauge<T>    last_{};
-    counter<T>  accumulated_{};
-    counter<T>  samples_{};
-    gauge<T>    min_{std::numeric_limits<T>::max()};
-    gauge<T>    max_{};
+    gauge<T>   last_{};
+    counter64  accumulated_{};
+    counter64  samples_{};
+    gauge<T>   min_{std::numeric_limits<T>::max()};
+    gauge<T>   max_{};
     // Private methods/helpers --------------------------------------------------------------
 
     inline void update_extremes_(T value) noexcept {
