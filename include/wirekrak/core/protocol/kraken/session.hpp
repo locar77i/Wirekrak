@@ -67,7 +67,7 @@ Data-plane model:
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
-#include "wirekrak/core/protocol/request/batcher.hpp"
+#include "wirekrak/core/protocol/request/scheduler.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
@@ -472,11 +472,11 @@ public:
         // Batching logic for user requests
         // ===============================================================================
         if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Paced) {
-            batcher_.poll();
-            if (!batcher_.idle() && batcher_.should_emit()) {
+            request_scheduler_.poll();
+            if (!request_scheduler_.idle() && request_scheduler_.should_dequeue()) {
                 std::string_view msg;
-                if (batcher_.next(msg)) {
-                    WK_DEBUG("[SESSION] Emitting paced request: " << msg);
+                if (request_scheduler_.dequeue(msg)) {
+                    WK_TRACE("[SESSION] Emitting paced request: " << msg);
                     if (!connection_.send(msg)) {
                         WK_ERROR("[SESSION] Failed to send paced request - " << msg);
                         return false;
@@ -660,8 +660,14 @@ private:
     // Temporary buffer for request serialization (to avoid heap allocations)
     lcr::local::raw_buffer<config::protocol::TX_BUFFER_CAPACITY> tx_buffer_{};
 
-    // Batching manager for huge subscribe requests 
-    protocol::request::Batcher<BatchingPolicy> batcher_;
+    // Request scheduler for huge subscribe requests 
+    using RequestSchedulerT =
+        std::conditional_t<
+            BatchingPolicy::mode == policy::protocol::BatchingMode::Paced,
+            protocol::request::Scheduler<BatchingPolicy>,
+            protocol::request::NullScheduler
+        >;
+    RequestSchedulerT request_scheduler_;
 
     // Session context (owning)
     std::unique_ptr<Context> ctx_;
@@ -906,7 +912,7 @@ private:
                 }
                 else {  
                     WK_TRACE("[SESSION] Sending paced subscribe message: " << batch.symbols.size() << " symbol/s (req_id=" << batch.req_id.value() << ")");
-                    if (!batcher_.add_request(batch)) {
+                    if (!request_scheduler_.enqueue(batch)) {
                         return false;
                     }
                 }

@@ -131,6 +131,11 @@ public:
         return state_;
     }
 
+    [[nodiscard]]
+    constexpr bool is_active() const noexcept {
+        return state_ == State::Active;
+    }
+
     inline void reset() noexcept {
         state_ = State::Inactive;
         activate_streak_ = 0;

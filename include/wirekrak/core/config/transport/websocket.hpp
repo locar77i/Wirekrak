@@ -101,7 +101,7 @@ namespace transport {
 
 inline constexpr static std::size_t CONTROL_RING_CAPACITY = 1 << 8;    // 256 control events (number of events)
 
-inline constexpr static std::size_t MESSAGE_RING_CAPACITY = 1 << 8;    // 256 messages (number of slots)
+inline constexpr static std::size_t MESSAGE_RING_CAPACITY = 1 << 10;   // 1024 messages (number of slots)
 
 namespace websocket {
 

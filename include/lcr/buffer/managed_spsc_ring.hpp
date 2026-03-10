@@ -79,6 +79,7 @@ Important Guarantees
 
 namespace lcr::buffer {
 
+
 template<
     typename Slot,
     typename MemoryPool,
@@ -119,7 +120,7 @@ public:
             2. Call commit_producer_slot()
     */
     [[nodiscard]]
-    inline Slot* acquire_producer_slot() noexcept {
+    Slot* acquire_producer_slot() noexcept {
         return ring_.acquire_producer_slot();
         Slot* slot = ring_.acquire_producer_slot();
         if (slot) [[likely]] { // Ensure slot is always clean when handed to producer
@@ -133,7 +134,7 @@ public:
 
         Makes the written message visible to consumer.
     */
-    inline void commit_producer_slot() noexcept {
+    void commit_producer_slot() noexcept {
         ring_.commit_producer_slot();
     }
 
@@ -149,7 +150,7 @@ public:
             PromotionResult::TooLarge      → exceeds slot limits
     */
     [[nodiscard]]
-    inline promotion_result_type reserve(Slot* slot, std::size_t len ) noexcept {
+    promotion_result_type reserve(Slot* slot, std::size_t len ) noexcept {
 #ifndef NDEBUG
         assert(slot && "reserve() called with null slot");
 #endif
@@ -168,7 +169,7 @@ public:
 
         Important: The slot must NOT have been committed
     */
-    inline void discard_producer_slot(Slot* slot) noexcept {
+    void discard_producer_slot(Slot* slot) noexcept {
         if (slot) [[likely]] {
             slot->reset(pool_);
         }
@@ -186,7 +187,7 @@ public:
             nullptr if ring is empty.
     */
     [[nodiscard]]
-    inline Slot* peek_consumer_slot() noexcept {
+    Slot* peek_consumer_slot() noexcept {
         return ring_.peek_consumer_slot();
     }
 
@@ -201,7 +202,7 @@ public:
         IMPORTANT:
             Slot must not be accessed after this call.
     */
-    inline void release_consumer_slot() noexcept {
+    void release_consumer_slot() noexcept {
         Slot* slot = ring_.peek_consumer_slot();
         if (slot) {
             slot->reset(pool_);
@@ -215,24 +216,30 @@ public:
     // =========================================================================
 
     [[nodiscard]]
-    inline bool empty() const noexcept {
+    bool empty() const noexcept {
         return ring_.empty();
     }
 
     [[nodiscard]]
-    inline bool full() const noexcept {
+    bool full() const noexcept {
         return ring_.full();
     }
 
     [[nodiscard]]
-    inline std::size_t used() const noexcept {
+    std::size_t used() const noexcept {
         return ring_.used();
     }
 
     [[nodiscard]]
-    inline constexpr std::size_t capacity() const noexcept {
+    constexpr std::size_t capacity() const noexcept {
         return ring_.capacity();
     }
+
+    [[nodiscard]]
+    constexpr MemoryPool& memory_pool() const noexcept {
+        return pool_;
+    }
+
 
     // =========================================================================
     // Lifecycle
@@ -245,7 +252,7 @@ public:
             • Producer thread must be stopped
             • No concurrent access
     */
-    inline void clear() noexcept {
+    void clear() noexcept {
         while (auto* slot = ring_.peek_consumer_slot()) {
             slot->reset(pool_);
             ring_.release_consumer_slot();
@@ -257,7 +264,7 @@ public:
     // =========================================================================
 
     [[nodiscard]]
-    inline auto memory_usage() const noexcept {
+    auto memory_usage() const noexcept {
         return ring_.memory_usage();
     }
 

@@ -16,7 +16,7 @@ template<
     std::size_t QueueCapacity = config::protocol::TX_BATCH_QUEUE_CAPACITY,
     std::size_t MaxPayload    = config::protocol::TX_BATCH_BUFFER_CAPACITY
 >
-class Batcher {
+class Scheduler {
 public:
 
     using buffer_type = lcr::local::raw_buffer<MaxPayload>;
@@ -39,11 +39,11 @@ public:
     }
 
     // ---------------------------------------------------------------------
-    // Should emit next batch?
+    // Should dequeue next batch?
     // ---------------------------------------------------------------------
 
     [[nodiscard]]
-    inline bool should_emit() noexcept {
+    inline bool should_dequeue() noexcept {
         if constexpr (Policy::mode == policy::protocol::BatchingMode::Paced) {
             if (poll_counter_ < Policy::emit_interval) {
                 return false;
@@ -55,13 +55,13 @@ public:
     }
 
     // ---------------------------------------------------------------------
-    // Add request
+    // Enqueue batch request
     // ---------------------------------------------------------------------
 
     template <typename RequestT>
     requires DynamicJsonWritable<RequestT>
     [[nodiscard]]
-    bool add_request(const RequestT& req) noexcept {
+    bool enqueue(const RequestT& req) noexcept {
         auto* slot = queue_.acquire_producer_slot();
         if (!slot) [[unlikely]] {
             return false;
@@ -76,11 +76,11 @@ public:
     }
 
     // ---------------------------------------------------------------------
-    // Get next serialized message
+    // Dequeue batch request (for emission)
     // ---------------------------------------------------------------------
 
     [[nodiscard]]
-    bool next(std::string_view& out) noexcept {
+    bool dequeue(std::string_view& out) noexcept {
         auto* slot = queue_.peek_consumer_slot();
         if (!slot) [[unlikely]] {
             return false;
@@ -95,6 +95,19 @@ private:
     std::size_t poll_counter_{0};
     lcr::local::ring<buffer_type, QueueCapacity> queue_;
 
+};
+
+
+
+struct NullScheduler {
+    inline void poll() noexcept {}
+    [[nodiscard]] inline bool idle() const noexcept { return true; }
+    [[nodiscard]] inline bool should_dequeue() noexcept { return false; }
+
+    template<typename T>
+    [[nodiscard]] bool enqueue(const T&) noexcept { return true; }
+
+    [[nodiscard]] bool dequeue(std::string_view&) noexcept { return false; }
 };
 
 } // namespace wirekrak::core::protocol::request

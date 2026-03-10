@@ -93,8 +93,8 @@ using MySessionPolicies =
         policy::protocol::DefaultReplay,
         policy::protocol::BatchingPolicy<
             policy::protocol::BatchingMode::Paced,
-            10,       // batch size
-            1 << 18   // emit interval
+            10,      // batch size
+            100      // emit interval
         >
     >;
 

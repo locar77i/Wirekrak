@@ -115,7 +115,7 @@ public:
     Lock-free O(1)
     */
     [[nodiscard]]
-    inline block* acquire() noexcept {
+    block* acquire() noexcept {
         node* n = pop_node_();
         if (!n) [[unlikely]] {
             return nullptr; // pool exhausted
@@ -135,18 +135,42 @@ public:
     IMPORTANT:
       Caller must guarantee the block belongs to this pool.
     */
-    inline void release(block* block) noexcept {
+    void release(block* block) noexcept {
         assert(block);
         node* n = node_from_block_(block);
         push_node_(n);
     }
 
 
+    // =========================================================================
+    // Introspection
+    // =========================================================================
+
+    [[nodiscard]]
+    bool empty() const noexcept {
+        return head_.load(std::memory_order_acquire) == nullptr;
+    }
+
+    [[nodiscard]]
+    bool full() const noexcept {
+        return used() == 0;
+    }
+
+    [[nodiscard]]
+    std::size_t used() const noexcept {
+        return block_count_ - free_nodes_();
+    }
+
+    [[nodiscard]]
+    constexpr std::size_t capacity() const noexcept {
+        return block_count_;
+    }
+
     // ---------------------------------------------------------------------------
     // Memory Usage Introspection
     // ---------------------------------------------------------------------------
     [[nodiscard]]
-    inline footprint memory_usage() const noexcept {
+    footprint memory_usage() const noexcept {
         footprint fp;
         fp.add_static(sizeof(*this));
         fp.add_dynamic(block_count_ * sizeof(node));
@@ -206,7 +230,7 @@ private:
       • release on success ensures writes to node->next are visible
       • relaxed on failure is sufficient
     */
-    inline void push_node_(node* n) noexcept {
+    void push_node_(node* n) noexcept {
         node* old_head = head_.load(std::memory_order_relaxed);
         do {
             n->next = old_head;
@@ -235,7 +259,7 @@ private:
     Returns nullptr if pool empty.
     */
     [[nodiscard]]
-    inline node* pop_node_() noexcept {
+    node* pop_node_() noexcept {
         node* old_head = head_.load(std::memory_order_acquire);
         while (old_head) {
             node* next = old_head->next;
@@ -264,10 +288,22 @@ private:
     This relies on standard layout guarantees.
     */
     [[nodiscard]]
-    inline node* node_from_block_(block* block) noexcept {
+    node* node_from_block_(block* block) noexcept {
         return reinterpret_cast<node*>(
             reinterpret_cast<char*>(block) - offsetof(node, block)
         );
+    }
+
+
+    [[nodiscard]]
+    std::size_t free_nodes_() const noexcept {
+        std::size_t count = 0;
+        node* n = head_.load(std::memory_order_acquire);
+        while (n) {
+            ++count;
+            n = n->next;
+        }
+        return count;
     }
 };
 

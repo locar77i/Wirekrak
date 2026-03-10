@@ -197,7 +197,7 @@ int main() {
     lcr::metrics::snapshot::Manager<transport::telemetry::WebSocket> telemetry_mgr{telemetry};
 
     std::cout << "[WS] Connecting to ws.kraken.com ..." << std::endl;
-    if (ws.connect("ws.kraken.com", "443", "/v2") != transport::Error::None) {
+    if (ws.connect("ws.kraken.com", 443, "/v2", true) != transport::Error::None) {
         std::cerr << "Connect failed for 'ws.kraken.com'" << std::endl;
         return 1;
     }

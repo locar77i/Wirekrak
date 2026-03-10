@@ -46,6 +46,7 @@ is validated independently from the operating system and network stack.
 #include "lcr/memory/footprint.hpp"
 #include "lcr/buffer/concepts.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/format.hpp"
 #include "lcr/log/logger.hpp"
 
 #include <windows.h>
@@ -93,7 +94,7 @@ public:
     }
 
     [[nodiscard]]
-    inline Error connect(std::string_view host, std::uint16_t port, std::string_view path, bool secure) noexcept {
+    Error connect(std::string_view host, std::uint16_t port, std::string_view path, bool secure) noexcept {
         hSession_ = WinHttpOpen(
             L"Wirekrak/1.0",
             WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
@@ -163,14 +164,14 @@ public:
     // A boolean “accepted / not accepted” is the honest signal.
     // Errors are reported asynchronously via the error callback.
     [[nodiscard]]
-    inline bool send(std::string_view msg) noexcept {
+    bool send(std::string_view msg) noexcept {
         // 1. Check preconditions (connected state)
         if (!hWebSocket_) [[unlikely]] {
             WK_ERROR("[WS] send() called on unconnected WebSocket");
             return false;
         }
         // 2. Call WebSocket send API
-        WK_TRACE("[WS:API] Sending message ... (size " << msg.size() << ")");
+        WK_TRACE("[WS:API] Sending message ... (size: " << lcr::format_bytes_exact(msg.size()) << ")");
         const DWORD result = api_.websocket_send(
             hWebSocket_,
             WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE,
@@ -189,7 +190,7 @@ public:
     }
 
     // Close - No guards and no early return (idempotent)
-    inline void close() noexcept {
+    void close() noexcept {
         // 1. Stop receive loop
         running_.store(false, std::memory_order_release);
 
@@ -213,19 +214,24 @@ public:
     }
 
     [[nodiscard]]
-    inline telemetry::WebSocket& telemetry() noexcept {
+    bool backpressure_active() const noexcept {
+        return backpressure_active_;
+    }
+
+    [[nodiscard]]
+    telemetry::WebSocket& telemetry() noexcept {
         return telemetry_;
     }
 
     [[nodiscard]]
-    inline lcr::memory::footprint memory_usage() const noexcept {
+    lcr::memory::footprint memory_usage() const noexcept {
         return lcr::memory::footprint{
             .static_bytes = sizeof(*this),
             .dynamic_bytes = 0
         };
     }
 
-    inline static void dump_configuration(std::ostream& os) noexcept {
+    static void dump_configuration(std::ostream& os) noexcept {
         PolicyBundle::dump(os);
     }
 
@@ -239,9 +245,12 @@ private:
     // Hysteresis type based on the backpressure policy mode
     using Hysteresis = typename BackpressurePolicy::hysteresis;
 
-    // Backpressure stabilizer (only used for non-zero-tolerance policies)
-    [[no_unique_address]]
-    Hysteresis backpressure_;
+    // Backpressure stabilizers (only used for non-zero-tolerance policies)
+    [[no_unique_address]] Hysteresis ring_backpressure_;
+    [[no_unique_address]] Hysteresis pool_backpressure_;
+
+    // Global transport-level backpressure state (independent of the individual FSMs)
+    bool backpressure_active_{false};
 
     // Compile-time API policy (default: RealApi)
     Api api_;
@@ -275,7 +284,7 @@ private:
     // - Zero-copy
     // - ULL-safe
     // - Deterministic
-    inline void receive_loop_() noexcept {
+    void receive_loop_() noexcept {
 #ifdef WK_UNIT_TEST
         // Debug builds exposed a race in the test harness.
         // Fixed it by adding a test-only synchronization hook to the transport so
@@ -303,16 +312,23 @@ private:
                 assert(current_slot->size() == 0 && "On receive loop - acquired slot should be empty");
 #endif
             }
-            // === Reactive growth (ONLY if not starting a new message and capacity is exhausted) ===
+            // === Reactive promotion (ONLY if not starting a new message and capacity is exhausted) ===
             else if (current_slot->remaining() == 0) [[unlikely]] {
-                static constexpr std::size_t growth_hint = 16 * 1024;
+/*
                 promotion_result_type r = message_ring_.reserve(current_slot, config::transport::websocket::FRAME_SIZE_HINT);
                 if (r > promotion_result_type::Success) [[unlikely]] {
-                    handle_fatal_error_("[WS] Failed to grow message slot for incoming message (reserve failed)", Error::ProtocolError);
+                    WK_WARN("[WS] Backpressure detected (memory pool exhausted)");
+                    handle_fatal_error_("[WS] Failed to promote message slot (zero-tolerance policy)"
+                        " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
                     message_ring_.discard_producer_slot(current_slot);
                     current_slot = nullptr;
                     break;
                 }
+*/
+                if (!promote_slot_(current_slot)) {
+                    continue; // backpressure handling (failed to promote)
+                }
+
             }
 
             // === Amount writable this iteration ===
@@ -327,7 +343,7 @@ private:
             }
 
             // === Call WebSocket receive API ===
-            WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
+            //WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
             DWORD result = api_.websocket_receive(
                 hWebSocket_,
                 current_slot->write_ptr(),
@@ -374,7 +390,8 @@ private:
             // === Handle final message frame ===
             if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE) [[likely]] {
                 if (fragments > 0) {
-                    WK_TRACE("[WS] Received final message fragment (size " << bytes << ", total message size " << total_bytes << ", fragments " << fragments << ")");
+                    WK_TRACE("[WS] Received final message fragment (size: " << lcr::format_bytes_exact(bytes) << ", total message size: "
+                        << lcr::format_bytes_exact(total_bytes) << ", fragments: " << fragments << ")");
                     WK_TL1( telemetry_.rx_fragments_total.inc() );
                 }
                 WK_TL1( telemetry_.rx_message_bytes.set(total_bytes) );
@@ -382,7 +399,8 @@ private:
                 WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
                 // Commit the complete message to the ring buffer (and reset state for the next message)
                 if (current_slot->is_external()) [[unlikely]] {
-                    WK_DEBUG("[WS] Received message exceeded internal buffer capacity and was written directly into an external buffer (size " << current_slot->size() << ")");
+                    WK_TRACE("[WS] Received message exceeded internal buffer capacity and was written directly into an external buffer (size: "
+                        << lcr::format_bytes_exact(current_slot->size()) << ")");
                 }
 
                 message_ring_.commit_producer_slot();
@@ -391,7 +409,7 @@ private:
             }
             else // === Handle message fragments ===
             if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
-                WK_TRACE("[WS] Received message fragment (size " << bytes << ")");
+                WK_TRACE("[WS] Received message fragment (size: " << lcr::format_bytes_exact(bytes) << ")");
                 WK_TL1( telemetry_.rx_fragments_total.inc() );
                 ++fragments;
             }
@@ -401,7 +419,7 @@ private:
     }
 
     [[nodiscard]]
-    inline slot_type* acquire_slot_() noexcept {
+    slot_type* acquire_slot_() noexcept {
         using core::policy::BackpressureMode;
         slot_type* slot = message_ring_.acquire_producer_slot();
         if (!slot) [[unlikely]] { // Handle backpressure according to the policy
@@ -411,7 +429,7 @@ private:
             if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
                 // 1.1. Forced close without signaling (transport decides fate)
                 // ZeroTolerance guarantees no BackpressureDetected event will ever be emitted.
-                WK_WARN("[WS] The message ring buffer is full (backpressure)");
+                WK_WARN("[WS] Backpressure detected (message ring saturated)");
                 handle_fatal_error_("[WS] Failed to acquire message slot (zero-tolerance policy)"
                     " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
                 return nullptr;
@@ -421,16 +439,14 @@ private:
             // =========================================================
             else { 
                 // 1.2. Immediate escalation (session decides fate)
-                auto transition = backpressure_.on_active_signal();
+                auto transition = ring_backpressure_.on_active_signal();
                 if (transition == Hysteresis::Transition::Activated) {
-                    WK_TRACE("[WS] Backpressure detected - message ring buffer is full");
-                    if (!control_ring_.push(websocket::Event::make_backpressure_detected())) {
-                        handle_fatal_error_("[WS] Failed to emit backpressure event (event lost)"
-                            " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
-                    }
+                    WK_WARN("[WS] Backpressure detected (message ring saturated)");
+                    update_backpressure_state_();
                 }
-                // Slightly relax the cput to give it a chance to catch up before retrying
-                _mm_pause();
+                // Relax the CPU to give a chance to catch up the message ring before retrying
+                // (scheduling another thread maybe more effective than a tight pause loop in this scenario)
+                std::this_thread::yield();
                 return nullptr;
             }
         }
@@ -438,23 +454,93 @@ private:
         // Successful slot acquisition
         // =============================================================
         if constexpr (BackpressurePolicy::mode != BackpressureMode::ZeroTolerance) {
-
-            auto transition = backpressure_.on_inactive_signal();
-
+            auto transition = ring_backpressure_.on_inactive_signal();
             if (transition == Hysteresis::Transition::Deactivated) {
-                WK_TRACE("[WS] Backpressure cleared: Message slot acquired successfully");
-                // Cleared is advisory
-                if (!control_ring_.push(websocket::Event::make_backpressure_cleared())) {
-                    // Event intentionally dropped on the floor (logged for observability)
-                    // We have already successfully acquired a slot, so transport correctness is not compromised
-                    WK_WARN("[WS] Dropping backpressure cleared event (control ring full)");
-                }
+                WK_TRACE("[WS] Backpressure cleared (message ring has available slots)");
+                update_backpressure_state_();
             }
         }
         return slot;
     }
 
-    inline Error handle_receive_error_(DWORD error) noexcept {
+    [[nodiscard]]
+    bool promote_slot_(slot_type* slot) noexcept {
+        using core::policy::BackpressureMode;
+        promotion_result_type r = message_ring_.reserve(slot, config::transport::websocket::FRAME_SIZE_HINT);
+        if (r > promotion_result_type::Success) [[unlikely]] { // Handle backpressure according to the policy
+            // =========================================================
+            // ZeroTolerance (transport-level forced close)
+            // =========================================================
+            if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
+                // 1.1. Forced close without signaling (transport decides fate)
+                // ZeroTolerance guarantees no BackpressureDetected event will ever be emitted.
+                WK_WARN("[WS] Backpressure detected (memory pool exhausted)");
+                handle_fatal_error_("[WS] Failed to promote message slot (zero-tolerance policy)"
+                    " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
+                message_ring_.discard_producer_slot(slot);
+                return false;
+            }
+            // =========================================================
+            // Strict / Relaxed (policy defines thresholds)
+            // =========================================================
+            else {
+                // 1.2. Immediate escalation (session decides fate)
+                auto transition = pool_backpressure_.on_active_signal();
+                if (transition == Hysteresis::Transition::Activated) {
+                    WK_WARN("[WS] Backpressure detected (memory pool exhausted)");
+                    update_backpressure_state_();
+                }
+                // Relax the CPU to give a chance to catch up the memory pool before retrying
+                // (scheduling another thread maybe more effective than a tight pause loop in this scenario)
+                std::this_thread::yield();
+                return false;
+            }
+        }
+        // =============================================================
+        // Successful slot promotion
+        // =============================================================
+        if constexpr (BackpressurePolicy::mode != BackpressureMode::ZeroTolerance) {
+            auto transition = pool_backpressure_.on_inactive_signal();
+            if (transition == Hysteresis::Transition::Deactivated) {
+                WK_TRACE("[WS] Backpressure cleared (memory pool has available slots)");
+                update_backpressure_state_();
+            }
+        }
+        return true;
+    }
+
+    void emit_backpressure_detected_() noexcept {
+        if (!control_ring_.push(websocket::Event::make_backpressure_detected())) {
+            handle_fatal_error_("[WS] Failed to emit backpressure event (event lost)"
+                " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
+        }
+    }
+
+    void emit_backpressure_cleared_() noexcept {
+        if (!control_ring_.push(websocket::Event::make_backpressure_cleared())) {
+            // Event intentionally dropped on the floor (logged for observability)
+            // We have already successfully acquired a slot, so transport correctness is not compromised
+            WK_WARN("[WS] Dropping backpressure cleared event (control ring saturated)");
+        }
+    }
+
+    void update_backpressure_state_() noexcept {
+        const bool active = ring_backpressure_.is_active() || pool_backpressure_.is_active();
+        // 1) Check if there is an actual state change (avoid emitting duplicate events)
+        if (active == backpressure_active_) {
+            return; // no state change
+        }
+        // 2) Update state and emit corresponding event
+        backpressure_active_ = active;
+        if (active) {
+            emit_backpressure_detected_();
+        } else {
+            emit_backpressure_cleared_();
+        }
+    }
+
+    [[nodiscard]]
+    Error handle_receive_error_(DWORD error) noexcept {
         switch (error) {
         case ERROR_WINHTTP_OPERATION_CANCELLED: // ERR_OPERATION_CANCELLED 12017 (local close)
             // Local shutdown, expected during close()
@@ -488,7 +574,7 @@ private:
         }
     }
 
-    inline void signal_close_() noexcept {
+    void signal_close_() noexcept {
         // Ensure close callback is invoked exactly once
         if (closed_.exchange(true)) {
             return;
@@ -499,10 +585,10 @@ private:
         }
     }
 
-    inline void handle_fatal_error_(const char* message, Error error) noexcept {
+    void handle_fatal_error_(const char* message, Error error) noexcept {
         WK_WARN(message);
         // 1. Ensure only one thread performs fatal shutdown
-        // Future backpresusre policy (default:strict)
+        // Future backpresusre policy (default:strict
         // Wirekrak should never lie to the user or perform magic without explicit user instruction
         // Defensive action: close the connection to prevent further damage
         if (!running_.exchange(false, std::memory_order_acq_rel)) {
@@ -525,16 +611,16 @@ public:
     }
 
     [[nodiscard]]
-    inline bool poll_event(websocket::Event& out) noexcept {
+    bool poll_event(websocket::Event& out) noexcept {
         return control_ring_.pop(out);
     }
 
     [[nodiscard]]
-    inline slot_type* peek_message() noexcept {
+    slot_type* peek_message() noexcept {
         return message_ring_.peek_consumer_slot();
     }
 
-    inline void release_message() noexcept {
+    void release_message() noexcept {
         message_ring_.release_consumer_slot();
     }
 
