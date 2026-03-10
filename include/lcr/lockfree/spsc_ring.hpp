@@ -31,8 +31,8 @@ namespace lcr::lockfree {
 
 template <typename T, size_t Capacity>
 class alignas(64) spsc_ring {
-    static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0),
-                  "Capacity must be power of two and >= 2");
+    static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0), "Capacity must be power of two and >= 2");
+    static_assert(std::is_trivially_destructible_v<T> || std::is_nothrow_destructible_v<T>, "ring element must be safely destructible");
 
 public:
     spsc_ring() noexcept = default;
@@ -96,7 +96,10 @@ public:
         return next == tail_.index.load(std::memory_order_acquire);
     }
 
-    [[nodiscard]] inline constexpr size_t capacity() const noexcept { return Capacity; }
+    [[nodiscard]]
+    constexpr size_t capacity() const noexcept {
+        return Capacity - 1;
+    }
 
     [[nodiscard]] inline size_t used() const noexcept {
         const size_t h = head_.index.load(std::memory_order_acquire);
@@ -108,13 +111,6 @@ public:
         return Capacity - 1 - used();
     }
 
-    [[nodiscard]] inline memory::footprint memory_usage() const noexcept {
-        return memory::footprint{
-            .static_bytes = sizeof(spsc_ring<T, Capacity>),
-            .dynamic_bytes = 0
-        };
-    }
-
     // -----------------------------------------------------------------------------
     // Zero-copy producer API (two-phase commit)
     // -----------------------------------------------------------------------------
@@ -123,15 +119,26 @@ public:
     [[nodiscard]] inline T* acquire_producer_slot() noexcept {
         const size_t head = head_.index.load(std::memory_order_relaxed);
         const size_t next = (head + 1) & MASK;
-
-        if (next == tail_.index.load(std::memory_order_acquire))
+        if (next == tail_.index.load(std::memory_order_acquire)) [[unlikely]] {
             return nullptr; // full
-
+        }
+#ifndef NDEBUG
+        if (producer_slot_acquired_) [[unlikely]] {
+            __builtin_trap(); // double acquire
+        }
+        producer_slot_acquired_ = true;
+#endif
         return &buffer_[head];
     }
 
     // Commit previously acquired producer slot
     inline void commit_producer_slot() noexcept {
+#ifndef NDEBUG
+        if (!producer_slot_acquired_) [[unlikely]] {
+            __builtin_trap(); // commit without acquire
+        }
+        producer_slot_acquired_ = false;
+#endif
         const size_t head = head_.index.load(std::memory_order_relaxed);
         head_.index.store((head + 1) & MASK, std::memory_order_release);
     }
@@ -144,15 +151,26 @@ public:
     // Peek readable slot (consumer only)
     [[nodiscard]] inline T* peek_consumer_slot() noexcept {
         const size_t tail = tail_.index.load(std::memory_order_relaxed);
-
-        if (tail == head_.index.load(std::memory_order_acquire))
+        if (tail == head_.index.load(std::memory_order_acquire)) [[unlikely]] {
             return nullptr; // empty
-
+        }
+#ifndef NDEBUG
+        if (consumer_slot_acquired_) [[unlikely]] {
+            __builtin_trap(); // double peek
+        }
+        consumer_slot_acquired_ = true;
+#endif
         return &buffer_[tail];
     }
 
     // Release previously consumed slot
     inline void release_consumer_slot() noexcept {
+#ifndef NDEBUG
+        if (!consumer_slot_acquired_) [[unlikely]] {
+            __builtin_trap(); // release without peek
+        }
+        consumer_slot_acquired_ = false;
+#endif
         const size_t tail = tail_.index.load(std::memory_order_relaxed);
         tail_.index.store((tail + 1) & MASK, std::memory_order_release);
     }
@@ -186,6 +204,19 @@ public:
 
         // Reset head after (producer side)
         head_.index.store(0, std::memory_order_release);
+
+#ifndef NDEBUG
+        producer_slot_acquired_ = false;
+        consumer_slot_acquired_ = false;
+#endif
+    }
+
+    [[nodiscard]]
+    inline memory::footprint memory_usage() const noexcept {
+        return memory::footprint{
+            .static_bytes = sizeof(spsc_ring<T, Capacity>),
+            .dynamic_bytes = 0
+        };
     }
 
 private:
@@ -198,6 +229,11 @@ private:
     alignas(64) std::array<T, Capacity> buffer_{};
     alignas(64) PaddedAtomic head_;
     alignas(64) PaddedAtomic tail_;
+
+#ifndef NDEBUG
+    bool producer_slot_acquired_ = false;
+    bool consumer_slot_acquired_ = false;
+#endif
 };
 
 } // namespace lcr::lockfree

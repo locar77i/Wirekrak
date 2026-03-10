@@ -49,8 +49,8 @@ namespace local {
 //------------------------------------------------------------------------------
 template <typename T, size_t Capacity>
 class alignas(64) ring {
-    static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0),
-                  "Capacity must be power of two and >= 2");
+    static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0), "Capacity must be power of two and >= 2");
+    static_assert(std::is_trivially_destructible_v<T> || std::is_nothrow_destructible_v<T>, "ring element must be safely destructible");
 
 public:
     ring() noexcept = default;
@@ -121,11 +121,81 @@ public:
 
     [[nodiscard]]
     inline size_t size() const noexcept {
-        return (head_ >= tail_) ? (head_ - tail_) : (Capacity - (tail_ - head_));
+        return (head_ - tail_) & MASK;
     }
 
+    // -----------------------------------------------------------------------------
+    // Zero-copy producer API (two-phase commit)
+    // -----------------------------------------------------------------------------
+
+    // Acquire writable slot
+    [[nodiscard]]
+    inline T* acquire_producer_slot() noexcept {
+        const size_t next = (head_ + 1) & MASK;
+        if (next == tail_) [[unlikely]] {
+            return nullptr; // full
+        }
+#ifndef NDEBUG
+        if (producer_slot_acquired_) [[unlikely]] {
+            __builtin_trap(); // double acquire
+        }
+        producer_slot_acquired_ = true;
+#endif
+        return &buffer_[head_];
+    }
+
+
+    // Commit producer slot
+    inline void commit_producer_slot() noexcept {
+#ifndef NDEBUG
+        if (!producer_slot_acquired_) [[unlikely]] {
+            __builtin_trap(); // commit without acquire
+        }
+        producer_slot_acquired_ = false;
+#endif
+        head_ = (head_ + 1) & MASK;
+    }
+
+    // -----------------------------------------------------------------------------
+    // Zero-copy consumer API (two-phase release)
+    // -----------------------------------------------------------------------------
+
+    // Peek readable slot
+    [[nodiscard]]
+    inline T* peek_consumer_slot() noexcept {
+        if (tail_ == head_) [[unlikely]] {
+            return nullptr; // empty
+        }
+#ifndef NDEBUG
+        if (consumer_slot_acquired_) [[unlikely]] {
+            __builtin_trap(); // double peek
+        }
+        consumer_slot_acquired_ = true;
+#endif
+        return &buffer_[tail_];
+    }
+
+
+    // Release consumed slot
+    inline void release_consumer_slot() noexcept {
+#ifndef NDEBUG
+        if (!consumer_slot_acquired_) [[unlikely]] {
+            __builtin_trap(); // release without peek
+        }
+        consumer_slot_acquired_ = false;
+#endif
+        tail_ = (tail_ + 1) & MASK;
+    }
+
+    // -----------------------------------------------------------------------------
+    // Clear the ring (lifecycle operation)
+    // -----------------------------------------------------------------------------
     inline void clear() noexcept {
         head_ = tail_ = 0;
+#ifndef NDEBUG
+        producer_slot_acquired_ = false;
+        consumer_slot_acquired_ = false;
+#endif
     }
 
     [[nodiscard]]
@@ -138,9 +208,14 @@ public:
 
 private:
     static constexpr size_t MASK = Capacity - 1;
-    alignas(64) std::array<T, Capacity> buffer_{};
-    alignas(64) size_t head_{0};
-    alignas(64) size_t tail_{0};
+    std::array<T, Capacity> buffer_{};
+    size_t head_{0};
+    size_t tail_{0};
+
+#ifndef NDEBUG
+    bool producer_slot_acquired_ = false;
+    bool consumer_slot_acquired_ = false;
+#endif
 };
 
 
