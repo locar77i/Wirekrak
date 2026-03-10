@@ -42,6 +42,14 @@ inline constexpr static std::size_t BOOK_RING_CAPACITY       = 1 << 10; // 1024
 // -----------------------------------------------------------------------------
 inline constexpr static std::size_t TX_BUFFER_CAPACITY       =  1 << 18; // 256 KiB
 
+// -----------------------------------------------------------------------------
+// Transmission batch queue capacity
+// -----------------------------------------------------------------------------
+inline constexpr static std::size_t TX_BATCH_QUEUE_CAPACITY =  1 << 8; // 256
+
+// Transmission batch buffer capacity
+// -----------------------------------------------------------------------------
+inline constexpr static std::size_t TX_BATCH_BUFFER_CAPACITY =  1 << 10; // 1 KiB
 
 // -----------------------------------------------------------------------------
 // Message batch processing limits

@@ -67,6 +67,7 @@ Data-plane model:
 #include "wirekrak/core/transport/winhttp/websocket.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
+#include "wirekrak/core/protocol/request/batcher.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
@@ -288,7 +289,8 @@ public:
             // Only acknowledged subscriptions will be replayed.
             replay_db_.add(req);
         }
-        // 6) Send JSON BEFORE moving req.symbols
+        // 6) Emit the request according to the configured batching policy
+        WK_DEBUG("[SESSION] Emitting subscribe message: " << req.symbols.size() << " symbol/s");
         if (!emit_subscription_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
@@ -466,6 +468,23 @@ public:
             }
         }}
 
+        // ===============================================================================
+        // Batching logic for user requests
+        // ===============================================================================
+        if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Paced) {
+            batcher_.poll();
+            if (!batcher_.idle() && batcher_.should_emit()) {
+                std::string_view msg;
+                if (batcher_.next(msg)) {
+                    WK_DEBUG("[SESSION] Emitting paced request: " << msg);
+                    if (!connection_.send(msg)) {
+                        WK_ERROR("[SESSION] Failed to send paced request - " << msg);
+                        return false;
+                    }
+                }
+            }
+        }
+        
         // Check for backpressure violations and enforce policy if needed
         enforce_backpressure_policy_();
 
@@ -627,6 +646,9 @@ private:
     using ReplayPolicy        = typename PolicyBundle::replay;
     using BatchingPolicy      = typename PolicyBundle::batching;
 
+    // Asserts
+    static_assert(BatchingPolicy::batch_size <= MAX_REQUEST_SYMBOLS);
+
 private:
     // Sequence generator for request IDs
     lcr::sequence req_id_seq_{ctrl::PROTOCOL_BASE};
@@ -637,6 +659,9 @@ private:
 
     // Temporary buffer for request serialization (to avoid heap allocations)
     lcr::local::raw_buffer<config::protocol::TX_BUFFER_CAPACITY> tx_buffer_{};
+
+    // Batching manager for huge subscribe requests 
+    protocol::request::Batcher<BatchingPolicy> batcher_;
 
     // Session context (owning)
     std::unique_ptr<Context> ctx_;
@@ -732,9 +757,9 @@ private:
         if constexpr (ReplayPolicy::enabled) {
             replay_db_.add(req);
         }
-        // 4) Send JSON BEFORE moving req.symbols
-        WK_DEBUG("[SESSION] Sending re-subscribe message: " << req.symbols.size() << " symbol/s");
-        (void)send_request_(req);
+        WK_DEBUG("[SESSION] Emitting re-subscribe message: " << req.symbols.size() << " symbol/s");
+        // 4) Emit the request according to the configured batching policy
+        (void)emit_subscription_(req);
     }
 
     inline void handle_disconnect_() {
@@ -857,30 +882,37 @@ private:
     [[nodiscard]]
     bool emit_subscription_(RequestT req) noexcept {
         if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Immediate) {
-            WK_DEBUG("[SESSION] Sending subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
-            return send_request_(req);
-        }
-        else if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Batch) {
-            // TODO:
-            // Implement subscription batching:
-            //   - Split req.symbols into batches of BatchingPolicy::batch_size
-            //   - Send each batch immediately
-            //   - Preserve req_id semantics
-
-            WK_WARN("[SESSION] Batching policy 'Batch' not implemented yet");
+            WK_TRACE("[SESSION] Sending immediate subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
             return send_request_(req);
         }
         else {
-            // TODO:
-            // Implement paced batching:
-            //   - Split req.symbols into batches
-            //   - Enqueue batches
-            //   - Send batches gradually during poll()
-
-            WK_WARN("[SESSION] Batching policy 'Paced' not implemented yet");
-            return send_request_(req);
+            // Batch the subscription request into multiple messages if it exceeds the batch size limit.
+            const auto& symbols = req.symbols;
+            RequestT batch = req;
+            std::size_t total = symbols.size();
+            std::size_t offset = 0;
+            while (offset < total) {
+                batch.symbols.clear();
+                const std::size_t n = std::min(BatchingPolicy::batch_size, total - offset);
+                for (std::size_t i = 0; i < n; ++i) {
+                    batch.symbols.push_back(symbols[offset + i]);
+                }
+                offset += n;
+                if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Batch) {
+                    WK_TRACE("[SESSION] Sending batched subscribe message: " << batch.symbols.size() << " symbol/s (req_id=" << batch.req_id.value() << ")");
+                    if (!send_request_(batch)) {
+                        return false;
+                    }
+                }
+                else {  
+                    WK_TRACE("[SESSION] Sending paced subscribe message: " << batch.symbols.size() << " symbol/s (req_id=" << batch.req_id.value() << ")");
+                    if (!batcher_.add_request(batch)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
-        return false; // Unreachable
     }
 
     // ------------------------------------------------------------

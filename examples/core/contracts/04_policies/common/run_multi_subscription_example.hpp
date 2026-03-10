@@ -105,7 +105,7 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
     // Global memory block pool
     // -------------------------------------------------------------------------
     constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
-    constexpr static std::size_t BLOCK_COUNT = 512;
+    constexpr static std::size_t BLOCK_COUNT = 4;
     static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 
     // -----------------------------------------------------------------------------

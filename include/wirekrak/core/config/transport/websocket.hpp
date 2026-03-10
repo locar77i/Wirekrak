@@ -101,11 +101,11 @@ namespace transport {
 
 inline constexpr static std::size_t CONTROL_RING_CAPACITY = 1 << 8;    // 256 control events (number of events)
 
-inline constexpr static std::size_t MESSAGE_RING_CAPACITY = 1 << 10;   // 1024 messages (number of slots)
+inline constexpr static std::size_t MESSAGE_RING_CAPACITY = 1 << 8;    // 256 messages (number of slots)
 
 namespace websocket {
 
-inline constexpr static std::size_t MIN_FRAME_SIZE = 256;        // Minimum writable size to trigger reactive growth
+inline constexpr static std::size_t MIN_FRAME_SIZE = 1024;        // Minimum writable size to trigger reactive growth
 inline constexpr static std::size_t FRAME_SIZE_HINT = 16 * 1024; // Hint size for reactive growth (must be <= RX_BUFFER_SIZE)
 
 } // namespace websocket

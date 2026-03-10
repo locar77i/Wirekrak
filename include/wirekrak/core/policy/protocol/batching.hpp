@@ -4,15 +4,11 @@
 // Protocol Batching Policy
 // ============================================================================
 //
-// Controls how subscription requests are emitted by the Session when
-// multiple symbols are requested at once.
+// Controls how large subscription requests are emitted by the Session.
 //
-// Large subscriptions (e.g. hundreds of symbols) may cause a burst of
-// snapshot messages from the exchange. This burst can temporarily stress
-// transport buffers, message rings, and user processing pipelines.
-//
-// The batching policy allows the Session to partition and schedule
-// subscription requests in order to smooth the resulting snapshot load.
+// Exchanges often return large snapshot bursts when many symbols are
+// subscribed simultaneously. This policy allows the Session to split
+// large subscription requests and optionally pace their emission.
 //
 // DESIGN GOALS
 // ------------
@@ -26,19 +22,16 @@
 // ------------
 //
 // Immediate
-//   - Default behavior
 //   - Subscriptions are sent exactly as requested
-//   - Lowest latency, but may trigger large snapshot bursts
+//   - No request splitting
 //
 // Batch
 //   - Large subscriptions are split into multiple requests
-//   - All batches are sent immediately
-//   - Reduces per-request snapshot fan-out while preserving low latency
+//   - All batches are emitted in the same poll() iteration
 //
 // Paced
 //   - Large subscriptions are split into batches
-//   - Batches are emitted gradually by the Session event loop
-//   - Smooths snapshot bursts and reduces memory pressure
+//   - One batch is emitted every N poll() calls
 //
 // EXAMPLE
 // -------
@@ -48,23 +41,25 @@
 //
 //   Batch mode (batch_size = 20):
 //
-//       subscribe(book, 20)
-//       subscribe(book, 20)
-//       subscribe(book, 20)
-//       ...
+//       poll 1 → send 10 requests:
 //
-//   Paced mode (batch_size = 20, pacing_interval = 1):
+//           subscribe(book, 20)
+//           subscribe(book, 20)
+//           subscribe(book, 20)
+//           ...
+//
+//   Paced mode (batch_size = 20, emit_interval = 2):
 //
 //       poll 1 → subscribe(book, 20)
-//       poll 2 → subscribe(book, 20)
 //       poll 3 → subscribe(book, 20)
+//       poll 5 → subscribe(book, 20)
 //
 // USE CASES
 // ---------
 // • Large initial market data bootstraps
 // • Exchanges with per-request symbol limits
-// • Reducing snapshot bursts and memory pressure
 // • Controlling subscription fan-out behavior
+// • Smoothing snapshot bursts
 //
 // ============================================================================
 
@@ -79,14 +74,14 @@ namespace wirekrak::core::policy::protocol {
 // ------------------------------------------------------------
 
 enum class BatchingMode {
-    Immediate,  // Send subscriptions immediately (no batching)
-    Batch,      // Split subscription into batches and send immediately
-    Paced       // Split subscription and send batches gradually
+    Immediate,
+    Batch,
+    Paced
 };
 
 
 // ------------------------------------------------------------
-// Concept
+// Concept Helpers
 // ------------------------------------------------------------
 
 template<class T>
@@ -94,10 +89,14 @@ concept HasBatchingMembers =
     requires {
         { T::mode } -> std::same_as<const BatchingMode&>;
         { T::batch_size } -> std::same_as<const std::size_t&>;
-        { T::pacing_interval } -> std::same_as<const std::size_t&>;
+        { T::emit_interval } -> std::same_as<const std::size_t&>;
         { T::enabled } -> std::same_as<const bool&>;
-        { T::paced } -> std::same_as<const bool&>;
     };
+
+
+// ------------------------------------------------------------
+// Batching Concept
+// ------------------------------------------------------------
 
 template<class T>
 concept BatchingConcept =
@@ -108,78 +107,52 @@ concept BatchingConcept =
     )
     &&
     (
-        T::paced == (T::mode == BatchingMode::Paced)
-    )
-    &&
-    (
-        // Immediate → no batching parameters
+        // Immediate
         (
             T::mode == BatchingMode::Immediate &&
             T::batch_size == 0 &&
-            T::pacing_interval == 0
+            T::emit_interval == 0
         )
         ||
-        // Batch → batch size must be > 0, no pacing
+        // Batch
         (
             T::mode == BatchingMode::Batch &&
             T::batch_size > 0 &&
-            T::pacing_interval == 0
+            T::emit_interval == 0
         )
         ||
-        // Paced → both parameters required
+        // Paced
         (
             T::mode == BatchingMode::Paced &&
             T::batch_size > 0 &&
-            T::pacing_interval > 0
+            T::emit_interval > 0
         )
     );
 
 
 // ------------------------------------------------------------
-// BatchingPolicy
-// ------------------------------------------------------------
-//
-// Compile-time subscription batching behavior.
-//
-// Template parameters:
-//   ModeV           → Immediate / Batch / Paced
-//   BatchSizeV      → Symbols per subscription request
-//   PacingIntervalV → Poll cycles between batch sends (Paced mode)
-//
-// Behavior:
-//
-// Immediate
-//   - Send subscriptions exactly as requested
-//
-// Batch
-//   - Split subscriptions into batches of BatchSize
-//   - Send all batches immediately
-//
-// Paced
-//   - Split subscriptions into batches
-//   - Send gradually based on pacing interval
-//
+// Batching Policy
 // ------------------------------------------------------------
 
 template<
     BatchingMode ModeV,
-    std::size_t BatchSizeV,
-    std::size_t PacingIntervalV
+    std::size_t BatchSizeV = 0,
+    std::size_t EmitIntervalV = 0
 >
 struct BatchingPolicy {
 
     static constexpr BatchingMode mode = ModeV;
 
     static constexpr std::size_t batch_size = BatchSizeV;
-    static constexpr std::size_t pacing_interval = PacingIntervalV;
+
+    // Used only for Paced mode
+    static constexpr std::size_t emit_interval = EmitIntervalV;
 
     static constexpr bool enabled = ModeV != BatchingMode::Immediate;
 
-    static constexpr bool paced = ModeV == BatchingMode::Paced;
-
 
     // ------------------------------------------------------------
-    // Introspection Helpers (Zero Runtime Cost)
+    // Introspection Helpers
     // ------------------------------------------------------------
 
     static constexpr const char* mode_name() noexcept {
@@ -192,17 +165,18 @@ struct BatchingPolicy {
     }
 
     static void dump(std::ostream& os) {
+
         os << "[Protocol Batching Policy]\n";
 
-        os << "- Mode             : " << mode_name() << "\n";
-        os << "- Enabled          : " << (enabled ? "yes" : "no") << "\n";
+        os << "- Mode       : " << mode_name() << "\n";
+        os << "- Enabled    : " << (enabled ? "yes" : "no") << "\n";
 
         if constexpr (ModeV != BatchingMode::Immediate) {
-            os << "- Batch size       : " << batch_size << "\n";
+            os << "- Batch size : " << batch_size << "\n";
         }
 
         if constexpr (ModeV == BatchingMode::Paced) {
-            os << "- Pacing interval  : " << pacing_interval << " poll(s)\n";
+            os << "- Emit every : " << emit_interval << " poll(s)\n";
         }
 
         os << "\n";
@@ -216,9 +190,7 @@ struct BatchingPolicy {
 
 using ImmediateBatching =
     BatchingPolicy<
-        BatchingMode::Immediate,
-        0,
-        0
+        BatchingMode::Immediate
     >;
 
 static_assert(BatchingConcept<ImmediateBatching>, "ImmediateBatching does not satisfy BatchingConcept");

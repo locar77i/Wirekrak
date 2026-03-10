@@ -304,7 +304,7 @@ private:
 #endif
             }
             // === Reactive growth (ONLY if not starting a new message and capacity is exhausted) ===
-            else if (current_slot->remaining() < config::transport::websocket::MIN_FRAME_SIZE) [[unlikely]] {
+            else if (current_slot->remaining() == 0) [[unlikely]] {
                 static constexpr std::size_t growth_hint = 16 * 1024;
                 promotion_result_type r = message_ring_.reserve(current_slot, config::transport::websocket::FRAME_SIZE_HINT);
                 if (r > promotion_result_type::Success) [[unlikely]] {
@@ -381,6 +381,10 @@ private:
                 WK_TL1( telemetry_.messages_rx_total.inc() );
                 WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
                 // Commit the complete message to the ring buffer (and reset state for the next message)
+                if (current_slot->is_external()) [[unlikely]] {
+                    WK_DEBUG("[WS] Received message exceeded internal buffer capacity and was written directly into an external buffer (size " << current_slot->size() << ")");
+                }
+
                 message_ring_.commit_producer_slot();
                 current_slot = nullptr;
                 fragments = 0;
