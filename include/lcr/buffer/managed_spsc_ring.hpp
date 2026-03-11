@@ -122,11 +122,6 @@ public:
     [[nodiscard]]
     Slot* acquire_producer_slot() noexcept {
         return ring_.acquire_producer_slot();
-        Slot* slot = ring_.acquire_producer_slot();
-        if (slot) [[likely]] { // Ensure slot is always clean when handed to producer
-            slot->reset(pool_);
-        }
-        return slot;
     }
 
     /*
@@ -173,6 +168,7 @@ public:
         if (slot) [[likely]] {
             slot->reset(pool_);
         }
+        ring_.discard_producer_slot();
     }
 
     // =========================================================================
@@ -192,7 +188,7 @@ public:
     }
 
     /*
-        Release previously consumed slot.
+        Release a consumed slot.
 
         Behavior:
             • Calls slot.reset(pool_)
@@ -202,12 +198,11 @@ public:
         IMPORTANT:
             Slot must not be accessed after this call.
     */
-    void release_consumer_slot() noexcept {
-        Slot* slot = ring_.peek_consumer_slot();
-        if (slot) {
-            slot->reset(pool_);
-        }
-
+    void release_consumer_slot(Slot* slot) noexcept {
+#ifndef NDEBUG
+        assert(slot && "release_consumer_slot called with null slot");
+#endif
+        slot->reset(pool_);
         ring_.release_consumer_slot();
     }
 

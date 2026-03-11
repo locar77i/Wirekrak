@@ -79,6 +79,7 @@ public:
         promotion_result_type r = message_ring_.reserve(slot, msg.size());
         if (r > promotion_result_type::Success) {
             WK_FATAL("[MockWebSocket] Failed to reserve slot for mock message");
+            message_ring_.discard_producer_slot(slot);
             return;
         }
 

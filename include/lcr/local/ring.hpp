@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "lcr/memory/footprint.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace lcr {
@@ -136,9 +137,7 @@ public:
             return nullptr; // full
         }
 #ifndef NDEBUG
-        if (producer_slot_acquired_) [[unlikely]] {
-            __builtin_trap(); // double acquire
-        }
+        LCR_ASSERT(!producer_slot_acquired_); // double acquire
         producer_slot_acquired_ = true;
 #endif
         return &buffer_[head_];
@@ -148,12 +147,19 @@ public:
     // Commit producer slot
     inline void commit_producer_slot() noexcept {
 #ifndef NDEBUG
-        if (!producer_slot_acquired_) [[unlikely]] {
-            __builtin_trap(); // commit without acquire
-        }
+        LCR_ASSERT(producer_slot_acquired_); // commit without acquire
         producer_slot_acquired_ = false;
 #endif
         head_ = (head_ + 1) & MASK;
+    }
+
+
+    // Discard producer slot
+    inline void discard_producer_slot() noexcept {
+#ifndef NDEBUG
+        LCR_ASSERT(producer_slot_acquired_); // discard without acquire
+        producer_slot_acquired_ = false;
+#endif
     }
 
     // -----------------------------------------------------------------------------
@@ -167,9 +173,7 @@ public:
             return nullptr; // empty
         }
 #ifndef NDEBUG
-        if (consumer_slot_acquired_) [[unlikely]] {
-            __builtin_trap(); // double peek
-        }
+        LCR_ASSERT(!consumer_slot_acquired_); // double peek
         consumer_slot_acquired_ = true;
 #endif
         return &buffer_[tail_];
@@ -179,9 +183,7 @@ public:
     // Release consumed slot
     inline void release_consumer_slot() noexcept {
 #ifndef NDEBUG
-        if (!consumer_slot_acquired_) [[unlikely]] {
-            __builtin_trap(); // release without peek
-        }
+        LCR_ASSERT(consumer_slot_acquired_); // release without peek
         consumer_slot_acquired_ = false;
 #endif
         tail_ = (tail_ + 1) & MASK;

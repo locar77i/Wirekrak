@@ -91,14 +91,16 @@ Threading Model Assumptions
   • Exactly one consumer thread
   • Consumer calls:
         peek_consumer_slot()
-        release_consumer_slot()
+        release_consumer_slot(slot)
   • No concurrent mutation
 
 ===============================================================================
 */
 template<typename Ring>
 concept ConsumerSpscRingConcept =
-    requires(Ring& ring)
+    requires(
+        Ring& ring,
+        typename Ring::slot_type* slot)
 {
     typename Ring::slot_type;
     requires ConsumerSlotConcept<typename Ring::slot_type>;
@@ -107,7 +109,7 @@ concept ConsumerSpscRingConcept =
     { ring.peek_consumer_slot() } noexcept -> std::same_as<typename Ring::slot_type*>;
 
     // Release previously consumed slot
-    { ring.release_consumer_slot() } noexcept -> std::same_as<void>;
+    { ring.release_consumer_slot(slot) } noexcept -> std::same_as<void>;
 
     // Lifecycle: clear ring (must not throw)
     { ring.clear() } noexcept -> std::same_as<void>;

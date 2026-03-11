@@ -91,7 +91,7 @@ int main() {
         while (auto* slot = message_ring.peek_consumer_slot()) {
             std::string_view msg(slot->data(), slot->size());
             std::cout << "Received:\n" << msg << "\n" << std::endl;
-            message_ring.release_consumer_slot();
+            message_ring.release_consumer_slot(slot);
         }
         std::this_thread::yield();
     }

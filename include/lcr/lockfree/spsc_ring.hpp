@@ -25,6 +25,7 @@
 #include <type_traits>
 
 #include "lcr/memory/footprint.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace lcr::lockfree {
@@ -123,9 +124,7 @@ public:
             return nullptr; // full
         }
 #ifndef NDEBUG
-        if (producer_slot_acquired_) [[unlikely]] {
-            __builtin_trap(); // double acquire
-        }
+         LCR_ASSERT(!producer_slot_acquired_); // double acquire
         producer_slot_acquired_ = true;
 #endif
         return &buffer_[head];
@@ -134,15 +133,20 @@ public:
     // Commit previously acquired producer slot
     inline void commit_producer_slot() noexcept {
 #ifndef NDEBUG
-        if (!producer_slot_acquired_) [[unlikely]] {
-            __builtin_trap(); // commit without acquire
-        }
+        LCR_ASSERT(producer_slot_acquired_); // commit without acquire
         producer_slot_acquired_ = false;
 #endif
         const size_t head = head_.index.load(std::memory_order_relaxed);
         head_.index.store((head + 1) & MASK, std::memory_order_release);
     }
 
+    // Discard producer slot
+    inline void discard_producer_slot() noexcept {
+#ifndef NDEBUG
+        LCR_ASSERT(producer_slot_acquired_); // discard without acquire
+        producer_slot_acquired_ = false;
+#endif
+    }
 
     // -----------------------------------------------------------------------------
     // Zero-copy consumer API (two-phase release)
@@ -155,9 +159,7 @@ public:
             return nullptr; // empty
         }
 #ifndef NDEBUG
-        if (consumer_slot_acquired_) [[unlikely]] {
-            __builtin_trap(); // double peek
-        }
+        LCR_ASSERT(!consumer_slot_acquired_); // double peek
         consumer_slot_acquired_ = true;
 #endif
         return &buffer_[tail];
@@ -166,9 +168,7 @@ public:
     // Release previously consumed slot
     inline void release_consumer_slot() noexcept {
 #ifndef NDEBUG
-        if (!consumer_slot_acquired_) [[unlikely]] {
-            __builtin_trap(); // release without peek
-        }
+        LCR_ASSERT(consumer_slot_acquired_); // release without peek
         consumer_slot_acquired_ = false;
 #endif
         const size_t tail = tail_.index.load(std::memory_order_relaxed);

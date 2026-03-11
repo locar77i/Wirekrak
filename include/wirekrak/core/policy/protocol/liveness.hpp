@@ -110,7 +110,7 @@ static_assert(LivenessConcept<Active>, "Active does not satisfy LivenessConcept"
 // Default
 // ----------------------------------------------------------------------------
 
-using DefaultLiveness = liveness::Passive;
+using DefaultLiveness = liveness::Active;
 
 // Assert that DefaultLiveness satisfies the LivenessConcept
 static_assert(LivenessConcept<DefaultLiveness>, "DefaultLiveness does not satisfy LivenessConcept");

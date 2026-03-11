@@ -312,7 +312,7 @@ void test_message_delivery_to_ring() {
     assert(std::memcmp(slot->data(), expected, expected_size) == 0);
 
     // Release slot (mandatory)
-    ws.release_message();
+    ws.release_message(slot);
 
     ws.close();
 
@@ -490,7 +490,7 @@ void test_multiple_messages() {
             assert(std::memcmp(slot->data(), "msg2", 4) == 0);
         }
         // Release slot (mandatory)
-        ws.release_message();
+        ws.release_message(slot);
         std::cout << " -> Message " << count + 1 << ": " << std::string(slot->data(), slot->size()) << "\n";
         count++;
         slot = ws.peek_message();

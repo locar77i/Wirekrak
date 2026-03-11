@@ -244,7 +244,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
         // Pull data-plane messages (explicit consumption)
         while (auto* slot = connection.peek_message()) {
             std::cout << "[example] RX message (" << slot->size() << " bytes)" << std::endl;
-            connection.release_message();
+            connection.release_message(slot);
         }
         std::this_thread::yield();
     }

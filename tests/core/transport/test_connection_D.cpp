@@ -54,36 +54,40 @@ void test_message_dispatch_updates_liveness() {
 
     telemetry::Connection telemetry;
     ConnectionUnderTest connection{message_ring, telemetry};
-
+std::cout << "D1 -> ConnectionUnderTest constructed" << std::endl;;
     // Open connection (does not run script yet)
     TEST_CHECK(connection.open("wss://example.com/ws") == Error::None);
-
+std::cout << "D1 -> connection opened" << std::endl;;
     // Capture timestamp before message
     const auto before = connection.last_message_ts();
-
+std::cout << "D1 -> connection opened, last_message_ts captured" << std::endl;;
     // Step connect_ok
     script.step(connection.ws());
-
+std::cout << "D1 -> connect_ok done" << std::endl;;
     // Step message (MockWebSocket pushes DataBlock into transport ring)
     script.step(connection.ws());
-
+std::cout << "D1 -> message step done" << std::endl;;
     // Poll connection to advance state
     connection.poll();
-
+std::cout << "D1 -> poll done" << std::endl;;
     // Pull message from transport data-plane
     auto* slot = connection.peek_message();
+std::cout << "D1 -> peek_message done" << std::endl;;
     TEST_CHECK(slot != nullptr);
 
     std::string received{slot->data(), slot->size()};
+std::cout << "D1 -> received message from slot" << std::endl;;
 
     // Release slot (mandatory)
-    connection.release_message();
+    connection.release_message(slot);
+std::cout << "D1 -> release_message done" << std::endl;;
 
     // Payload must be forwarded exactly
     TEST_CHECK(received == "hello-world");
 
     // Liveness must be updated
     const auto after = connection.last_message_ts();
+std::cout << "D1 -> last_message_ts captured after message" << std::endl;;
     TEST_CHECK(after > before);
 
     std::cout << "[TEST] OK\n";
@@ -126,7 +130,7 @@ void test_message_dispatch_without_handler() {
     TEST_CHECK(slot != nullptr);
 
     // Release slot
-    connection.release_message();
+    connection.release_message(slot);
 
     // Liveness must still be updated
     const auto after = connection.last_message_ts();

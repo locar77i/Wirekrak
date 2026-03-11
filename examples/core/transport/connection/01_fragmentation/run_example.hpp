@@ -205,7 +205,7 @@ inline int run_example(const char* name, const char* url, const char* descriptio
             // Uncomment to inspect raw payload
             // std::cout.write(slot->data(), slot->size());
             // std::cout << "" << std::endl;
-            connection.release_message();
+            connection.release_message(slot);
             did_work = true;
         }
         if (did_work) {

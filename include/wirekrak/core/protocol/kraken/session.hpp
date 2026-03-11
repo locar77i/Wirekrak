@@ -362,8 +362,11 @@ public:
         }
         // === Drain transport data-plane (zero-copy) ===
         std::size_t messages_processed = 0;
-        auto* slot = connection_.peek_message();
-        while (messages_processed < config::protocol::MAX_MESSAGES_PER_POLL && slot != nullptr) {
+        while (messages_processed < config::protocol::MAX_MESSAGES_PER_POLL) {
+            auto* slot = connection_.peek_message();
+            if (!slot) [[unlikely]] { // No more messages to process
+                break;
+            }
             // The message slot remains valid until release_message() is called
             std::string_view sv{ slot->data(), slot->size() };
             // Handle the message (parsing & routing)
@@ -374,13 +377,12 @@ public:
                 WK_WARN("[SESSION] Failed to deliver " << to_string(channel) << " message (backpressure)"
                     " - protocol correctness compromised (user is not draining fast enough)");
                 overload_state_.user.mark_active();
-                connection_.release_message();
+                connection_.release_message(slot);
                 break; // Stop processing more messages to prevent further damage
             }
             // Release the message slot back to the transport regardless of parsing outcome to maintain flow.
-            connection_.release_message();
+            connection_.release_message(slot);
             ++messages_processed;
-            slot = connection_.peek_message();
         }
         // ===============================================================================
         // PROCESS REJECTION NOTICES (lossless, semantic errors)

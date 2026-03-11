@@ -464,7 +464,7 @@ private:
     }
 
     [[nodiscard]]
-    bool promote_slot_(slot_type* slot) noexcept {
+    bool promote_slot_(slot_type*& slot) noexcept {
         using core::policy::BackpressureMode;
         promotion_result_type r = message_ring_.reserve(slot, config::transport::websocket::FRAME_SIZE_HINT);
         if (r > promotion_result_type::Success) [[unlikely]] { // Handle backpressure according to the policy
@@ -478,6 +478,7 @@ private:
                 handle_fatal_error_("[WS] Failed to promote message slot (zero-tolerance policy)"
                     " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
                 message_ring_.discard_producer_slot(slot);
+                slot = nullptr;
                 return false;
             }
             // =========================================================
@@ -620,8 +621,8 @@ public:
         return message_ring_.peek_consumer_slot();
     }
 
-    void release_message() noexcept {
-        message_ring_.release_consumer_slot();
+    void release_message(slot_type* slot) noexcept {
+        message_ring_.release_consumer_slot(slot);
     }
 
 public:

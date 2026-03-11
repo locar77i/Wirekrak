@@ -369,8 +369,8 @@ public:
         return slot;
     }
 
-    inline void release_message() noexcept {
-        message_ring_.release_consumer_slot();
+    inline void release_message(typename MessageRing::slot_type* slot) noexcept {
+        message_ring_.release_consumer_slot(slot);
     }
 
     [[nodiscard]]
