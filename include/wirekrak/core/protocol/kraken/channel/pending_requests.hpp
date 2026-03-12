@@ -10,6 +10,7 @@
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/symbol/intern.hpp"
 #include "lcr/log/logger.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace wirekrak::core::protocol::kraken::channel {
@@ -130,10 +131,8 @@ public:
             }
         }
 
-#ifndef NDEBUG
         // Should never happen if invariants hold
-        assert(false && "pending_symbols_ inconsistent with requests_");
-#endif
+        LCR_UNREACHABLE_MSG("pending_symbols_ inconsistent with requests_");
 
         return false;
     }
@@ -185,7 +184,7 @@ public:
             count += vec.size();
         }
 
-        assert(count == pending_symbols_.size());
+        LCR_ASSERT_MSG(count == pending_symbols_.size(), "pending_symbols_ size must match total symbols in requests_");
     }
 #endif
 

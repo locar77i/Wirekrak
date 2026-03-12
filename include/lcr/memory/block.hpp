@@ -31,6 +31,7 @@ This is the minimal memory unit for buffer pools.
 #include <cassert>
 
 #include "lcr/memory/footprint.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace lcr::memory {
@@ -85,13 +86,7 @@ public:
     }
 
     inline void set_size(std::size_t s) noexcept {
-#ifndef NDEBUG
-        assert(s <= capacity_ && "memory block overflow");
-#else
-        if (s > capacity_) [[unlikely]] {
-            __builtin_trap();
-        }
-#endif
+        LCR_ASSERT_MSG(s <= capacity_, "memory block overflow");
         size_ = s;
     }
 

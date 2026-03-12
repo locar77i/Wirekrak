@@ -46,6 +46,7 @@ ABA is not a concern here because:
 
 #include "lcr/memory/block.hpp"
 #include "lcr/memory/footprint.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace lcr::memory {
@@ -136,7 +137,7 @@ public:
       Caller must guarantee the block belongs to this pool.
     */
     void release(block* block) noexcept {
-        assert(block);
+        LCR_ASSERT_MSG(block, "release() called with null block");
         node* n = node_from_block_(block);
         push_node_(n);
     }

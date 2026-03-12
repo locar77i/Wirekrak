@@ -120,15 +120,40 @@ int run_retry_example(int argc, char** argv, const char* title) {
     // -------------------------------------------------------------------------
     Session session(message_ring);
 
-    // Subscription parameters
-    bool snapshot = false; // Request no snapshot to keep the replay output manageable and observable
+    // -------------------------------------------------------------------------
+    // Dump the session configuration (policies)
+    // -------------------------------------------------------------------------
+    std::cout << "\n[1] Session Configuration >>\n";
+    Session::dump_configuration(std::cout);
+
+    // -------------------------------------------------------------------------
+    // Dump message ring memory usage
+    // -------------------------------------------------------------------------
+    std::cout << "\n[2] Message Ring Memory Usage >>\n";
+    message_ring.memory_usage().debug_dump(std::cout);
+
+    // -------------------------------------------------------------------------
+    // Dump block pool memory usage
+    // -------------------------------------------------------------------------
+    std::cout << "\n[3] Block Pool Memory Usage >>\n";
+    memory_pool.memory_usage().debug_dump(std::cout);
+
+    // -------------------------------------------------------------------------
+    // Dump session memory usage
+    // -------------------------------------------------------------------------
+    std::cout << "\n[4] Session Memory Usage >>\n";
+    session.memory_usage().debug_dump(std::cout);
 
     // -------------------------------------------------------------------------
     // Connect
     // -------------------------------------------------------------------------
+    std::cout << "\n[5] Running ...\n\n";
     if (!session.connect(params.url)) {
         return -1;
     }
+
+    // Subscription parameters
+    bool snapshot = false; // Request no snapshot to keep the replay output manageable and observable
 
     // -------------------------------------------------------------------------
     // Subscribe ONCE to trade updates (no snapshot)
@@ -188,20 +213,8 @@ int run_retry_example(int argc, char** argv, const char* title) {
     // -------------------------------------------------------------------------
     // Dump telemetry
     // -------------------------------------------------------------------------
-    std::cout << "\n[1] Session Telemetry >>\n";
+    std::cout << "\n[6] Session Telemetry >>\n";
     session.telemetry().debug_dump(std::cout);
-
-    // -------------------------------------------------------------------------
-    // Dump message ring memory usage
-    // -------------------------------------------------------------------------
-    std::cout << "\n[2] Message Ring Memory Usage >>\n";
-    message_ring.memory_usage().debug_dump(std::cout);
-
-    // -------------------------------------------------------------------------
-    // Dump block pool memory usage
-    // -------------------------------------------------------------------------
-    std::cout << "\n[3] Block Pool Memory Usage >>\n";
-    memory_pool.memory_usage().debug_dump(std::cout);
 
     std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
     return 0;

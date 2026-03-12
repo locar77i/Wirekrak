@@ -38,6 +38,8 @@ Promotion Model
 
 #include "lcr/memory/block_pool.hpp"
 #include "lcr/buffer/concepts.hpp"
+#include "lcr/trap.hpp"
+
 
 
 namespace lcr::buffer {
@@ -159,9 +161,7 @@ public:
             reserve(len) must have succeeded.
     */
     inline std::size_t commit(std::size_t len) noexcept {
-#ifndef NDEBUG
-        assert(size_ + len <= capacity());
-#endif
+        LCR_ASSERT_MSG(size_ + len <= capacity(), "Commit size exceeds capacity");
 
         size_ += len;
 

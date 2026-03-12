@@ -9,6 +9,7 @@
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/json.hpp"
 #include "lcr/optional.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace wirekrak::core { 
@@ -124,9 +125,7 @@ struct Subscribe {
 
         buffer[pos++] = '}';
 
-#ifndef NDEBUG
-        assert(pos <= max_json_size());
-#endif
+        LCR_ASSERT_MSG(pos <= max_json_size(), "Serialized JSON size exceeds static buffer capacity");
 
         return pos;
     }

@@ -53,12 +53,14 @@ inline void trap() noexcept {
 
 #ifdef NDEBUG
 
-    #define LCR_TRAP() ((void)0)
+    #define LCR_TRAP() ::lcr::trap()
 
-    #define LCR_ASSERT(expr)        ((void)0)
-    #define LCR_ASSERT_MSG(expr, m) ((void)0)
+    #define LCR_ASSERT(expr)         ((void)0)
+    #define LCR_ASSERT_MSG(expr, m)  ((void)0)
 
-    #define LCR_UNREACHABLE() __builtin_unreachable()
+    #define LCR_UNREACHABLE()        __builtin_unreachable()
+
+    #define LCR_UNREACHABLE_MSG(msg) __builtin_unreachable()
 
 
 // ============================================================================
@@ -80,7 +82,7 @@ inline void trap() noexcept {
     #define LCR_ASSERT_MSG(expr, msg) \
         do { \
             if (!(expr)) [[unlikely]] { \
-                assert((expr) && (msg)); \
+                assert((expr) && msg); \
                 ::lcr::trap(); \
             } \
         } while (0)
@@ -88,6 +90,12 @@ inline void trap() noexcept {
     #define LCR_UNREACHABLE() \
         do { \
             assert(false && "unreachable"); \
+            ::lcr::trap(); \
+        } while (0)
+    
+    #define LCR_UNREACHABLE_MSG(msg) \
+        do { \
+            assert(false && msg); \
             ::lcr::trap(); \
         } while (0)
 

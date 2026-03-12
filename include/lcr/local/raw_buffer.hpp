@@ -50,6 +50,9 @@
 #include <cassert>
 #include <string_view>
 
+#include "lcr/trap.hpp"
+
+
 namespace lcr::local {
 
 template <std::size_t Capacity>
@@ -93,13 +96,7 @@ public:
     }
 
     inline void set_size(std::size_t s) noexcept {
-#ifndef NDEBUG
-        assert(s <= Capacity && "raw_buffer overflow");
-#else
-        if (s > Capacity) [[unlikely]] {
-            __builtin_trap(); // deterministic crash
-        }
-#endif
+        LCR_ASSERT_MSG(s <= Capacity, "raw_buffer overflow");
         size_ = s;
     }
 

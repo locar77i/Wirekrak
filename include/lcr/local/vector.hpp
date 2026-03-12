@@ -106,6 +106,8 @@ systems.
 #include <type_traits>
 #include <initializer_list>
 
+#include "lcr/trap.hpp"
+
 
 namespace lcr::local {
 
@@ -145,7 +147,7 @@ public:
     }
 
     constexpr vector(std::initializer_list<T> init) noexcept {
-        assert(init.size() <= Capacity && "lcr::local::vector<> - initializer_list exceeds vector capacity");
+        LCR_ASSERT_MSG(init.size() <= Capacity, "lcr::local::vector<> - initializer_list exceeds vector capacity");
         for (const auto& v : init) {
             emplace_back(v);
         }
@@ -205,37 +207,37 @@ public:
 public:
     [[nodiscard]]
     T& operator[](size_type i) noexcept {
-        assert(i < size_ && "lcr::local::vector index out of bounds");
+        LCR_ASSERT_MSG(i < size_, "lcr::local::vector index out of bounds");
         return data()[i];
     }
 
     [[nodiscard]]
     const T& operator[](size_type i) const noexcept {
-        assert(i < size_ && "lcr::local::vector index out of bounds");
+        LCR_ASSERT_MSG(i < size_, "lcr::local::vector index out of bounds");
         return data()[i];
     }
 
     [[nodiscard]]
     T& front() noexcept {
-        assert(size_ > 0 && "lcr::local::vector is empty");
+        LCR_ASSERT_MSG(size_ > 0, "lcr::local::vector is empty");
         return data()[0];
     }
 
     [[nodiscard]]
     const T& front() const noexcept {
-        assert(size_ > 0 && "lcr::local::vector is empty");
+        LCR_ASSERT_MSG(size_ > 0, "lcr::local::vector is empty");
         return data()[0];
     }
 
     [[nodiscard]]
     T& back() noexcept {
-        assert(size_ > 0 && "lcr::local::vector is empty");
+        LCR_ASSERT_MSG(size_ > 0, "lcr::local::vector is empty");
         return data()[size_-1];
     }
 
     [[nodiscard]]
     const T& back() const noexcept {
-        assert(size_ > 0 && "lcr::local::vector is empty");
+        LCR_ASSERT_MSG(size_ > 0, "lcr::local::vector is empty");
         return data()[size_-1];
     }
 
@@ -276,7 +278,7 @@ public:
 
     template<class... Args>
     T& emplace_back(Args&&... args) noexcept {
-        assert(size_ < Capacity && "lcr::local::vector capacity exceeded");
+        LCR_ASSERT_MSG(size_ < Capacity, "lcr::local::vector capacity exceeded");
 
         T* ptr = new (data() + size_) T(std::forward<Args>(args)...);
         ++size_;
@@ -293,7 +295,7 @@ public:
     }
 
     void pop_back() noexcept {
-        assert(size_ > 0 && "lcr::local::vector underflow");
+        LCR_ASSERT_MSG(size_ > 0, "lcr::local::vector underflow");
 
         --size_;
         if constexpr (!std::is_trivially_destructible_v<T>) {
@@ -304,7 +306,7 @@ public:
 public:
 
     iterator erase(iterator pos) noexcept {
-        assert(pos >= begin() && pos < end() && "lcr::local::vector erase position out of bounds");
+        LCR_ASSERT_MSG(pos >= begin() && pos < end(), "lcr::local::vector erase position out of bounds");
 
         iterator last = end() - 1;
 
@@ -326,9 +328,9 @@ public:
     }
 
     iterator erase(iterator first, iterator last) noexcept {
-        assert(first >= begin() && "lcr::local::vector erase range out of bounds");
-        assert(last  <= end() && "lcr::local::vector erase range out of bounds");
-        assert(first <= last && "lcr::local::vector erase range out of bounds");
+        LCR_ASSERT_MSG(first >= begin(), "lcr::local::vector erase range out of bounds");
+        LCR_ASSERT_MSG(last  <= end(), "lcr::local::vector erase range out of bounds");
+        LCR_ASSERT_MSG(first <= last, "lcr::local::vector erase range out of bounds");
 
         iterator dst = first;
         iterator src = last;
@@ -347,7 +349,7 @@ public:
     }
 
     iterator swap_erase(iterator pos) noexcept {
-        assert(pos >= begin() && pos < end() && "lcr::local::vector swap_erase position out of bounds");
+        LCR_ASSERT_MSG(pos >= begin() && pos < end(), "lcr::local::vector swap_erase position out of bounds");
 
         iterator last = end() - 1;
 

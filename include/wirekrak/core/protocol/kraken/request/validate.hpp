@@ -6,6 +6,8 @@
 
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/optional.hpp"
+#include "lcr/trap.hpp"
+
 
 namespace wirekrak::core::protocol::kraken::request {
 
@@ -15,10 +17,10 @@ namespace wirekrak::core::protocol::kraken::request {
 
 inline void validate_symbols(const RequestSymbols& symbols) {
 #ifndef NDEBUG
-    assert(!symbols.empty() && "Kraken request requires at least one symbol");
+    LCR_ASSERT_MSG(!symbols.empty(), "Kraken request requires at least one symbol");
 
     for (const auto& s : symbols) {
-        assert(!std::string_view(s).empty() && "Kraken request symbol cannot be empty");
+        LCR_ASSERT_MSG(!std::string_view(s).empty(), "Kraken request symbol cannot be empty");
     }
 #else
     (void)symbols;
@@ -28,7 +30,7 @@ inline void validate_symbols(const RequestSymbols& symbols) {
 inline void validate_req_id(const lcr::optional<std::uint64_t>& req_id) {
 #ifndef NDEBUG
     if (req_id.has()) {
-        assert(req_id.value() != 0 && "Kraken request req_id should be non-zero");
+        LCR_ASSERT_MSG(req_id.value() != 0, "Kraken request req_id should be non-zero");
     }
 #else
     (void)req_id;

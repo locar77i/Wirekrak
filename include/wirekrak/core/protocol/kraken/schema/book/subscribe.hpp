@@ -10,6 +10,7 @@
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/json.hpp"
 #include "lcr/optional.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace wirekrak::core {
@@ -80,7 +81,7 @@ struct Subscribe {
         request::validate_symbols(symbols);
         request::validate_req_id(req_id);
         if (depth.has()) {
-            assert(book::is_valid_depth(depth.value()));
+            LCR_ASSERT_MSG(book::is_valid_depth(depth.value()), "Invalid depth value");
         }
 #endif
 

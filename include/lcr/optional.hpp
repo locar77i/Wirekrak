@@ -5,6 +5,8 @@
 #include <type_traits>
 #include <cassert>
 
+#include "lcr/trap.hpp"
+
 /*
 ===============================================================================
  lcr::optional<T>
@@ -49,11 +51,11 @@ public:
 
     [[nodiscard]] inline bool has() const { return has_; }
     const T& value() const {
-        assert(has_ && "lcr::optional::value() called when empty");
+        LCR_ASSERT_MSG(has_, "lcr::optional::value() called when empty");
         return value_;
     }
     [[nodiscard]] inline T& value() {
-        assert(has_ && "lcr::optional::value() called when empty");
+        LCR_ASSERT_MSG(has_, "lcr::optional::value() called when empty");
         return value_;
     }
     [[nodiscard]] inline T value_or(T fallback) const {

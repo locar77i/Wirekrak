@@ -87,6 +87,7 @@ Data-plane model:
 #include "lcr/buffer/concepts.hpp"
 #include "lcr/sequence.hpp"
 #include "lcr/log/logger.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace wirekrak::core::protocol::kraken {
@@ -1022,9 +1023,7 @@ private:
         // 2. Serialize to JSON (into stack buffer to avoid heap allocation)
         char buffer[RequestT::max_json_size()];
         const std::size_t size = req.write_json(buffer);
-#ifndef NDEBUG
-        assert(size <= RequestT::max_json_size());
-#endif
+        LCR_ASSERT_MSG(size <= RequestT::max_json_size(), "Serialized JSON size exceeds static buffer capacity");
         // 3. Send the request
         std::string_view msg{buffer, size};
         WK_TRACE("[SESSION] Sending json request (payload: " << lcr::format_bytes_exact(size) << ")");
@@ -1058,9 +1057,7 @@ private:
         tx_buffer_.reset();
         const std::size_t size = req.write_json(tx_buffer_.data());
         tx_buffer_.set_size(size);
-    #ifndef NDEBUG
-        assert(size <= required);
-    #endif
+        LCR_ASSERT_MSG(size <= required, "Serialized JSON size exceeds static buffer capacity");
         // 3. Send the request
         std::string_view msg{tx_buffer_.data(), tx_buffer_.size()};
         WK_TRACE("[SESSION] Sending json request (payload: " << lcr::format_bytes_exact(size) << ")");

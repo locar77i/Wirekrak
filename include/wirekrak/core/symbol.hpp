@@ -6,6 +6,7 @@
 
 #include "lcr/local/string.hpp"
 #include "lcr/local/vector.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace wirekrak::core {
@@ -21,7 +22,7 @@ using RequestSymbols = lcr::local::vector<Symbol, MAX_REQUEST_SYMBOLS>; // examp
 inline RequestSymbols to_request_symbols(const std::vector<std::string>& src) {
     RequestSymbols dst;
     for (const auto& s : src) {
-        assert(s.size() <= RequestSymbols::max_size);
+        LCR_ASSERT_MSG(s.size() <= RequestSymbols::max_size, "Symbol size exceeds maximum allowed length");
         dst.emplace_back(s);
     }
     return dst;

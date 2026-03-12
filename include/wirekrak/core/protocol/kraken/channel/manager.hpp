@@ -9,6 +9,7 @@
 #include "wirekrak/core/symbol/intern.hpp"
 #include "wirekrak/core/protocol/kraken/channel/pending_requests.hpp"
 #include "lcr/log/logger.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace wirekrak::core::protocol::kraken::channel {
@@ -271,8 +272,8 @@ public:
 #ifndef NDEBUG
     void assert_consistency() const {
         for (auto sid : active_symbols_) {
-            assert(!pending_subscriptions_.contains(sid));
-            assert(!pending_unsubscriptions_.contains(sid));
+            LCR_ASSERT(!pending_subscriptions_.contains(sid));
+            LCR_ASSERT(!pending_unsubscriptions_.contains(sid));
         }
 
         pending_subscriptions_.assert_consistency();

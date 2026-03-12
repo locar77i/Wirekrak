@@ -97,6 +97,8 @@ Compile-time capacity  No                Yes
 #include <cassert>
 #include <limits>
 
+#include "lcr/trap.hpp"
+
 
 namespace lcr::local {
 
@@ -187,25 +189,25 @@ public:
 
     [[nodiscard]]
     constexpr char& operator[](size_type i) noexcept {
-        assert(i < size_);
+        LCR_ASSERT_MSG(i < size_, "Index out of bounds");
         return data_[i];
     }
 
     [[nodiscard]]
     constexpr const char& operator[](size_type i) const noexcept {
-        assert(i < size_);
+        LCR_ASSERT_MSG(i < size_, "Index out of bounds");
         return data_[i];
     }
 
     [[nodiscard]]
     constexpr char front() const {
-        assert(!empty());
+        LCR_ASSERT_MSG(!empty(), "Accessing front of empty string");
         return data_[0];
     }
 
     [[nodiscard]]
     constexpr char back() const {
-        assert(!empty());
+        LCR_ASSERT_MSG(!empty(), "Accessing back of empty string");
         return data_[size_-1];
     }
     
@@ -221,7 +223,7 @@ public:
     }
 
     constexpr void assign(std::string_view s) {
-        assert(s.size() <= Capacity);
+        LCR_ASSERT_MSG(s.size() <= Capacity, "String overflow");
 
         size_ = static_cast<std::uint16_t>(s.size());
 
@@ -232,7 +234,7 @@ public:
     }
 
     constexpr void append(std::string_view s) {
-        assert(size_ + s.size() <= Capacity);
+        LCR_ASSERT_MSG(size_ + s.size() <= Capacity, "String overflow");
 
         if (!s.empty()) [[likely]] {
             std::memcpy(data_ + size_, s.data(), s.size());
@@ -242,7 +244,7 @@ public:
     }
 
     constexpr void push_back(char c) {
-        assert(size_ < Capacity);
+        LCR_ASSERT_MSG(size_ < Capacity, "String overflow");
 
         data_[size_] = c;
         ++size_;
@@ -250,13 +252,13 @@ public:
     }
 
     constexpr void pop_back() {
-        assert(size_ > 0);
+        LCR_ASSERT_MSG(size_ > 0, "String underflow");
         --size_;
         data_[size_] = '\0';
     }
 
     constexpr void resize(size_type n) {
-        assert(n <= Capacity);
+        LCR_ASSERT_MSG(n <= Capacity, "String overflow");
         size_ = n;
         data_[size_] = '\0';
     }

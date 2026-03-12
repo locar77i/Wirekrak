@@ -75,6 +75,7 @@ Important Guarantees
 #include <cstddef>
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/buffer/concepts.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace lcr::buffer {
@@ -146,9 +147,7 @@ public:
     */
     [[nodiscard]]
     promotion_result_type reserve(Slot* slot, std::size_t len ) noexcept {
-#ifndef NDEBUG
-        assert(slot && "reserve() called with null slot");
-#endif
+        LCR_ASSERT_MSG(slot, "reserve() called with null slot");
         return slot->reserve(len, pool_);
     }
 
@@ -199,9 +198,8 @@ public:
             Slot must not be accessed after this call.
     */
     void release_consumer_slot(Slot* slot) noexcept {
-#ifndef NDEBUG
-        assert(slot && "release_consumer_slot called with null slot");
-#endif
+        LCR_ASSERT_MSG(slot, "release_consumer_slot called with null slot");
+
         slot->reset(pool_);
         ring_.release_consumer_slot();
     }

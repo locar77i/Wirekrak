@@ -90,6 +90,7 @@ Threading & performance
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/symbol/intern.hpp"
 #include "lcr/log/logger.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace wirekrak::core {
@@ -286,7 +287,7 @@ public:
         for (const auto& [_, sub] : subscriptions_) {
             symbol_count += sub.request().symbols.size();
         }
-        assert(symbol_count == symbol_owner_.size());
+        LCR_ASSERT_MSG(symbol_count == symbol_owner_.size(), "Symbol count must match symbol owner map size");
     }
 #endif
 

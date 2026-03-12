@@ -5,6 +5,8 @@
 #include <string_view>
 #include <cassert>
 
+#include "lcr/trap.hpp"
+
 
 namespace lcr {
 namespace observability {
@@ -102,7 +104,7 @@ public:
     }
 
     inline std::string_view top() const noexcept {
-        assert((pos_ <= buffer_.size()) && "Invalid position in label_stack");
+        LCR_ASSERT_MSG(pos_ <= buffer_.size(), "Invalid position in label_stack");
         if (labels_start_.empty()) return {};
         size_t start = labels_start_.back();
         return std::string_view(buffer_.data() + start, pos_ - start);

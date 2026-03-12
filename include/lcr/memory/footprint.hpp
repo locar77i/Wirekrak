@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "lcr/format.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace lcr {
@@ -70,8 +71,8 @@ struct footprint {
     }
 
     inline void assert_under_limit(std::uint64_t static_limit, std::uint64_t dynamic_limit) const {
-        assert(static_bytes <= static_limit && "lcr::memory::footprint - static memory usage exceeded limit");
-        assert(dynamic_bytes <= dynamic_limit && "lcr::memory::footprint - dynamic memory usage exceeded limit");
+        LCR_ASSERT_MSG(static_bytes <= static_limit, "lcr::memory::footprint - static memory usage exceeded limit");
+        LCR_ASSERT_MSG(dynamic_bytes <= dynamic_limit, "lcr::memory::footprint - dynamic memory usage exceeded limit");
     }
 
     // debug dump method for easy logging

@@ -110,6 +110,7 @@ No level-based liveness or health state is exposed.
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/optional.hpp"
 #include "lcr/log/logger.hpp"
+#include "lcr/trap.hpp"
 
 
 namespace wirekrak::core::transport {
@@ -768,7 +769,7 @@ private:
             return false;
         }
         // INVARIANT: the parsed url must be valid here
-        assert(parsed_url_.has() && "reconnect cannot be called without the parsed url data");
+        LCR_ASSERT_MSG(parsed_url_.has(), "reconnect cannot be called without the parsed url data");
         auto& url_data = parsed_url_.value();
         // 1) Retry delay elapsed -> FSM may initiate reconnection attempt
         transition_(Event::RetryTimerExpired);

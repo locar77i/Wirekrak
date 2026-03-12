@@ -48,6 +48,7 @@ is validated independently from the operating system and network stack.
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/format.hpp"
 #include "lcr/log/logger.hpp"
+#include "lcr/trap.hpp"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -308,9 +309,7 @@ private:
                 if (!current_slot) [[unlikely]] {
                     continue; // backpressure handling (no slot available)
                 }
-#ifndef NDEBUG
-                assert(current_slot->size() == 0 && "On receive loop - acquired slot should be empty");
-#endif
+                LCR_ASSERT_MSG(current_slot->size() == 0, "On receive loop - acquired slot should be empty");
             }
             // === Reactive promotion (ONLY if not starting a new message and capacity is exhausted) ===
             else if (current_slot->remaining() == 0) [[unlikely]] {
@@ -629,7 +628,7 @@ public:
     // Test-only method to start receive loop without connect()
     void test_start_receive_loop() noexcept {
         WK_TRACE("[WS:TEST] Connecting WebSocket (simulated) ...");
-        assert(!test_receive_loop_started_ && "test_start_receive_loop() called twice");
+        LCR_ASSERT_MSG(!test_receive_loop_started_, "test_start_receive_loop() called twice");
         test_receive_loop_started_ = true;
         // Fake non-null WebSocket handle
         hWebSocket_ = reinterpret_cast<HINTERNET>(1);
