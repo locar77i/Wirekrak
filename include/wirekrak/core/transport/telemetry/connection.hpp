@@ -5,6 +5,7 @@
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 
 #include "lcr/metrics/atomic/counter.hpp"
+#include "lcr/metrics/atomic/stats/size.hpp"
 #include "lcr/format.hpp"
 
 namespace wirekrak::core::transport::telemetry {
@@ -36,6 +37,9 @@ struct alignas(64) Connection final {
 
     // Transport closed while connected (any cause)
     lcr::metrics::atomic::counter32 disconnect_events_total;
+
+    // Epoch transitions (for transport-level reconnections)
+    lcr::metrics::atomic::counter32 epoch_transitions_total;
 
     // ---------------------------------------------------------------------
     // Liveness decisions
@@ -78,6 +82,19 @@ struct alignas(64) Connection final {
     lcr::metrics::atomic::counter64 send_rejected_total;
 
     // ---------------------------------------------------------------------
+    // Transport control plane
+    // ---------------------------------------------------------------------
+    lcr::metrics::atomic::stats::size16 control_ring_depth;
+    
+    // ---------------------------------------------------------------------
+    // Connection control plane
+    // ---------------------------------------------------------------------
+    lcr::metrics::atomic::counter64 signals_emitted_total;
+    lcr::metrics::atomic::counter32 signals_liveness_threatened_total;
+    lcr::metrics::atomic::counter32 signals_retry_immediate_total;
+    lcr::metrics::atomic::counter32 signals_retry_scheduled_total;
+
+    // ---------------------------------------------------------------------
     // Sub-telemetry
     // ---------------------------------------------------------------------
 
@@ -88,25 +105,42 @@ struct alignas(64) Connection final {
     // ---------------------------------------------------------------------
 
     inline void copy_to(Connection& other) const noexcept {
+        // Lifecycle & state transitions
         open_calls_total.copy_to(other.open_calls_total);
         connect_success_total.copy_to(other.connect_success_total);
         connect_failure_total.copy_to(other.connect_failure_total);
         close_calls_total.copy_to(other.close_calls_total);
         disconnect_events_total.copy_to(other.disconnect_events_total);
+        epoch_transitions_total.copy_to(other.epoch_transitions_total);
 
+        // Liveness decisions
         liveness_timeouts_total.copy_to(other.liveness_timeouts_total);
 
+        // Retry mechanics
         retry_cycles_started_total.copy_to(other.retry_cycles_started_total);
         retry_attempts_total.copy_to(other.retry_attempts_total);
         retry_success_total.copy_to(other.retry_success_total);
         retry_failure_total.copy_to(other.retry_failure_total);
 
+        // Message handoff
         messages_forwarded_total.copy_to(other.messages_forwarded_total);
 
+        // Send gating
         send_calls_total.copy_to(other.send_calls_total);
         send_rejected_total.copy_to(other.send_rejected_total);
 
+        // Transport control plane
+        control_ring_depth.copy_to(other.control_ring_depth);
+
+        // Connection control plane
+        signals_emitted_total.copy_to(other.signals_emitted_total);
+        signals_liveness_threatened_total.copy_to(other.signals_liveness_threatened_total);
+        signals_retry_immediate_total.copy_to(other.signals_retry_immediate_total);
+        signals_retry_scheduled_total.copy_to(other.signals_retry_scheduled_total);
+
+        // ---------------------------------------------------------------------
         // Sub-telemetry
+        // ---------------------------------------------------------------------
         websocket.copy_to(other.websocket);
     }
 
@@ -114,43 +148,45 @@ struct alignas(64) Connection final {
 
         os << "\n=== Connection Telemetry ===\n";
 
-        // ---------------------------------------------------------------------
         // Lifecycle & state transitions
-        // ---------------------------------------------------------------------
         os << "Lifecycle\n";
-        os << "  Open calls            : " << lcr::format_number_exact(open_calls_total.load()) << '\n';
-        os << "  Connect success       : " << lcr::format_number_exact(connect_success_total.load()) << '\n';
-        os << "  Connect failure       : " << lcr::format_number_exact(connect_failure_total.load()) << '\n';
-        os << "  Close calls           : " << lcr::format_number_exact(close_calls_total.load()) << '\n';
-        os << "  Disconnect events     : " << lcr::format_number_exact(disconnect_events_total.load()) << '\n';
+        os << "  Open calls         : " << lcr::format_number_exact(open_calls_total.load()) << '\n';
+        os << "  Connect success    : " << lcr::format_number_exact(connect_success_total.load()) << '\n';
+        os << "  Connect failure    : " << lcr::format_number_exact(connect_failure_total.load()) << '\n';
+        os << "  Close calls        : " << lcr::format_number_exact(close_calls_total.load()) << '\n';
+        os << "  Disconnect events  : " << lcr::format_number_exact(disconnect_events_total.load()) << '\n';
+        os << "  Epoch transitions  : " << lcr::format_number_exact(epoch_transitions_total.load()) << '\n';
 
-        // ---------------------------------------------------------------------
         // Liveness decisions
-        // ---------------------------------------------------------------------
         os << "\nLiveness\n";
-        os << "  Liveness timeouts     : " << lcr::format_number_exact(liveness_timeouts_total.load()) << '\n';
+        os << "  Liveness timeouts  : " << lcr::format_number_exact(liveness_timeouts_total.load()) << '\n';
 
-        // ---------------------------------------------------------------------
         // Retry mechanics
-        // ---------------------------------------------------------------------
         os << "\nRetry\n";
-        os << "  Retry cycles started  : " << lcr::format_number_exact(retry_cycles_started_total.load()) << '\n';
-        os << "  Retry attempts        : " << lcr::format_number_exact(retry_attempts_total.load()) << '\n';
-        os << "  Retry success         : " << lcr::format_number_exact(retry_success_total.load()) << '\n';
-        os << "  Retry failure         : " << lcr::format_number_exact(retry_failure_total.load()) << '\n';
+        os << "  Cycles started     : " << lcr::format_number_exact(retry_cycles_started_total.load()) << '\n';
+        os << "  Retry attempts     : " << lcr::format_number_exact(retry_attempts_total.load()) << '\n';
+        os << "  Retry success      : " << lcr::format_number_exact(retry_success_total.load()) << '\n';
+        os << "  Retry failure      : " << lcr::format_number_exact(retry_failure_total.load()) << '\n';
 
-        // ---------------------------------------------------------------------
         // Message handoff
-        // ---------------------------------------------------------------------
         os << "\nMessage handoff\n";
-        os << "  Messages forwarded   : " << lcr::format_number_exact(messages_forwarded_total.load()) << '\n';
+        os << "  Messages forwarded : " << lcr::format_number_exact(messages_forwarded_total.load()) << '\n';
 
-        // ---------------------------------------------------------------------
         // Send gating
-        // ---------------------------------------------------------------------
         os << "\nSend\n";
-        os << "  Send calls            : " << lcr::format_number_exact(send_calls_total.load()) << '\n';
-        os << "  Send rejected         : " << lcr::format_number_exact(send_rejected_total.load()) << '\n';
+        os << "  Send calls         : " << lcr::format_number_exact(send_calls_total.load()) << '\n';
+        os << "  Send rejected      : " << lcr::format_number_exact(send_rejected_total.load()) << '\n';
+
+        // Transport control plane
+        os << "\nTransport control plane\n";
+        os << "  Control ring depth : " << control_ring_depth.str() << '\n';
+
+        // Connection control plane
+        os << "\nConnection control plane\n";
+        os << "  Signals emitted     : " << lcr::format_number_exact(signals_emitted_total.load()) << '\n';
+        os << "  Liveness threatened : " << lcr::format_number_exact(signals_liveness_threatened_total.load()) << '\n';
+        os << "  Immediate retry     : " << lcr::format_number_exact(signals_retry_immediate_total.load()) << '\n';
+        os << "  Scheduled retry     : " << lcr::format_number_exact(signals_retry_scheduled_total.load()) << '\n';
 
         // ---------------------------------------------------------------------
         // Sub-telemetry

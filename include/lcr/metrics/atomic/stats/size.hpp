@@ -87,11 +87,16 @@ struct alignas(64) size {
     // String formatter (for human-readable or Prometheus output)
     inline std::string str() const {
         std::ostringstream oss;
-        oss << "samples=" << lcr::format_number_exact(samples_.load())
-            << " last=" << lcr::format_number_exact(last_.load())
-            << " min=" << lcr::format_number_exact(min_.load())
-            << " max=" << lcr::format_number_exact(max_.load())
-            << " avg=" << avg();
+        T samples = samples_.load();
+        oss << "samples=" << lcr::format_number_exact(samples);
+        if (samples >= 1) {
+            oss << " last=" << lcr::format_number_exact(last_.load());
+        }
+        if (samples >= 2) {
+            oss << " min=" << lcr::format_number_exact(min_.load())
+                << " max=" << lcr::format_number_exact(max_.load())
+                << " avg=" << avg();
+        }
         return oss.str();
     }
 
@@ -128,6 +133,8 @@ private:
 };
 
 // Fixed width specialization for hot path
+using size16 = size<uint16_t>;
+static_assert(std::is_standard_layout_v<size16>, "size16 must be standard layout");
 using size32 = size<uint32_t>;
 static_assert(std::is_standard_layout_v<size32>, "size32 must be standard layout");
 using size64 = size<uint64_t>;

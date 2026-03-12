@@ -220,8 +220,10 @@ public:
         }
         //WK_TRACE("[CONN] Polling connection ... (state: " << to_string(get_state_()) << ")");
         // === Drain control plane events ===
+        std::size_t control_events_drained = 0;
         websocket::Event ev;
         while (control_ring_.pop(ev)) {
+            ++control_events_drained;
             switch (ev.type) {
                 case websocket::EventType::Close:
                     on_transport_closed_();
@@ -240,6 +242,13 @@ public:
                     break;
             }
         }
+        // Observability: track control plane pressure (ring size) at each poll
+        WK_TL1(
+            if (control_events_drained > 0) [[unlikely]] {
+                telemetry_.control_ring_depth.set(control_events_drained);
+            }
+        );
+        
         // === Reconnection logic ===
         if (get_state_() == State::WaitingReconnect) [[likely]] {
             auto now = std::chrono::steady_clock::now();
@@ -250,35 +259,6 @@ public:
         // === Liveness logic ===
         if constexpr (LivenessPolicy::enabled) {
             enforce_liveness_policy_();
-        }
-    }
-
-    inline void enforce_liveness_policy_() noexcept {
-        // NOTE: liveness is evaluated only while Connected.
-        // Once a timeout forces disconnection, reconnection logic takes over.
-        if (get_state_() == State::Connected) {
-            static constexpr auto warning_remaining_threshold =
-                std::chrono::milliseconds((message_timeout_.count() * (100 - LivenessPolicy::warning_percent)) / 100);
-            // === Liveness warning check ===
-            auto remaining = liveness_remaining_();
-            if (!liveness_warning_emitted_) [[likely]] {
-                if (remaining <= warning_remaining_threshold) {
-                    WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
-                    liveness_warning_emitted_ = true;
-                    transition_(Event::LivenessOutdated);
-                }
-            } else { // If liveness warning was previously emitted,
-                // reset it once observable activity restores liveness above the danger window.
-                if (remaining > warning_remaining_threshold) {
-                    liveness_warning_emitted_ = false;
-                }
-            }
-            // === Liveness timeout check ===
-            if (!liveness_timeout_emitted_ && is_liveness_stale_()) {
-                WK_WARN("[CONN] Liveness timeout: No protocol traffic observed within liveness window");
-                liveness_timeout_emitted_ = true;
-                transition_(Event::LivenessExpired, Error::Timeout);
-            }
         }
     }
 
@@ -451,6 +431,7 @@ private:
 
     inline void emit_(connection::Signal sig) noexcept {
         WK_TRACE("[CONN] Emitting signal: " << to_string(sig));
+        WK_TL1( telemetry_.signals_emitted_total.inc() );
         // Fast path: try to push
         if (events_.push(sig)) [[likely]] {
             return;
@@ -514,6 +495,7 @@ private:
                 }
                 disconnect_reason_ = DisconnectReason::None;
                 // Only increment on Connected (Never on retries, attempts, or disconnections)
+                WK_TL1( telemetry_.epoch_transitions_total.inc() );
                 ++epoch_;
                 break;
 
@@ -567,6 +549,7 @@ private:
             switch (event) {
             case Event::LivenessOutdated:
                 emit_(connection::Signal::LivenessThreatened);
+                WK_TL1( telemetry_.signals_liveness_threatened_total.inc() );
                 break;
             case Event::LivenessExpired:
                 WK_TL1( telemetry_.liveness_timeouts_total.inc() );
@@ -643,6 +626,35 @@ private:
                 break;
             }
             break;
+        }
+    }
+
+    inline void enforce_liveness_policy_() noexcept {
+        // NOTE: liveness is evaluated only while Connected.
+        // Once a timeout forces disconnection, reconnection logic takes over.
+        if (get_state_() == State::Connected) {
+            static constexpr auto warning_remaining_threshold =
+                std::chrono::milliseconds((message_timeout_.count() * (100 - LivenessPolicy::warning_percent)) / 100);
+            // === Liveness warning check ===
+            auto remaining = liveness_remaining_();
+            if (!liveness_warning_emitted_) [[likely]] {
+                if (remaining <= warning_remaining_threshold) {
+                    WK_TRACE("[CONN] Liveness warning: " << remaining.count() << "ms remaining.");
+                    liveness_warning_emitted_ = true;
+                    transition_(Event::LivenessOutdated);
+                }
+            } else { // If liveness warning was previously emitted,
+                // reset it once observable activity restores liveness above the danger window.
+                if (remaining > warning_remaining_threshold) {
+                    liveness_warning_emitted_ = false;
+                }
+            }
+            // === Liveness timeout check ===
+            if (!liveness_timeout_emitted_ && is_liveness_stale_()) {
+                WK_WARN("[CONN] Liveness timeout: No protocol traffic observed within liveness window");
+                liveness_timeout_emitted_ = true;
+                transition_(Event::LivenessExpired, Error::Timeout);
+            }
         }
     }
 
@@ -794,6 +806,7 @@ private:
     void arm_immediate_reconnect_(Error error) noexcept {
         WK_DEBUG("[CONN] Scheduling immediate reconnection attempt.");
         emit_(connection::Signal::RetryImmediate);
+        WK_TL1( telemetry_.signals_retry_immediate_total.inc() );
         retry_root_error_ = error;
         retry_attempts_ = 1;
         next_retry_ = {}; // next_retry_ intentionally not set, so the first retry is attempted immediately on next poll()
@@ -818,6 +831,7 @@ private:
             // Schedule next retry with backoff
             WK_DEBUG("[CONN] Scheduling next reconnection attempt with backoff.");
             emit_(connection::Signal::RetryScheduled);
+            WK_TL1( telemetry_.signals_retry_scheduled_total.inc() );
             auto now = std::chrono::steady_clock::now();
             auto delay = backoff_(retry_root_error_, retry_attempts_);
             retry_attempts_++;

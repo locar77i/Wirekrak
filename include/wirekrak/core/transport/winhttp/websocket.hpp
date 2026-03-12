@@ -158,6 +158,9 @@ public:
         running_.store(true, std::memory_order_relaxed);
         closed_.store(false, std::memory_order_relaxed);
         recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
+
+        WK_TL1( telemetry_.connect_events_total.inc() );
+
         return Error::None;
     }
 
@@ -182,6 +185,7 @@ public:
         // 3. Handle possible errors
         if (result != ERROR_SUCCESS) [[unlikely]] {
             WK_ERROR("[WS] websocket_send() failed");
+            WK_TL1( telemetry_.send_errors_total.inc() );
             return false;
         }
         // 4. Update telemetry
@@ -313,21 +317,9 @@ private:
             }
             // === Reactive promotion (ONLY if not starting a new message and capacity is exhausted) ===
             else if (current_slot->remaining() == 0) [[unlikely]] {
-/*
-                promotion_result_type r = message_ring_.reserve(current_slot, config::transport::websocket::FRAME_SIZE_HINT);
-                if (r > promotion_result_type::Success) [[unlikely]] {
-                    WK_WARN("[WS] Backpressure detected (memory pool exhausted)");
-                    handle_fatal_error_("[WS] Failed to promote message slot (zero-tolerance policy)"
-                        " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
-                    message_ring_.discard_producer_slot(current_slot);
-                    current_slot = nullptr;
-                    break;
-                }
-*/
                 if (!promote_slot_(current_slot)) {
                     continue; // backpressure handling (failed to promote)
                 }
-
             }
 
             // === Amount writable this iteration ===
@@ -343,6 +335,7 @@ private:
 
             // === Call WebSocket receive API ===
             //WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
+            WK_TL1( telemetry_.receive_calls_total.inc() );
             DWORD result = api_.websocket_receive(
                 hWebSocket_,
                 current_slot->write_ptr(),
@@ -353,9 +346,9 @@ private:
 
             // === Handle errors ===
             if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
-                WK_TL1( telemetry_.receive_errors_total.inc() );
+                WK_TL1( telemetry_.rx_errors_total.inc() );
                 auto error = handle_receive_error_(result);
-                if (!control_ring_.push(websocket::Event::make_error(error))) {
+                if (!emit_event_(websocket::Event::make_error(error))) {
                     WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">  - Event lost in transport shutdown");
                 }
                 // Stop the loop and signal close
@@ -398,6 +391,7 @@ private:
                 WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
                 // Commit the complete message to the ring buffer (and reset state for the next message)
                 if (current_slot->is_external()) [[unlikely]] {
+                    WK_TL1( telemetry_.external_buffers_total.inc() );
                     WK_TRACE("[WS] Received message exceeded internal buffer capacity and was written directly into an external buffer (size: "
                         << lcr::format_bytes_exact(current_slot->size()) << ")");
                 }
@@ -496,6 +490,9 @@ private:
                 return false;
             }
         }
+
+        WK_TL1( telemetry_.slot_promotions_total.inc() );
+
         // =============================================================
         // Successful slot promotion
         // =============================================================
@@ -509,15 +506,22 @@ private:
         return true;
     }
 
+    bool emit_event_(websocket::Event event) noexcept {
+        WK_TL1( telemetry_.events_emitted_total.inc() );
+        return control_ring_.push(event);
+    }
+
     void emit_backpressure_detected_() noexcept {
-        if (!control_ring_.push(websocket::Event::make_backpressure_detected())) {
+        WK_TL1( telemetry_.backpressure_detected_total.inc() );
+        if (!emit_event_(websocket::Event::make_backpressure_detected())) {
             handle_fatal_error_("[WS] Failed to emit backpressure event (event lost)"
                 " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
         }
     }
 
     void emit_backpressure_cleared_() noexcept {
-        if (!control_ring_.push(websocket::Event::make_backpressure_cleared())) {
+        WK_TL1( telemetry_.backpressure_cleared_total.inc() );
+        if (!emit_event_(websocket::Event::make_backpressure_cleared())) {
             // Event intentionally dropped on the floor (logged for observability)
             // We have already successfully acquired a slot, so transport correctness is not compromised
             WK_WARN("[WS] Dropping backpressure cleared event (control ring saturated)");
@@ -580,7 +584,7 @@ private:
             return;
         }
         WK_TL1( telemetry_.close_events_total.inc() );
-        if (!control_ring_.push(websocket::Event::make_close())) {
+        if (!emit_event_(websocket::Event::make_close())) {
             WK_ERROR("[WS] Failed to emit close event (lost in transport shutdown)");
         }
     }
@@ -596,7 +600,7 @@ private:
         }
         WK_FATAL("[WS] Forcing transport close to preserve correctness guarantees.");
         // 2. Emit error event if possible
-        if (!control_ring_.push(websocket::Event::make_error(error))) {
+        if (!emit_event_(websocket::Event::make_error(error))) {
             WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">  - Event lost in transport shutdown");
         }
         // 3. Signal close to ensure transport is fully closed (exactly-once guarded)
