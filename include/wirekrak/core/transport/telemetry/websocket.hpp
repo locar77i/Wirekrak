@@ -82,8 +82,14 @@ struct alignas(64) WebSocket final {
     lcr::metrics::atomic::counter64 slot_promotions_total;
     lcr::metrics::atomic::counter64 external_buffers_total;
 
+    // ---------------------------------------------------------------------
+    // Data-plane pressure
+    // ---------------------------------------------------------------------
+
+    lcr::metrics::atomic::stats::size16 memory_pool_depth;   // Measures the actual load level of the internal memory pool
+
     // --------------------------------------------------------
-    // Transport control plane
+    // Control plane events
     // --------------------------------------------------------
 
     lcr::metrics::atomic::counter64 events_emitted_total; // Number of control plane events emitted by the transport (e.g. close, error, backpressure)
@@ -125,7 +131,10 @@ struct alignas(64) WebSocket final {
         slot_promotions_total.copy_to(other.slot_promotions_total);
         external_buffers_total.copy_to(other.external_buffers_total);
 
-        // Transport control plane
+        // Data-plane pressure
+        memory_pool_depth.copy_to(other.memory_pool_depth);
+
+        // Control plane events
         events_emitted_total.copy_to(other.events_emitted_total);
     }
 
@@ -175,8 +184,12 @@ struct alignas(64) WebSocket final {
         os << "  Slot promotions : " << lcr::format_number_exact(slot_promotions_total.load()) << '\n';
         os << "  External buffers: " << lcr::format_number_exact(external_buffers_total.load()) << '\n';
 
-        // Transport control plane
-        os << "\nTransport control plane\n";
+        // Data-plane pressure
+        os << "\nData-plane pressure\n";
+        os << "  Memory pool depth  : " << memory_pool_depth.str() << '\n';
+
+        // Control plane events
+        os << "\nControl plane events\n";
         os << "  Events emitted  : " << lcr::format_number_exact(events_emitted_total.load()) << '\n';
     }
 };

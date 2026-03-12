@@ -23,71 +23,48 @@ struct alignas(64) Connection final {
     // Lifecycle & state transitions
     // ---------------------------------------------------------------------
 
-    // open() invoked by user
-    lcr::metrics::atomic::counter32 open_calls_total;
-
-    // Successfully reached State::Connected
-    lcr::metrics::atomic::counter32 connect_success_total;
-
-    // Failed initial connection attempt
-    lcr::metrics::atomic::counter32 connect_failure_total;
-
-    // Explicit close() invoked by user
-    lcr::metrics::atomic::counter32 close_calls_total;
-
-    // Transport closed while connected (any cause)
-    lcr::metrics::atomic::counter32 disconnect_events_total;
-
-    // Epoch transitions (for transport-level reconnections)
-    lcr::metrics::atomic::counter32 epoch_transitions_total;
+    lcr::metrics::atomic::counter32 open_calls_total;         // open() invoked by user
+    lcr::metrics::atomic::counter32 connect_success_total;    // Successfully reached State::Connected
+    lcr::metrics::atomic::counter32 connect_failure_total;    // Failed initial connection attempt
+    lcr::metrics::atomic::counter32 close_calls_total;        // Explicit close() invoked by user
+    lcr::metrics::atomic::counter32 disconnect_events_total;  // Transport closed while connected (any cause)
+    lcr::metrics::atomic::counter32 epoch_transitions_total;  // Epoch transitions (for transport-level reconnections)
 
     // ---------------------------------------------------------------------
     // Liveness decisions
     // ---------------------------------------------------------------------
 
-    // Forced disconnect due to liveness timeout
-    lcr::metrics::atomic::counter32 liveness_timeouts_total;
+    lcr::metrics::atomic::counter32 liveness_timeouts_total;  // Forced disconnect due to liveness timeout
 
     // ---------------------------------------------------------------------
     // Retry mechanics (decisions, not timing)
     // ---------------------------------------------------------------------
-
-    // Entered State::WaitingReconnect
-    lcr::metrics::atomic::counter32 retry_cycles_started_total;
-
-    // Reconnect attempt initiated
-    lcr::metrics::atomic::counter32 retry_attempts_total;
-
-    // Reconnect succeeded
-    lcr::metrics::atomic::counter32 retry_success_total;
-
-    // Reconnect failed (attempted but did not connect)
-    lcr::metrics::atomic::counter32 retry_failure_total;
+    
+    lcr::metrics::atomic::counter32 retry_cycles_started_total;  // Entered State::WaitingReconnect
+    lcr::metrics::atomic::counter32 retry_attempts_total;        // Reconnect attempt initiated
+    lcr::metrics::atomic::counter32 retry_success_total;         // Reconnect succeeded
+    lcr::metrics::atomic::counter32 retry_failure_total;         // Reconnect failed (attempted but did not connect)
 
     // ---------------------------------------------------------------------
     // Message handoff (WS → user boundary)
     // ---------------------------------------------------------------------
 
-    // Messages forwarded to user callback
-    lcr::metrics::atomic::counter64 messages_forwarded_total;
+    lcr::metrics::atomic::counter64 messages_forwarded_total;  // Messages forwarded to user callback
 
     // ---------------------------------------------------------------------
     // Send gating
     // ---------------------------------------------------------------------
 
-    // send() called by user
-    lcr::metrics::atomic::counter64 send_calls_total;
-
-    // send() rejected due to non-connected state
-    lcr::metrics::atomic::counter64 send_rejected_total;
+    lcr::metrics::atomic::counter64 send_calls_total;     // send() called by user
+    lcr::metrics::atomic::counter64 send_rejected_total;  // send() rejected due to non-connected state
 
     // ---------------------------------------------------------------------
-    // Transport control plane
+    // Control plane pressure (transport)
     // ---------------------------------------------------------------------
-    lcr::metrics::atomic::stats::size16 control_ring_depth;
+    lcr::metrics::atomic::stats::size16 control_ring_depth;  // Measures the actual load level of the control ring
     
     // ---------------------------------------------------------------------
-    // Connection control plane
+    // Control plane signals (protocol)
     // ---------------------------------------------------------------------
     lcr::metrics::atomic::counter64 signals_emitted_total;
     lcr::metrics::atomic::counter32 signals_liveness_threatened_total;
@@ -129,10 +106,10 @@ struct alignas(64) Connection final {
         send_calls_total.copy_to(other.send_calls_total);
         send_rejected_total.copy_to(other.send_rejected_total);
 
-        // Transport control plane
+        // Control plane pressure (transport)
         control_ring_depth.copy_to(other.control_ring_depth);
 
-        // Connection control plane
+        // Control plane signals (protocol)
         signals_emitted_total.copy_to(other.signals_emitted_total);
         signals_liveness_threatened_total.copy_to(other.signals_liveness_threatened_total);
         signals_retry_immediate_total.copy_to(other.signals_retry_immediate_total);
@@ -177,12 +154,12 @@ struct alignas(64) Connection final {
         os << "  Send calls         : " << lcr::format_number_exact(send_calls_total.load()) << '\n';
         os << "  Send rejected      : " << lcr::format_number_exact(send_rejected_total.load()) << '\n';
 
-        // Transport control plane
-        os << "\nTransport control plane\n";
+        // Control plane pressure (transport)
+        os << "\nControl plane pressure\n";
         os << "  Control ring depth : " << control_ring_depth.str() << '\n';
 
-        // Connection control plane
-        os << "\nConnection control plane\n";
+        // Control plane signals (protocol)
+        os << "\nControl plane signals\n";
         os << "  Signals emitted     : " << lcr::format_number_exact(signals_emitted_total.load()) << '\n';
         os << "  Liveness threatened : " << lcr::format_number_exact(signals_liveness_threatened_total.load()) << '\n';
         os << "  Immediate retry     : " << lcr::format_number_exact(signals_retry_immediate_total.load()) << '\n';

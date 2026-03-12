@@ -354,6 +354,11 @@ public:
         message_ring_.release_consumer_slot(slot);
     }
 
+    inline std::size_t pending_messages() noexcept {
+        return message_ring_.used();
+    }
+       
+
     [[nodiscard]]
     inline telemetry::Connection& telemetry() noexcept {
         return telemetry_;

@@ -68,6 +68,7 @@ Data-plane model:
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/request/scheduler.hpp"
+#include "wirekrak/core/protocol/telemetry/session.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
@@ -105,7 +106,7 @@ public:
 public:
     Session(MessageRing& ring)
         : telemetry_()
-        , connection_(ring, telemetry_)
+        , connection_(ring, telemetry_.connection)
         , ctx_(std::make_unique<Context>())
         , ctx_view_(*ctx_)
         , parser_(ctx_view_)
@@ -295,6 +296,7 @@ public:
         if (!emit_subscription_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
+        WK_TL1(telemetry_.subscriptions_requested_total.inc());
         return req.req_id.value();
     }
 
@@ -316,6 +318,7 @@ public:
         if (!send_request_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
+        WK_TL1(telemetry_.unsubscriptions_requested_total.inc());
         // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         RequestSymbols cancelled = subscription_manager_for_<RequestT>().register_unsubscription(std::move(req.symbols), req.req_id.value());
         // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect (only if replay enabled)
@@ -356,11 +359,21 @@ public:
     inline std::uint64_t poll() {
         // === Advance transport state - Heartbeat liveness & reconnection logic ===
         connection_.poll();
+
         // === Drain transport control-plane signals ===
         transport::connection::Signal sig;
         while (connection_.poll_signal(sig)) {
             handle_connection_signal_(sig);
         }
+
+        // Observability: track control plane pressure (ring size) at each poll
+        WK_TL1(
+            const std::size_t pending = connection_.pending_messages();
+             if (pending > 0) [[likely]] {
+                telemetry_.message_ring_depth.set(pending);
+            }
+        );
+
         // === Drain transport data-plane (zero-copy) ===
         std::size_t messages_processed = 0;
         while (messages_processed < config::protocol::MAX_MESSAGES_PER_POLL) {
@@ -374,17 +387,28 @@ public:
             Method method;
             Channel channel;
             auto r = parser_.parse_and_route(sv, method, channel);
+            handle_parser_result_(r, method, channel);
             if (r == parser::Result::Backpressure) {
                 WK_WARN("[SESSION] Failed to deliver " << to_string(channel) << " message (backpressure)"
                     " - protocol correctness compromised (user is not draining fast enough)");
-                overload_state_.user.mark_active();
                 connection_.release_message(slot);
+                overload_state_.user.mark_active();
+                WK_TL1( telemetry_.user_backpressure_events_total.inc() );
                 break; // Stop processing more messages to prevent further damage
             }
             // Release the message slot back to the transport regardless of parsing outcome to maintain flow.
             connection_.release_message(slot);
+            WK_TL1( telemetry_.messages_processed_total.inc() );
             ++messages_processed;
         }
+
+        // Observability: track data plane pressure (messages processed per poll)
+        WK_TL1(
+            if (messages_processed > 0) [[likely]] {
+                telemetry_.messages_per_poll.set(messages_processed);
+            }
+        );
+
         // ===============================================================================
         // PROCESS REJECTION NOTICES (lossless, semantic errors)
         // ===============================================================================
@@ -404,7 +428,8 @@ public:
             if (!user_rejection_buffer_.push(notice)) [[unlikely]] { // This is a hard failure: we cannot report semantic errors reliably
                 WK_WARN("[SESSION] Failed to deliver rejection notice (backpressure) - protocol correctness compromised (user is not draining fast enough)");
                 overload_state_.user.mark_active();
-                break;
+                WK_TL1( telemetry_.user_backpressure_events_total.inc() );
+                break; // Stop processing more messages to prevent further damage
             }
         }}
         
@@ -484,6 +509,7 @@ public:
                         WK_ERROR("[SESSION] Failed to send paced request - " << msg);
                         return false;
                     }
+                    WK_TL1( telemetry_.requests_emitted_total.inc() );
                 }
             }
         }
@@ -611,8 +637,8 @@ public:
     }
 
     [[nodiscard]]
-    inline transport::telemetry::Connection& telemetry() noexcept {
-        return connection_.telemetry();
+    inline telemetry::Session& telemetry() noexcept {
+        return telemetry_;
     }
 
     [[nodiscard]]
@@ -656,8 +682,10 @@ private:
     // Sequence generator for request IDs
     lcr::sequence req_id_seq_{ctrl::PROTOCOL_BASE};
 
-    // Underlying streaming client (and telemetry)
-    transport::telemetry::Connection telemetry_;
+    // Telemetry for the session
+    telemetry::Session telemetry_;
+
+    // Underlying connection
     ConnectionT connection_;
 
     // Temporary buffer for request serialization (to avoid heap allocations)
@@ -768,7 +796,10 @@ private:
         }
         WK_DEBUG("[SESSION] Emitting re-subscribe message: " << req.symbols.size() << " symbol/s");
         // 4) Emit the request according to the configured batching policy
-        (void)emit_subscription_(req);
+        if (emit_subscription_(req)) {
+            WK_TL1(telemetry_.replay_requests_total.inc());
+            WK_TL1(telemetry_.replay_symbols_total.inc(req.symbols.size()) );
+        }
     }
 
     inline void handle_disconnect_() {
@@ -779,7 +810,26 @@ private:
         overload_state_.reset();
     }
 
+    inline void handle_parser_result_(parser::Result result, Method method, Channel channel) {
+        switch (result) {
+        case parser::Result::Ignored:
+        case parser::Result::InvalidJson:
+        case parser::Result::InvalidSchema:
+        case parser::Result::InvalidValue:
+            WK_TL1( telemetry_.parse_failure_total.inc() );
+            break;
+        case parser::Result::Parsed:
+        case parser::Result::Delivered:
+            WK_TL1( telemetry_.parse_success_total.inc() );
+            break;
+        case parser::Result::Backpressure:
+            WK_TL1( telemetry_.parse_backpressure_total.inc() );
+            break;
+        }
+    }
+
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
+        WK_TL1( telemetry_.rejection_notices_total.inc() );
         WK_TRACE("[SESSION] Handling rejection notice for symbol {" << (notice.symbol.has() ? notice.symbol.value() : Symbol("N/A") )
             << "} (req_id=" << (notice.req_id.has() ? notice.req_id.value() : ctrl::INVALID_REQ_ID) << ") - " << notice.error);
         if (notice.req_id.has()) {
@@ -842,6 +892,8 @@ private:
     inline bool enforce_transport_backpressure_policy_() noexcept {
         using core::policy::BackpressureMode;
 
+        WK_TL1( telemetry_.transport_overload_streak.record(overload_state_.transport.count()) );
+
         // ZeroTolerance is handled by transport layer (force close on backpressure), so we do not need to do anything here.
         if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
             return false;
@@ -865,6 +917,8 @@ private:
     [[nodiscard]]
     inline bool enforce_user_backpressure_policy_() noexcept {
         using core::policy::BackpressureMode;
+
+        WK_TL1( telemetry_.user_overload_streak.record(overload_state_.user.count()) );
 
         if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
@@ -1031,6 +1085,7 @@ private:
             WK_ERROR("[SESSION] Failed to send request (req_id=" << lcr::to_string(req.req_id) << ") - " << msg);
             return false;
         }
+        WK_TL1( telemetry_.requests_emitted_total.inc() );
         return true;
     }
 
@@ -1065,6 +1120,7 @@ private:
             WK_ERROR("[SESSION] Failed to send request (req_id=" << lcr::to_string(req.req_id) << ") - " << msg);
             return false;
         }
+        WK_TL1( telemetry_.requests_emitted_total.inc() );
         return true;
     }
 

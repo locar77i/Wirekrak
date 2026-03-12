@@ -459,6 +459,12 @@ private:
     [[nodiscard]]
     bool promote_slot_(slot_type*& slot) noexcept {
         using core::policy::BackpressureMode;
+
+        // Observability: track control plane pressure (ring size) at each poll
+        WK_TL1(
+            telemetry_.memory_pool_depth.set(message_ring_.memory_pool().used());
+        );
+    
         promotion_result_type r = message_ring_.reserve(slot, config::transport::websocket::FRAME_SIZE_HINT);
         if (r > promotion_result_type::Success) [[unlikely]] { // Handle backpressure according to the policy
             // =========================================================

@@ -120,6 +120,8 @@ private:
     gauge<T>  min_{std::numeric_limits<T>::max()};
     gauge<T>  max_{};
 };
+using sampler16 = sampler<uint16_t>;
+static_assert(std::is_standard_layout_v<sampler16>, "sampler16 must be standard layout");
 using sampler32 = sampler<uint32_t>;
 static_assert(std::is_standard_layout_v<sampler32>, "sampler32 must be standard layout");
 using sampler64 = sampler<uint64_t>;
