@@ -8,16 +8,16 @@
 
 #include "wirekrak/core/protocol/kraken/enums.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
-#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
-#include "wirekrak/core/protocol/kraken/parser/rejection_notice.hpp"
-#include "wirekrak/core/protocol/kraken/parser/status/update.hpp"
-#include "wirekrak/core/protocol/kraken/parser/system/pong.hpp"
-#include "wirekrak/core/protocol/kraken/parser/trade/subscribe_ack.hpp"
-#include "wirekrak/core/protocol/kraken/parser/trade/response.hpp"
-#include "wirekrak/core/protocol/kraken/parser/trade/unsubscribe_ack.hpp"
-#include "wirekrak/core/protocol/kraken/parser/book/subscribe_ack.hpp"
-#include "wirekrak/core/protocol/kraken/parser/book/response.hpp"
-#include "wirekrak/core/protocol/kraken/parser/book/unsubscribe_ack.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/rejection_notice.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/status/update.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/system/pong.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/trade/subscribe_ack.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/trade/response.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/trade/unsubscribe_ack.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/book/subscribe_ack.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/book/response.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/book/unsubscribe_ack.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 
@@ -134,11 +134,11 @@ public:
             return Result::InvalidSchema;
         }
         // METHOD DISPATCH (ACK / CONTROL)
-        if (adapter::parse_method_required(root, method) == Result::Parsed) {
+        if (dom::adapter::parse_method_required(root, method) == Result::Parsed) {
             return parse_method_message_(method, root);
         }
         // CHANNEL DISPATCH (DATA)
-        if (adapter::parse_channel_required(root, channel) == Result::Parsed) {
+        if (dom::adapter::parse_channel_required(root, channel) == Result::Parsed) {
             return parse_channel_message_(channel, root);
         }
         return Result::Ignored;
@@ -186,12 +186,12 @@ private:
         Channel channel;
         // result object (required)
         simdjson::dom::element result;
-        if (helper::parse_object_required(root, "result", result) != Result::Parsed) {
+        if (dom::helper::parse_object_required(root, "result", result) != Result::Parsed) {
             channel = Channel::Unknown;
         }
         else {
             // channel (required)
-            if (adapter::parse_channel_required(result, channel) != Result::Parsed) {
+            if (dom::adapter::parse_channel_required(result, channel) != Result::Parsed) {
                 WK_WARN("[PARSER] Field 'channel' missing or invalid in '" << to_string(method) << "' message -> ignore message.");
                 channel = Channel::Unknown;
             }
@@ -214,7 +214,7 @@ private:
         switch (channel) {
             case Channel::Trade: {
                 schema::trade::SubscribeAck resp;
-                r = trade::subscribe_ack::parse(root, resp);
+                r = dom::trade::subscribe_ack::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.trade_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Trade subscribe ring full - message has not been delivered (size: " << ctx_view_.trade_subscribe_ring.size()
@@ -227,7 +227,7 @@ private:
             } break;
             case Channel::Book: {
                 schema::book::SubscribeAck resp;
-                r = book::subscribe_ack::parse(root, resp);
+                r = dom::book::subscribe_ack::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.book_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Book subscribe ring full - message has not been delivered (size: " << ctx_view_.book_subscribe_ring.size()
@@ -240,7 +240,7 @@ private:
             } break;
             default: { // 2025-12-20 08:39:28 [WARN] [PARSER] Failed to parse method message: {"error":"Already subscribed","method":"subscribe","req_id":2,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:28.809188Z","time_out":"2025-12-20T07:39:28.809200Z"}
                 schema::rejection::Notice resp;
-                r = rejection_notice::parse(root, resp);
+                r = dom::rejection_notice::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Rejection ring full - message has not been delivered (size: " << ctx_view_.rejection_ring.size()
@@ -262,7 +262,7 @@ private:
         switch (channel) {
             case Channel::Trade: {
                 schema::trade::UnsubscribeAck resp;
-                r = trade::unsubscribe_ack::parse(root, resp);
+                r = dom::trade::unsubscribe_ack::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.trade_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Trade unsubscribe ring full - message has not been delivered (size: " << ctx_view_.trade_unsubscribe_ring.size()
@@ -275,7 +275,7 @@ private:
             } break;
             case Channel::Book: {
                 schema::book::UnsubscribeAck resp;
-                r = book::unsubscribe_ack::parse(root, resp);
+                r = dom::book::unsubscribe_ack::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.book_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Book unsubscribe ring full - message has not been delivered (size: " << ctx_view_.book_unsubscribe_ring.size()
@@ -288,7 +288,7 @@ private:
             } break;
             default: { // 2025-12-20 08:39:43 [WARN] [PARSER] Failed to parse method message: {"error":"Subscription Not Found","method":"subscribe","req_id":4,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:43.909056Z","time_out":"2025-12-20T07:39:43.909073Z"}
                 schema::rejection::Notice resp;
-                r = rejection_notice::parse(root, resp);
+                r = dom::rejection_notice::parse(root, resp);
                 if (r == Result::Parsed) {
                     if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Rejection ring full - message has not been delivered (size: " << ctx_view_.rejection_ring.size()
@@ -335,7 +335,7 @@ private:
     inline Result parse_trade_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         schema::trade::Response response;
-        auto r = trade::response::parse(root, response);
+        auto r = dom::trade::response::parse(root, response);
         if (r == Result::Parsed) {
             if (!ctx_view_.trade_ring.push(std::move(response))) {
                 return Result::Backpressure;
@@ -359,7 +359,7 @@ private:
     inline Result parse_book_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         schema::book::Response response;
-        auto r = book::response::parse(root, response);
+        auto r = dom::book::response::parse(root, response);
         if (r == Result::Parsed) {
             if (!ctx_view_.book_ring.push(std::move(response))) {
                 return Result::Backpressure;
@@ -374,7 +374,7 @@ private:
     inline Result parse_pong_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         schema::system::Pong resp;
-        auto r = system::pong::parse(root, resp);
+        auto r = dom::system::pong::parse(root, resp);
         if (r == Result::Parsed) {
             // We intentionally overwrite the previous value: no backpressure, no queuing, freshness over history
             ctx_view_.pong_slot = std::move(resp);
@@ -387,7 +387,7 @@ private:
     inline Result parse_status_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         schema::status::Update resp;
-        auto r = status::update::parse(root, resp);
+        auto r = dom::status::update::parse(root, resp);
         if (r == Result::Parsed) {
             // We intentionally overwrite the previous value: no backpressure, no queuing, freshness over history
             ctx_view_.status_slot = std::move(resp);

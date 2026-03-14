@@ -4,7 +4,7 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/core/protocol/kraken/parser/trade/subscribe_ack.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/trade/subscribe_ack.hpp"
 
 using namespace wirekrak::core::protocol::kraken;
 
@@ -33,7 +33,7 @@ static bool parse(std::string_view json, schema::trade::SubscribeAck& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
-    return (parser::trade::subscribe_ack::parse(doc.value(), out) == parser::Result::Parsed);
+    return (parser::dom::trade::subscribe_ack::parse(doc.value(), out) == parser::Result::Parsed);
 }
 
 // ------------------------------------------------------------

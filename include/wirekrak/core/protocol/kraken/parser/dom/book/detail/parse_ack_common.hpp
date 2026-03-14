@@ -3,15 +3,15 @@
 #include <string_view>
 
 #include "wirekrak/core/protocol/kraken/parser/result.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
-#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
 #include "lcr/log/logger.hpp"
 
 #include "simdjson.h"
 
 
-namespace wirekrak::core::protocol::kraken::parser::detail {
+namespace wirekrak::core::protocol::kraken::parser::dom::book::detail {
 
 template<typename Ack>
 [[nodiscard]]
@@ -143,4 +143,4 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
     return Result::Parsed;
 }
 
-} // namespace wirekrak::core::protocol::kraken::parser::detail
+} // namespace wirekrak::core::protocol::kraken::parser::dom::book::detail

@@ -4,7 +4,7 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/core/protocol/kraken/parser/trade/response.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/trade/response.hpp"
 
 using namespace wirekrak::core::protocol::kraken;
 
@@ -67,7 +67,7 @@ void test_trade_snapshot_success() {
     assert(!doc.error());
 
     schema::trade::Response resp{};
-    auto r = parser::trade::response::parse(doc.value(), resp);
+    auto r = parser::dom::trade::response::parse(doc.value(), resp);
 
     assert(r == parser::Result::Parsed);
     assert(resp.type == PayloadType::Snapshot);
@@ -107,7 +107,7 @@ void test_trade_update_success() {
     assert(!doc.error());
 
     schema::trade::Response resp{};
-    auto r = parser::trade::response::parse(doc.value(), resp);
+    auto r = parser::dom::trade::response::parse(doc.value(), resp);
 
     assert(r == parser::Result::Parsed);
     assert(resp.type == PayloadType::Update);
@@ -133,7 +133,7 @@ void test_trade_missing_type() {
     assert(!doc.error());
 
     schema::trade::Response resp{};
-    auto r = parser::trade::response::parse(doc.value(), resp);
+    auto r = parser::dom::trade::response::parse(doc.value(), resp);
     assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";
@@ -151,7 +151,7 @@ void test_trade_invalid_type() {
     assert(!doc.error());
 
     schema::trade::Response resp{};
-    auto r = parser::trade::response::parse(doc.value(), resp);
+    auto r = parser::dom::trade::response::parse(doc.value(), resp);
     assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";
@@ -189,7 +189,7 @@ void test_trade_update_multiple_trades_rejected() {
     assert(!doc.error());
 
     schema::trade::Response resp{};
-    auto r = parser::trade::response::parse(doc.value(), resp);
+    auto r = parser::dom::trade::response::parse(doc.value(), resp);
     assert(r == parser::Result::Parsed);
     assert(resp.trades.size() == 2);
 
@@ -219,7 +219,7 @@ void test_trade_missing_required_field() {
     assert(!doc.error());
 
     schema::trade::Response resp{};
-    auto r = parser::trade::response::parse(doc.value(), resp);
+    auto r = parser::dom::trade::response::parse(doc.value(), resp);
     assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";
@@ -237,7 +237,7 @@ void test_trade_root_not_object() {
     assert(!doc.error());
 
     schema::trade::Response resp{};
-    auto r = parser::trade::response::parse(doc.value(), resp);
+    auto r = parser::dom::trade::response::parse(doc.value(), resp);
     assert(r != parser::Result::Parsed);
 
     std::cout << "[TEST] OK\n";

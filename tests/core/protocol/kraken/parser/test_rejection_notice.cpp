@@ -4,7 +4,7 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/core/protocol/kraken/parser/rejection_notice.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/rejection_notice.hpp"
 
 using namespace wirekrak::core::protocol::kraken;
 
@@ -32,7 +32,7 @@ static bool parse(std::string_view json, schema::rejection::Notice& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
-    return parser::rejection_notice::parse(doc.value(), out) == parser::Result::Parsed;
+    return parser::dom::rejection_notice::parse(doc.value(), out) == parser::Result::Parsed;
 }
 
 // ------------------------------------------------------------

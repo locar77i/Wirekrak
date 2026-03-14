@@ -3,16 +3,12 @@
 #include "wirekrak/core/protocol/kraken/schema/book/response.hpp"
 #include "wirekrak/core/protocol/kraken/enums/payload_type.hpp"
 #include "wirekrak/core/protocol/kraken/parser/result.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
-#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
-#include "wirekrak/core/protocol/kraken/parser/book/detail/parse_side_levels_common.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/book/detail/parse_side_levels_common.hpp"
 
 
-namespace wirekrak::core {
-namespace protocol {
-namespace kraken {
-namespace parser {
-namespace book {
+namespace wirekrak::core::protocol::kraken::parser::dom::book {
 
 struct response {
     [[nodiscard]]
@@ -110,9 +106,4 @@ struct response {
     }
 };
 
-} // namespace book
-} // namespace parser
-} // namespace kraken
-} // namespace protocol
-} // namespace wirekrak::core
-
+} // namespace wirekrak::core::protocol::kraken::parser::dom::book

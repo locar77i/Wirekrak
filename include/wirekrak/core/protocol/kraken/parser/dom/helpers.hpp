@@ -44,7 +44,7 @@ IMPORTANT:
 */
 
 
-namespace wirekrak::core::protocol::kraken::parser::helper {
+namespace wirekrak::core::protocol::kraken::parser::dom::helper {
 
 // ============================================================================
 // ROOT TYPE
@@ -366,4 +366,4 @@ inline parser::Result parse_string_list_optional(const simdjson::dom::element& o
     return parser::Result::Parsed;
 }
 
-} // namespace wirekrak::core::protocol::kraken::parser::helper
+} // namespace wirekrak::core::protocol::kraken::parser::dom::helper

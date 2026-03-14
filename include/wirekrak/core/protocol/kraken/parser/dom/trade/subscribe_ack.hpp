@@ -3,10 +3,10 @@
 #include <string_view>
 
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe_ack.hpp"
-#include "wirekrak/core/protocol/kraken/parser/trade/detail/parse_ack_common.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/trade/detail/parse_ack_common.hpp"
 
 
-namespace wirekrak::core::protocol::kraken::parser::trade {
+namespace wirekrak::core::protocol::kraken::parser::dom::trade {
 
 struct subscribe_ack {
     [[nodiscard]]
@@ -16,4 +16,4 @@ struct subscribe_ack {
     }
 };
 
-} // namespace wirekrak::core::protocol::kraken::parser::trade
+} // namespace wirekrak::core::protocol::kraken::parser::dom::trade

@@ -4,14 +4,14 @@
 
 #include "wirekrak/core/protocol/kraken/schema/trade/response.hpp"
 #include "wirekrak/core/protocol/kraken/parser/result.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
-#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
 #include "lcr/log/logger.hpp"
 
 #include "simdjson.h"
 
 
-namespace wirekrak::core::protocol::kraken::parser::trade {
+namespace wirekrak::core::protocol::kraken::parser::dom::trade {
 
 struct response {
 
@@ -120,4 +120,4 @@ struct response {
     }
 };
 
-} // namespace wirekrak::core::protocol::kraken::parser::trade
+} // namespace wirekrak::core::protocol::kraken::parser::dom::trade

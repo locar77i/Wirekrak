@@ -4,7 +4,7 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/core/protocol/kraken/parser/book/unsubscribe_ack.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/book/unsubscribe_ack.hpp"
 
 using namespace wirekrak::core::protocol::kraken;
 
@@ -58,7 +58,7 @@ void test_book_unsubscribe_ack_success() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    auto r = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
     assert(r == parser::Result::Parsed);
 
@@ -101,7 +101,7 @@ void test_book_unsubscribe_ack_error() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    auto r = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
     assert(r == parser::Result::Parsed);
     assert(ack.success == false);
@@ -133,7 +133,7 @@ void test_book_unsubscribe_ack_wrong_method() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    auto r = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
     assert(r != parser::Result::Parsed);
 
@@ -161,7 +161,7 @@ void test_book_unsubscribe_ack_wrong_channel() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    auto r = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
     assert(r != parser::Result::Parsed);
 
@@ -189,7 +189,7 @@ void test_book_unsubscribe_ack_missing_symbol() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    auto r = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
     assert(r != parser::Result::Parsed);
 
@@ -217,7 +217,7 @@ void test_book_unsubscribe_ack_invalid_depth_type() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    auto r = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
     assert(r != parser::Result::Parsed);
 
@@ -239,7 +239,7 @@ void test_book_unsubscribe_ack_missing_result() {
     simdjson::dom::element root = doc.value();
 
     schema::book::UnsubscribeAck ack{};
-    auto r = parser::book::unsubscribe_ack::parse(root, ack);
+    auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
     assert(r != parser::Result::Parsed);
 

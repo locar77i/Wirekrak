@@ -4,14 +4,15 @@
 
 #include "wirekrak/core/protocol/kraken/enums/payload_type.hpp"
 #include "wirekrak/core/protocol/kraken/parser/result.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
-#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
-#include "wirekrak/core/protocol/kraken/parser/book/detail/parse_side_levels_common.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/book/detail/parse_side_levels_common.hpp"
 #include "lcr/log/logger.hpp"
 
 #include "simdjson.h"
 
-namespace wirekrak::core::protocol::kraken::parser::detail {
+
+namespace wirekrak::core::protocol::kraken::parser::dom::book::detail {
 
 template<typename BookMsg>
 [[nodiscard]]
@@ -100,4 +101,4 @@ inline Result parse_payload_common(const simdjson::dom::element& root, std::stri
     return Result::Parsed;
 }
 
-} // namespace wirekrak::core::protocol::kraken::parser::detail
+} // namespace wirekrak::core::protocol::kraken::parser::dom::book::detail

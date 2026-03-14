@@ -4,13 +4,10 @@
 
 #include "wirekrak/core/protocol/kraken/schema/book/unsubscribe_ack.hpp"
 #include "wirekrak/core/protocol/kraken/enums/channel.hpp"
-#include "wirekrak/core/protocol/kraken/parser/book/detail/parse_ack_common.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/book/detail/parse_ack_common.hpp"
 
-namespace wirekrak::core {
-namespace protocol {
-namespace kraken {
-namespace parser {
-namespace book {
+
+namespace wirekrak::core::protocol::kraken::parser::dom::book {
 
 struct unsubscribe_ack {
     [[nodiscard]]
@@ -20,8 +17,4 @@ struct unsubscribe_ack {
     }
 };
 
-} // namespace book
-} // namespace parser
-} // namespace kraken
-} // namespace protocol
-} // namespace wirekrak::core
+} // namespace wirekrak::core::protocol::kraken::parser::dom::book

@@ -9,7 +9,7 @@
 #include "wirekrak/core/protocol/kraken/enums/payload_type.hpp"
 #include "wirekrak/core/protocol/kraken/enums/system_state.hpp"
 #include "wirekrak/core/protocol/kraken/parser/result.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/timestamp.hpp"
 
@@ -53,7 +53,7 @@ across all Kraken WebSocket protocol parsers.
 */
 
 
-namespace wirekrak::core::protocol::kraken::parser::adapter {
+namespace wirekrak::core::protocol::kraken::parser::dom::adapter {
 
 // ------------------------------------------------------------
 // Method
@@ -284,4 +284,4 @@ inline Result parse_timestamp_optional(const simdjson::dom::object& obj, const c
 }
 
 
-} // namespace wirekrak::core::protocol::kraken::parser::adapter
+} // namespace wirekrak::core::protocol::kraken::parser::dom::adapter

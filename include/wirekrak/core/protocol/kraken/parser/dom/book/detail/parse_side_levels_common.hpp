@@ -1,17 +1,13 @@
 #pragma once
 
 #include "wirekrak/core/protocol/kraken/parser/result.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
 #include "lcr/log/logger.hpp"
 
 #include "simdjson.h"
 
 
-namespace wirekrak::core {
-namespace protocol {
-namespace kraken {
-namespace parser {
-namespace detail {
+namespace wirekrak::core::protocol::kraken::parser::dom::book::detail {
 
 template<typename Levels>
 [[nodiscard]]
@@ -53,8 +49,4 @@ inline Result parse_side_levels_common(const simdjson::dom::object& book, std::s
     return Result::Parsed;
 }
 
-} // namespace detail
-} // namespace parser
-} // namespace kraken
-} // namespace protocol
-} // namespace wirekrak::core
+} // namespace wirekrak::core::protocol::kraken::parser::dom::book::detail

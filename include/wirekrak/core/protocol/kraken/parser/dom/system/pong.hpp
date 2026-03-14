@@ -3,13 +3,13 @@
 #include <string_view>
 
 #include "wirekrak/core/protocol/kraken/schema/system/pong.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
-#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
 #include "lcr/log/logger.hpp"
 
 #include "simdjson.h"
 
-namespace wirekrak::core::protocol::kraken::parser::system {
+namespace wirekrak::core::protocol::kraken::parser::dom::system {
 
 struct pong {
 
@@ -160,4 +160,4 @@ struct pong {
     }
 };
 
-} // namespace wirekrak::core::protocol::kraken::parser::system
+} // namespace wirekrak::core::protocol::kraken::parser::dom::system

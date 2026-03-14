@@ -3,16 +3,12 @@
 #include <simdjson.h>
 
 #include "wirekrak/core/protocol/kraken/schema/status/update.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
-#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
 #include "lcr/log/logger.hpp"
 
 
-namespace wirekrak::core {
-namespace protocol {
-namespace kraken {
-namespace parser {
-namespace status {
+namespace wirekrak::core::protocol::kraken::parser::dom::status {
 
 class update {
 public:
@@ -37,7 +33,7 @@ public:
         }
 
         // data must be an array
-        dom::array data;
+        simdjson::dom::array data;
         r = helper::parse_array_required(root, "data", data);
         if (r != Result::Parsed) {
             WK_DEBUG("[PARSER] Field 'data' missing or invalid in status update -> ignore message.");
@@ -51,7 +47,7 @@ public:
             return Result::InvalidSchema;
         }
 
-        const dom::element& obj = *it;
+        const simdjson::dom::element& obj = *it;
 
         // system (required)
         r = adapter::parse_system_state_required(obj, "system", out.system);
@@ -89,8 +85,4 @@ public:
     }
 };
 
-} // namespace status
-} // namespace parser
-} // namespace kraken
-} // namespace protocol
-} // namespace wirekrak::core
+} // namespace wirekrak::core::protocol::kraken::parser::dom::status

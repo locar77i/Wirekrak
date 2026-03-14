@@ -4,7 +4,7 @@
 
 #include "simdjson.h"
 
-#include "wirekrak/core/protocol/kraken/parser/book/response.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/book/response.hpp"
 
 using namespace wirekrak::core::protocol::kraken;
 
@@ -36,7 +36,7 @@ static bool parse(std::string_view json, schema::book::Response& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
-    return (parser::book::response::parse(doc.value(), out) == parser::Result::Parsed);
+    return (parser::dom::book::response::parse(doc.value(), out) == parser::Result::Parsed);
 }
 
 // ------------------------------------------------------------

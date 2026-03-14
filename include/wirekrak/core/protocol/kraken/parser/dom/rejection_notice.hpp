@@ -3,13 +3,13 @@
 #include <string_view>
 
 #include "wirekrak/core/protocol/kraken/schema/rejection_notice.hpp"
-#include "wirekrak/core/protocol/kraken/parser/helpers.hpp"
-#include "wirekrak/core/protocol/kraken/parser/adapters.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
+#include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
 #include "lcr/log/logger.hpp"
 
 #include "simdjson.h"
 
-namespace wirekrak::core::protocol::kraken::parser {
+namespace wirekrak::core::protocol::kraken::parser::dom {
 
 struct rejection_notice {
     [[nodiscard]]
@@ -63,4 +63,4 @@ struct rejection_notice {
     }
 };
 
-} // namespace wirekrak::core::protocol::kraken::parser
+} // namespace wirekrak::core::protocol::kraken::parser::dom
