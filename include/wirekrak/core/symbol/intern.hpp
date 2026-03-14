@@ -85,8 +85,8 @@ public:
 
 private:
     InternTable() {
-        symbols_.reserve(256);
-        map_.reserve(256);
+        symbols_.reserve(512);  // TODO: Fix bug on vector reallocation that invalidates string_view keys when symbols > initial reserve 
+        map_.reserve(512);
     }
 
 private:

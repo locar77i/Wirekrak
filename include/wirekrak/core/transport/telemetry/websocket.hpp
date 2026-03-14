@@ -55,6 +55,12 @@ struct alignas(64) WebSocket final {
     lcr::metrics::atomic::counter32 connect_events_total;
     lcr::metrics::atomic::counter32 close_events_total;
 
+    // --------------------------------------------------------
+    // Message shape
+    // --------------------------------------------------------
+
+    lcr::metrics::atomic::stats::size32 rx_message_bytes;  // Size of the currently assembled message being received
+
     // ---------------------------------------------------------------------
     // Fragmentation
     // ---------------------------------------------------------------------
@@ -63,17 +69,19 @@ struct alignas(64) WebSocket final {
     lcr::metrics::atomic::stats::sampler32 fragments_per_message;  // Number of fragments per assembled message
 
     // --------------------------------------------------------
-    // Backpressure
+    // Access failures
+    // --------------------------------------------------------
+
+    lcr::metrics::atomic::counter64 message_ring_failures_total;
+    lcr::metrics::atomic::counter64 memory_pool_failures_total;
+    lcr::metrics::atomic::counter64 control_ring_failures_total;
+
+    // --------------------------------------------------------
+    // Backpressure events
     // --------------------------------------------------------
 
     lcr::metrics::atomic::counter32 backpressure_detected_total;
     lcr::metrics::atomic::counter32 backpressure_cleared_total;
-
-    // --------------------------------------------------------
-    // Message shape
-    // --------------------------------------------------------
-
-    lcr::metrics::atomic::stats::size32 rx_message_bytes;  // Size of the currently assembled message being received
 
     // --------------------------------------------------------
     // Memory behavior
@@ -116,17 +124,22 @@ struct alignas(64) WebSocket final {
         connect_events_total.copy_to(other.connect_events_total);
         close_events_total.copy_to(other.close_events_total);
 
+        // Message shape
+        rx_message_bytes.copy_to(other.rx_message_bytes);
+
         // Fragmentation
         rx_fragments_total.copy_to(other.rx_fragments_total);
         fragments_per_message.copy_to(other.fragments_per_message);
 
-        // Backpressure
+        // Access failures
+        message_ring_failures_total.copy_to(other.message_ring_failures_total);
+        memory_pool_failures_total.copy_to(other.memory_pool_failures_total);
+        control_ring_failures_total.copy_to(other.control_ring_failures_total);
+
+        // Backpressure events
         backpressure_detected_total.copy_to(other.backpressure_detected_total);
         backpressure_cleared_total.copy_to(other.backpressure_cleared_total);
-
-        // Message shape
-        rx_message_bytes.copy_to(other.rx_message_bytes);
-
+    
         // Memory behavior
         slot_promotions_total.copy_to(other.slot_promotions_total);
         external_buffers_total.copy_to(other.external_buffers_total);
@@ -164,20 +177,26 @@ struct alignas(64) WebSocket final {
         os << "\nLifecycle\n";
         os << "  Connect events : " << lcr::format_number_exact(connect_events_total.load()) << '\n';
         os << "  Close events   : " << lcr::format_number_exact(close_events_total.load()) << '\n';
-        
+
+        // Message shape
+        os << "\nMessage shape\n";
+        os << "  RX message bytes: " << rx_message_bytes.str() << '\n';
+
         // Fragmentation
         os << "\nFragments total\n";
         os << "  RX fragments   : " << lcr::format_number_exact(rx_fragments_total.load()) << '\n';
         os << "  Fragments/msg  : " << fragments_per_message.str() << '\n';
 
-        // Backpressure
-        os << "\nBackpressure\n";
+        // Access failures
+        os << "\nAccess failures\n";
+        os << "  Message ring   : " << lcr::format_number_exact(message_ring_failures_total.load()) << '\n';
+        os << "  Memory pool    : " << lcr::format_number_exact(memory_pool_failures_total.load()) << '\n';
+        os << "  Control ring   : " << lcr::format_number_exact(control_ring_failures_total.load()) << '\n';
+
+        // Backpressure events
+        os << "\nBackpressure events\n";
         os << "  Detected       : " << lcr::format_number_exact(backpressure_detected_total.load()) << '\n';
         os << "  Cleared        : " << lcr::format_number_exact(backpressure_cleared_total.load()) << '\n';
-
-        // Message shape
-        os << "\nMessage shape\n";
-        os << "  RX message bytes: " << rx_message_bytes.str() << '\n';
 
         // Memory behavior
         os << "\nMemory behavior\n";
@@ -186,7 +205,7 @@ struct alignas(64) WebSocket final {
 
         // Data-plane pressure
         os << "\nData-plane pressure\n";
-        os << "  Memory pool depth  : " << memory_pool_depth.str() << '\n';
+        os << "  Memory pool depth: " << memory_pool_depth.str() << '\n';
 
         // Control plane events
         os << "\nControl plane events\n";

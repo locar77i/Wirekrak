@@ -39,11 +39,11 @@ public:
     }
 
     // ---------------------------------------------------------------------
-    // Should dequeue next batch?
+    // Should send next batch?
     // ---------------------------------------------------------------------
 
     [[nodiscard]]
-    inline bool should_dequeue() noexcept {
+    inline bool should_send() noexcept {
         if constexpr (Policy::mode == policy::protocol::BatchingMode::Paced) {
             if (poll_counter_ < Policy::emit_interval) {
                 return false;
@@ -68,6 +68,7 @@ public:
         }
         const std::size_t size = req.write_json(slot->data());
         if (size > slot->capacity()) [[unlikely]] {
+            queue_.discard_producer_slot();
             return false;
         }
         slot->set_size(size);
@@ -76,18 +77,22 @@ public:
     }
 
     // ---------------------------------------------------------------------
-    // Dequeue batch request (for emission)
+    // Dequeue batch request with peek/release semantics (for emission)
     // ---------------------------------------------------------------------
 
-    [[nodiscard]]
-    bool dequeue(std::string_view& out) noexcept {
+   [[nodiscard]]
+    bool peek(std::string_view& out) noexcept {
         auto* slot = queue_.peek_consumer_slot();
         if (!slot) [[unlikely]] {
             return false;
         }
+
         out = std::string_view(slot->data(), slot->size());
-        queue_.release_consumer_slot();
         return true;
+    }
+
+    void release() noexcept {
+        queue_.release_consumer_slot();
     }
 
 private:
@@ -102,12 +107,13 @@ private:
 struct NullScheduler {
     inline void poll() noexcept {}
     [[nodiscard]] inline bool idle() const noexcept { return true; }
-    [[nodiscard]] inline bool should_dequeue() noexcept { return false; }
+    [[nodiscard]] inline bool should_send() noexcept { return false; }
 
     template<typename T>
     [[nodiscard]] bool enqueue(const T&) noexcept { return true; }
 
-    [[nodiscard]] bool dequeue(std::string_view&) noexcept { return false; }
+    [[nodiscard]] bool peek(std::string_view&) noexcept { return false; }
+    void release() noexcept {}
 };
 
 } // namespace wirekrak::core::protocol::request

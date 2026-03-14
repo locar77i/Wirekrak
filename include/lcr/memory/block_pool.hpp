@@ -80,6 +80,8 @@ public:
             // Add node to free-list (lock-free)
             push_node_(n);
         }
+        // Initialize free count
+        free_count_.store(block_count_, std::memory_order_relaxed);
     }
 
     /*
@@ -121,6 +123,8 @@ public:
         if (!n) [[unlikely]] {
             return nullptr; // pool exhausted
         }
+        // Successfully popped a node, decrement free count
+        free_count_.fetch_sub(1, std::memory_order_relaxed);
         // Reset logical size before reuse
         n->block.reset();
         return &n->block;
@@ -140,6 +144,8 @@ public:
         LCR_ASSERT_MSG(block, "release() called with null block");
         node* n = node_from_block_(block);
         push_node_(n);
+        // Increment free count after push to ensure visibility of the released block
+        free_count_.fetch_add(1, std::memory_order_relaxed);
     }
 
 
@@ -148,18 +154,8 @@ public:
     // =========================================================================
 
     [[nodiscard]]
-    bool empty() const noexcept {
-        return head_.load(std::memory_order_acquire) == nullptr;
-    }
-
-    [[nodiscard]]
-    bool full() const noexcept {
-        return used() == 0;
-    }
-
-    [[nodiscard]]
     std::size_t used() const noexcept {
-        return block_count_ - free_nodes_();
+        return block_count_ - free_count_.load(std::memory_order_relaxed);
     }
 
     [[nodiscard]]
@@ -195,25 +191,18 @@ private:
       The nodes themselves store linkage.
     */
     struct node {
-        block block{0}; // placement-constructed later
+        block block; // placement-constructed later
         node* next{nullptr};
     };
 
-    /*
-    Head of lock-free stack (Treiber stack).
+    // Head of lock-free stack (Treiber stack). Points to the first free node.
+    alignas(64) std::atomic<node*> head_{nullptr};
 
-    Points to the first free node.
-    */
-    std::atomic<node*> head_{nullptr};
+    node* blocks_{nullptr};    // Backing storage for all nodes
+    std::size_t block_size_;   // Size of each memory block
+    std::size_t block_count_;  // Total number of blocks in the pool
 
-    /*
-    Head of lock-free stack (Treiber stack).
-
-    Points to the first free node.
-    */
-    node* blocks_{nullptr};
-    std::size_t block_size_;
-    std::size_t block_count_;
+    alignas(64) std::atomic<std::size_t> free_count_;  // Tracks number of free blocks (for introspection)
 
 private:
     /*
@@ -295,17 +284,6 @@ private:
         );
     }
 
-
-    [[nodiscard]]
-    std::size_t free_nodes_() const noexcept {
-        std::size_t count = 0;
-        node* n = head_.load(std::memory_order_acquire);
-        while (n) {
-            ++count;
-            n = n->next;
-        }
-        return count;
-    }
 };
 
 } // namespace lcr::memory

@@ -72,6 +72,13 @@ struct alignas(64) Session final {
     lcr::metrics::atomic::counter64 replay_requests_total;  // Number of replay operations triggered after reconnect
     lcr::metrics::atomic::counter64 replay_symbols_total;   // Total symbols replayed during reconnect recovery
 
+    // --------------------------------------------------------
+    // Delivery failures
+    // --------------------------------------------------------
+
+    lcr::metrics::atomic::counter64 request_batching_failures_total;
+    lcr::metrics::atomic::counter64 user_delivery_failures_total;  // Session backpressure caused by user not draining messages fast enough
+
     // ---------------------------------------------------------------------
     // Data-plane pressure
     // ---------------------------------------------------------------------
@@ -82,14 +89,12 @@ struct alignas(64) Session final {
     // Transport backpressure
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 transport_backpressure_events_total;  // Transport backpressure caused by protocol not draining messages fast enough
     lcr::metrics::atomic::stats::sampler16 transport_overload_streak;     // Allows to measure how severe is the transport backpressure escalation
     
     // ---------------------------------------------------------------------
     // User backpressure
     // ---------------------------------------------------------------------
     
-    lcr::metrics::atomic::counter64 user_backpressure_events_total;  // Session backpressure caused by user not draining messages fast enough
     lcr::metrics::atomic::stats::sampler16 user_overload_streak;     // Allows to measure how severe is the user backpressure escalation
 
     // ---------------------------------------------------------------------
@@ -125,15 +130,17 @@ struct alignas(64) Session final {
         replay_requests_total.copy_to(other.replay_requests_total);
         replay_symbols_total.copy_to(other.replay_symbols_total);
 
+        // Delivery failures
+        request_batching_failures_total.copy_to(other.request_batching_failures_total);
+        user_delivery_failures_total.copy_to(other.user_delivery_failures_total);
+
         // Data-plane pressure
         message_ring_depth.copy_to(other.message_ring_depth);
 
         // Transport backpressure
-        transport_backpressure_events_total.copy_to(other.transport_backpressure_events_total);
         transport_overload_streak.copy_to(other.transport_overload_streak);
 
         // User backpressure
-        user_backpressure_events_total.copy_to(other.user_backpressure_events_total);
         user_overload_streak.copy_to(other.user_overload_streak);
 
         // ---------------------------------------------------------------------
@@ -176,18 +183,21 @@ struct alignas(64) Session final {
         os << "  Replay requests    : "  << lcr::format_number_exact(replay_requests_total.load()) << '\n';
         os << "  Replay symbols     : " << lcr::format_number_exact(replay_symbols_total.load()) << '\n';
 
+        // Delivery failures
+        os << "\nDelivery failures\n";
+        os << "  Request batching : " << lcr::format_number_exact(request_batching_failures_total.load()) << '\n';
+        os << "  User delivery    : " << lcr::format_number_exact(user_delivery_failures_total.load()) << '\n';
+
         // Data-plane pressure
         os << "\nData-plane pressure\n";
         os << "  Message ring depth : " << message_ring_depth.str() << '\n';
 
         // Transport backpressure
         os << "\nTransport backpressure\n";
-        os << "  Overload events    : " << lcr::format_number_exact(transport_backpressure_events_total.load()) << '\n';
         os << "  Overload streak    : " << transport_overload_streak.str() << '\n';
 
         // User backpressure
         os << "\nUser backpressure\n";
-        os << "  Overload events    : " << lcr::format_number_exact(user_backpressure_events_total.load()) << '\n';
         os << "  Overload streak    : " << user_overload_streak.str() << '\n';
 
         // ---------------------------------------------------------------------

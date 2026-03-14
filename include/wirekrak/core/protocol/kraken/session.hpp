@@ -393,7 +393,7 @@ public:
                     " - protocol correctness compromised (user is not draining fast enough)");
                 connection_.release_message(slot);
                 overload_state_.user.mark_active();
-                WK_TL1( telemetry_.user_backpressure_events_total.inc() );
+                WK_TL1( telemetry_.user_delivery_failures_total.inc() );
                 break; // Stop processing more messages to prevent further damage
             }
             // Release the message slot back to the transport regardless of parsing outcome to maintain flow.
@@ -428,7 +428,7 @@ public:
             if (!user_rejection_buffer_.push(notice)) [[unlikely]] { // This is a hard failure: we cannot report semantic errors reliably
                 WK_WARN("[SESSION] Failed to deliver rejection notice (backpressure) - protocol correctness compromised (user is not draining fast enough)");
                 overload_state_.user.mark_active();
-                WK_TL1( telemetry_.user_backpressure_events_total.inc() );
+                WK_TL1( telemetry_.user_delivery_failures_total.inc() );
                 break; // Stop processing more messages to prevent further damage
             }
         }}
@@ -501,15 +501,17 @@ public:
         // ===============================================================================
         if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Paced) {
             request_scheduler_.poll();
-            if (!request_scheduler_.idle() && request_scheduler_.should_dequeue()) {
+            if (!request_scheduler_.idle() && request_scheduler_.should_send()) {
                 std::string_view msg;
-                if (request_scheduler_.dequeue(msg)) {
+                if (request_scheduler_.peek(msg)) {
                     WK_TRACE("[SESSION] Emitting paced request: " << msg);
                     if (!connection_.send(msg)) {
                         WK_ERROR("[SESSION] Failed to send paced request - " << msg);
+                        request_scheduler_.release(); // Release the peeked message back to the scheduler
                         return false;
                     }
                     WK_TL1( telemetry_.requests_emitted_total.inc() );
+                    request_scheduler_.release();
                 }
             }
         }
@@ -830,7 +832,7 @@ private:
 
     inline void handle_rejection_(const schema::rejection::Notice& notice) noexcept {
         WK_TL1( telemetry_.rejection_notices_total.inc() );
-        WK_TRACE("[SESSION] Handling rejection notice for symbol {" << (notice.symbol.has() ? notice.symbol.value() : Symbol("N/A") )
+        WK_WARN("[SESSION] Handling rejection notice for symbol {" << (notice.symbol.has() ? notice.symbol.value() : Symbol("N/A") )
             << "} (req_id=" << (notice.req_id.has() ? notice.req_id.value() : ctrl::INVALID_REQ_ID) << ") - " << notice.error);
         if (notice.req_id.has()) {
             if (notice.symbol.has()) {
@@ -970,6 +972,7 @@ private:
                 else {  
                     WK_TRACE("[SESSION] Sending paced subscribe message: " << batch.symbols.size() << " symbol/s (req_id=" << batch.req_id.value() << ")");
                     if (!request_scheduler_.enqueue(batch)) {
+                        WK_TL1( telemetry_.request_batching_failures_total.inc() );
                         return false;
                     }
                 }

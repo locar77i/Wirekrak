@@ -146,7 +146,7 @@ public:
     inline void process_subscribe_ack(ctrl::req_id_t req_id, Symbol symbol, bool success) noexcept {
         WK_TRACE("[SUBMGR:" << to_string(channel_) << "] Processing subscribe ACK for symbol {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
         if (!pending_subscriptions_.contains(symbol)) {
-            WK_WARN("[SUBMGR:" << to_string(channel_) << "] Subscription OMITTED for symbol {" << symbol << "} (unknown req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR:" << to_string(channel_) << "] Subscription OMITTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
             return;
         }
 
@@ -164,7 +164,7 @@ public:
     inline void process_unsubscribe_ack(ctrl::req_id_t req_id,  Symbol symbol,  bool success) noexcept {
         WK_TRACE("[SUBMGR:" << to_string(channel_) << "] Processing unsubscribe ACK for symbol {" << symbol << "} (req_id=" << req_id << ") - success=" << std::boolalpha << success);
         if (!pending_unsubscriptions_.contains(symbol)) {
-            WK_WARN("[SUBMGR:" << to_string(channel_) << "] Unsubscription OMITTED for symbol {" << symbol << "} (unknown req_id=" << req_id << ")");
+            WK_WARN("[SUBMGR:" << to_string(channel_) << "] Unsubscription OMITTED for symbol {" << symbol << "} (req_id=" << req_id << ")");
             return;
         }
 

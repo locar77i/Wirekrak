@@ -58,6 +58,12 @@ struct alignas(64) Connection final {
     lcr::metrics::atomic::counter64 send_calls_total;     // send() called by user
     lcr::metrics::atomic::counter64 send_rejected_total;  // send() rejected due to non-connected state
 
+    // --------------------------------------------------------
+    // Access failures
+    // --------------------------------------------------------
+
+    lcr::metrics::atomic::counter64 control_ring_failures_total;
+
     // ---------------------------------------------------------------------
     // Control plane pressure (transport)
     // ---------------------------------------------------------------------
@@ -106,6 +112,9 @@ struct alignas(64) Connection final {
         send_calls_total.copy_to(other.send_calls_total);
         send_rejected_total.copy_to(other.send_rejected_total);
 
+        // Access failures
+        control_ring_failures_total.copy_to(other.control_ring_failures_total);
+
         // Control plane pressure (transport)
         control_ring_depth.copy_to(other.control_ring_depth);
 
@@ -153,6 +162,10 @@ struct alignas(64) Connection final {
         os << "\nSend\n";
         os << "  Send calls         : " << lcr::format_number_exact(send_calls_total.load()) << '\n';
         os << "  Send rejected      : " << lcr::format_number_exact(send_rejected_total.load()) << '\n';
+
+        // Access failures
+        os << "\nAccess failures\n";
+        os << "  Control ring   : " << lcr::format_number_exact(control_ring_failures_total.load()) << '\n';
 
         // Control plane pressure (transport)
         os << "\nControl plane pressure\n";

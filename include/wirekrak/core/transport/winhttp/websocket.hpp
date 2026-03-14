@@ -416,6 +416,9 @@ private:
         using core::policy::BackpressureMode;
         slot_type* slot = message_ring_.acquire_producer_slot();
         if (!slot) [[unlikely]] { // Handle backpressure according to the policy
+
+            WK_TL1( telemetry_.message_ring_failures_total.inc() );
+
             // =========================================================
             // ZeroTolerance (transport-level forced close)
             // =========================================================
@@ -467,6 +470,9 @@ private:
     
         promotion_result_type r = message_ring_.reserve(slot, config::transport::websocket::FRAME_SIZE_HINT);
         if (r > promotion_result_type::Success) [[unlikely]] { // Handle backpressure according to the policy
+
+            WK_TL1( telemetry_.memory_pool_failures_total.inc() );
+            
             // =========================================================
             // ZeroTolerance (transport-level forced close)
             // =========================================================
@@ -514,7 +520,11 @@ private:
 
     bool emit_event_(websocket::Event event) noexcept {
         WK_TL1( telemetry_.events_emitted_total.inc() );
-        return control_ring_.push(event);
+        bool pushed = control_ring_.push(event);
+        if (!pushed) [[unlikely]] {
+            WK_TL1( telemetry_.control_ring_failures_total.inc() );
+        }
+        return pushed;
     }
 
     void emit_backpressure_detected_() noexcept {

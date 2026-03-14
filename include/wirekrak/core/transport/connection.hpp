@@ -441,6 +441,7 @@ private:
         if (events_.push(sig)) [[likely]] {
             return;
         }
+        WK_TL1( telemetry_.control_ring_failures_total.inc() );
         WK_WARN("[CONN] Failed to emit signal '" << to_string(sig) << "' (backpressure) - protocol correctness compromised (protocol is not draining fast enough)");
         // Future backpresusre policy (default:strict)
         // Wirekrak should never lie to the user or perform magic without explicit user instruction

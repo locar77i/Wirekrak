@@ -14,7 +14,7 @@ namespace wirekrak::core {
 inline constexpr std::size_t MAX_SYMBOL_LENGTH = 16;
 using Symbol = lcr::local::string<MAX_SYMBOL_LENGTH>; // max 16 chars after escaping (worst case)
 
-inline constexpr std::size_t MAX_REQUEST_SYMBOLS = 256; // example capacity, adjust as needed
+inline constexpr std::size_t MAX_REQUEST_SYMBOLS = 512; // example capacity, adjust as needed
 using RequestSymbols = lcr::local::vector<Symbol, MAX_REQUEST_SYMBOLS>; // example capacity, adjust as needed
 
 

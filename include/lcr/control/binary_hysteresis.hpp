@@ -136,11 +136,23 @@ public:
         return state_ == State::Active;
     }
 
+    [[nodiscard]]
+    constexpr bool is_inactive() const noexcept {
+        return state_ == State::Inactive;
+    }
+
     inline void reset() noexcept {
         state_ = State::Inactive;
         activate_streak_ = 0;
         deactivate_streak_ = 0;
     }
+
+    // -----------------------------------------------------------------------------
+    // Introspection for testing and observability
+    // -----------------------------------------------------------------------------
+
+    static constexpr std::uint32_t activate_threshold = ActivateThreshold;
+    static constexpr std::uint32_t deactivate_threshold = DeactivateThreshold;
 
 private:
     State state_{State::Inactive};
