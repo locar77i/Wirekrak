@@ -30,8 +30,9 @@ Release builds:
 ===============================================================================
 */
 
-#include <cassert>
-
+#ifndef NDEBUG
+    #include <cstdio>
+#endif
 
 namespace lcr {
 
@@ -40,7 +41,15 @@ namespace lcr {
 // -----------------------------------------------------------------------------
 
 [[noreturn]]
-inline void trap() noexcept {
+inline void trap(const char* msg) noexcept {
+#ifndef NDEBUG
+    if (msg) {
+        std::fputs("LCR_TRAP: ", stderr);
+        std::fputs(msg, stderr);
+        std::fputs("\n", stderr);
+        std::fflush(stderr);
+    }
+#endif
     __builtin_trap();
 }
 
@@ -50,17 +59,18 @@ inline void trap() noexcept {
 // ============================================================================
 // RELEASE BUILD
 // ============================================================================
+#define LCR_STRINGIFY(x) LCR_STRINGIFY2(x)
+#define LCR_STRINGIFY2(x) #x
+
 
 #ifdef NDEBUG
 
-    #define LCR_TRAP() ::lcr::trap()
+    #define LCR_TRAP(msg) ::lcr::trap(msg " | " __FILE__ ":" LCR_STRINGIFY(__LINE__))
 
     #define LCR_ASSERT(expr)         ((void)0)
     #define LCR_ASSERT_MSG(expr, m)  ((void)0)
 
     #define LCR_UNREACHABLE()        __builtin_unreachable()
-
-    #define LCR_UNREACHABLE_MSG(msg) __builtin_unreachable()
 
 
 // ============================================================================
@@ -69,34 +79,25 @@ inline void trap() noexcept {
 
 #else
 
-    #define LCR_TRAP() ::lcr::trap()
+    #define LCR_TRAP(msg) ::lcr::trap(msg " | " __FILE__ ":" LCR_STRINGIFY(__LINE__))
 
     #define LCR_ASSERT(expr) \
         do { \
             if (!(expr)) [[unlikely]] { \
-                assert(expr); \
-                ::lcr::trap(); \
+                LCR_TRAP("assertion failed"); \
             } \
         } while (0)
 
     #define LCR_ASSERT_MSG(expr, msg) \
         do { \
             if (!(expr)) [[unlikely]] { \
-                assert((expr) && msg); \
-                ::lcr::trap(); \
+                LCR_TRAP(msg); \
             } \
         } while (0)
 
     #define LCR_UNREACHABLE() \
         do { \
-            assert(false && "unreachable"); \
-            ::lcr::trap(); \
-        } while (0)
-    
-    #define LCR_UNREACHABLE_MSG(msg) \
-        do { \
-            assert(false && msg); \
-            ::lcr::trap(); \
+            LCR_TRAP("unreachable code reached"); \
         } while (0)
 
 #endif

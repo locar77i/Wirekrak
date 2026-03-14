@@ -1,5 +1,17 @@
 #pragma once
 
+/************************************************************************************
+ *                                                                                  *
+ *  Symbol Interning System                                                         *
+ *                                                                                  *
+ *  Provides a global, thread-safe symbol interning mechanism for efficient         *
+ *  storage and comparison of symbol strings. Symbols are immutable and identified  *
+ *  by a unique integer ID (SymbolId). The system ensures that each unique symbol   *
+ *  string is stored only once in memory, allowing for fast comparisons and reduced *
+ *  memory usage.                                                                   *
+ *                                                                                  *
+ ************************************************************************************/
+
 #include <string>
 #include <string_view>
 #include <vector>
@@ -8,6 +20,7 @@
 #include <unordered_map>
 
 #include "wirekrak/core/symbol.hpp"
+
 
 namespace wirekrak::core {
 
@@ -36,6 +49,7 @@ struct SvEqual {
 // ============================================================================
 // Symbol Interning System
 // ============================================================================
+template<std::size_t MaxSymbols>
 class InternTable {
 public:
     [[nodiscard]] static inline InternTable& instance() {
@@ -61,6 +75,9 @@ public:
         if (it != map_.end())
             return it->second;
 
+        if (symbols_.size() >= MaxSymbols) {
+            LCR_TRAP("symbol table capacity exceeded");
+        }
         // --- Insert new symbol ---
         SymbolId id = static_cast<SymbolId>(symbols_.size());
         symbols_.emplace_back(sv);                 // permanent storage
@@ -85,8 +102,8 @@ public:
 
 private:
     InternTable() {
-        symbols_.reserve(512);  // TODO: Fix bug on vector reallocation that invalidates string_view keys when symbols > initial reserve 
-        map_.reserve(512);
+        symbols_.reserve(MaxSymbols);  // TODO: Fix bug on vector reallocation that invalidates string_view keys when symbols > initial reserve 
+        map_.reserve(MaxSymbols);
     }
 
 private:
@@ -104,12 +121,14 @@ private:
 // ============================================================================
 namespace wirekrak::core {
 
+using SymbolTable = symbol::InternTable<4096>;
+
 [[nodiscard]] inline SymbolId intern_symbol(std::string_view s) {
-    return symbol::InternTable::instance().intern(s);
+    return SymbolTable::instance().intern(s);
 }
 
 [[nodiscard]] inline std::string_view symbol_name(SymbolId id) {
-    return symbol::InternTable::instance().name(id);
+    return SymbolTable::instance().name(id);
 }
 
 } // namespace wirekrak::core

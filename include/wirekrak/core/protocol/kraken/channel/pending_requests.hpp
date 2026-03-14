@@ -132,7 +132,7 @@ public:
         }
 
         // Should never happen if invariants hold
-        LCR_UNREACHABLE_MSG("pending_symbols_ inconsistent with requests_");
+        LCR_UNREACHABLE();
 
         return false;
     }

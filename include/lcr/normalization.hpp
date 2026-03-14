@@ -28,7 +28,7 @@ namespace lcr {
     // fallback: 1 tick at scale 1
     out_scaled_tick = 1;
 
-    LCR_UNREACHABLE_MSG("tick_units has too many decimal places, fallback to 1");
+    LCR_UNREACHABLE(); // tick_units has too many decimal places, fallback to 1
 
     return 1;
 }
