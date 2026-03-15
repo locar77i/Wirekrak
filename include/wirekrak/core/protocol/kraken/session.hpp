@@ -387,7 +387,7 @@ public:
             Method method;
             Channel channel;
             auto r = parser_.parse_and_route(sv, method, channel);
-            handle_parser_result_(r, method, channel);
+            handle_parser_result_(r, sv);
             if (r == parser::Result::Backpressure) {
                 WK_WARN("[SESSION] Failed to deliver " << to_string(channel) << " message (backpressure)"
                     " - protocol correctness compromised (user is not draining fast enough)");
@@ -812,12 +812,13 @@ private:
         overload_state_.reset();
     }
 
-    inline void handle_parser_result_(parser::Result result, Method method, Channel channel) {
+    inline void handle_parser_result_(parser::Result result, std::string_view raw_message) noexcept {
         switch (result) {
         case parser::Result::Ignored:
         case parser::Result::InvalidJson:
         case parser::Result::InvalidSchema:
         case parser::Result::InvalidValue:
+            WK_WARN("[SESSION] Failed to parse message: " << raw_message << " (result: " << to_string(result) << ")");
             WK_TL1( telemetry_.parse_failure_total.inc() );
             break;
         case parser::Result::Parsed:
@@ -902,12 +903,8 @@ private:
         }
 
         if (overload_state_.transport.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
-            if constexpr (BackpressurePolicy::mode == BackpressureMode::Strict) {
-                WK_WARN("[SESSION] Transport backpressure has been active for " << overload_state_.transport.count() << " consecutive polls (strict backpressure policy)");
-            }
-            else {
-                WK_WARN("[SESSION] Transport backpressure has been active for " << overload_state_.transport.count() << " consecutive polls (relaxed backpressure policy)");
-            }
+            WK_WARN("[SESSION] Transport backpressure has been active for " << overload_state_.transport.count() << " consecutive polls ("
+                << BackpressurePolicy::mode_name() << " backpressure policy)");
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees");
             connection_.close();
             overload_state_.reset();
@@ -923,16 +920,18 @@ private:
         WK_TL1( telemetry_.user_overload_streak.record(overload_state_.user.count()) );
 
         if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
-            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
-                << overload_state_.user.count() << " consecutive overloaded polls).");
+            WK_WARN("[SESSION] User backpressure has been active for " << overload_state_.user.count() << " consecutive polls ("
+                << BackpressurePolicy::mode_name() << " backpressure policy)");
+            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees");
             connection_.close();
             overload_state_.reset();
             return true;
         }
 
         if (overload_state_.user.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
-            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees (user backpressure escalation after "
-                << overload_state_.user.count() << " consecutive overloaded polls).");
+            WK_WARN("[SESSION] User backpressure has been active for " << overload_state_.user.count() << " consecutive polls ("
+                << BackpressurePolicy::mode_name() << " backpressure policy)");
+            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees");
             connection_.close();
             overload_state_.reset();
             return true;

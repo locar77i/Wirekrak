@@ -34,12 +34,11 @@
 //
 // ============================================================================
 
-#include "common/run_retry_example.hpp"
-
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
 
-using namespace wirekrak::core;
+#include "common/run_retry_example.hpp"
+#include "common/default_memory_pool.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -71,6 +70,7 @@ int main(int argc, char** argv) {
 
     return run_retry_example<MySession, preset::DefaultMessageRing>(argc, argv,
         "Wirekrak Core - Protocol Replay Disabled Example\n"
-        "Transport reconections do not trigger automatic replay.\n"
+        "Transport reconections do not trigger automatic replay.\n",
+        wirekrak::examples::default_memory_pool
     );
 }

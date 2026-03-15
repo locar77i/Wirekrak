@@ -414,8 +414,12 @@ private:
     [[nodiscard]]
     slot_type* acquire_slot_() noexcept {
         using core::policy::BackpressureMode;
-        slot_type* slot = message_ring_.acquire_producer_slot();
-        if (!slot) [[unlikely]] { // Handle backpressure according to the policy
+        slot_type* slot; // it is always assigned because spins >= 1 (enforced by the policy concept)
+        for (int i = 0; i < BackpressurePolicy::spins; ++i) {
+            if ((slot = message_ring_.acquire_producer_slot())) break;
+            _mm_pause();  // short burst -> absorbed by spin (~1-3µs)
+        }
+        if (!slot) [[unlikely]] { // persistent pressure -> enforce backpressure policy
 
             WK_TL1( telemetry_.message_ring_failures_total.inc() );
 
@@ -442,7 +446,7 @@ private:
                 }
                 // Relax the CPU to give a chance to catch up the message ring before retrying
                 // (scheduling another thread maybe more effective than a tight pause loop in this scenario)
-                std::this_thread::yield();
+                std::this_thread::yield();  // ~5-50µs
                 return nullptr;
             }
         }
@@ -463,13 +467,16 @@ private:
     bool promote_slot_(slot_type*& slot) noexcept {
         using core::policy::BackpressureMode;
 
-        // Observability: track control plane pressure (ring size) at each poll
-        WK_TL1(
+        WK_TL1( // Observability: track memory pool depth
             telemetry_.memory_pool_depth.set(message_ring_.memory_pool().used());
         );
     
-        promotion_result_type r = message_ring_.reserve(slot, config::transport::websocket::FRAME_SIZE_HINT);
-        if (r > promotion_result_type::Success) [[unlikely]] { // Handle backpressure according to the policy
+        promotion_result_type result; // it is always assigned because spins >= 1 (enforced by the policy concept)
+        for (int i = 0; i < BackpressurePolicy::spins; ++i) {
+            if ((result = message_ring_.reserve(slot, config::transport::websocket::FRAME_SIZE_HINT)) <= promotion_result_type::Success) break;
+            _mm_pause();  // short burst -> absorbed by spin (~1-3µs)
+        }
+        if (result > promotion_result_type::Success) [[unlikely]] {  // persistent pressure -> enforce backpressure policy
 
             WK_TL1( telemetry_.memory_pool_failures_total.inc() );
             
@@ -487,7 +494,7 @@ private:
                 return false;
             }
             // =========================================================
-            // Strict / Relaxed (policy defines thresholds)
+            // Strict / Relaxed / Custom (policy defines thresholds)
             // =========================================================
             else {
                 // 1.2. Immediate escalation (session decides fate)
@@ -498,7 +505,7 @@ private:
                 }
                 // Relax the CPU to give a chance to catch up the memory pool before retrying
                 // (scheduling another thread maybe more effective than a tight pause loop in this scenario)
-                std::this_thread::yield();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 return false;
             }
         }

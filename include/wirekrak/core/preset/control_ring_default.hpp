@@ -1,5 +1,6 @@
 #pragma once
 
+#include "wirekrak/core/transport/websocket/events.hpp"
 #include "wirekrak/core/config/transport/websocket.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 

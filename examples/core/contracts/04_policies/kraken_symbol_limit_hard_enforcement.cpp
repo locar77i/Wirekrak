@@ -54,10 +54,12 @@
 //
 // ============================================================================
 
-#include "common/run_multi_subscription_example.hpp"
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+
+#include "common/run_multi_subscription_example.hpp"
+#include "common/default_memory_pool.hpp"
 
 
 // -------------------------------------------------------------------------
@@ -83,12 +85,14 @@ using MySession =
         MySessionPolicies
     >;
 
+
 // -----------------------------------------------------------------------------
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(argc, argv,
         "Wirekrak Core - Protocol Hard Symbol Limit Example\n"
-        "Demonstrates deterministic subscription capacity enforcement.\n"
+        "Demonstrates deterministic subscription capacity enforcement.\n",
+        wirekrak::examples::default_memory_pool
     );
 }

@@ -48,35 +48,61 @@
 //
 // ============================================================================
 
-#include "wirekrak/core/preset/transport/websocket_default.hpp"
+#include "wirekrak/core/transport/websocket_concept.hpp"
+#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
-#include "wirekrak/core/preset/message_ring_default.hpp"
+#include "lcr/buffer/managed_slot.hpp"
+#include "lcr/buffer/managed_spsc_ring.hpp"
+#include "lcr/memory/block_pool.hpp"
 
 #include "common/run_multi_subscription_example.hpp"
-#include "common/default_memory_pool.hpp"
 
 
 // -------------------------------------------------------------------------
 // Session setup
 // -------------------------------------------------------------------------
 
+using MyWebSocketPolicies =
+    policy::transport::websocket_bundle<
+        policy::transport::backpressure::Custom<32, 1, 16>  // <Spins, ActivationThreshold, DeactivationThreshold>
+    >;
+
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::protocol::DefaultBackpressure,
-        policy::protocol::DefaultLiveness,
-        policy::protocol::DefaultSymbolLimit,
-        policy::protocol::DefaultReplay,
-        policy::protocol::BatchingPolicy<
-            policy::protocol::BatchingMode::Immediate    // Immediate mode (default batch size: 0 - default pacing interval: 0)
-        >
+        policy::protocol::backpressure::Custom<(1 << 24)>  // <EscalationThreshold>
     >;
+
+using MyMessageRing =
+        lcr::buffer::managed_spsc_ring<
+            lcr::buffer::managed_slot<config::transport::websocket::MIN_FRAME_SIZE>,
+            lcr::memory::block_pool,
+            256 // message ring capacity
+        >;
+
+using MyWebSocket =
+        wirekrak::core::transport::winhttp::WebSocketImpl<
+            wirekrak::core::preset::DefaultControlRing,
+            MyMessageRing,
+            MyWebSocketPolicies
+        >;
+// Assert that MyWebSocket conforms to transport::WebSocketConcept concept
+static_assert(wirekrak::core::transport::WebSocketConcept<MyWebSocket>);
+
 
 using MySession =
     protocol::kraken::Session<
-        preset::transport::DefaultWebSocket,
-        preset::DefaultMessageRing,
+        MyWebSocket,
+        MyMessageRing,
         MySessionPolicies
     >;
+
+// -------------------------------------------------------------------------
+// Global memory block pool
+// -------------------------------------------------------------------------
+constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
+constexpr static std::size_t BLOCK_COUNT = 6;        // Number of blocks in the pool
+static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 
 
 // -----------------------------------------------------------------------------
@@ -84,11 +110,11 @@ using MySession =
 // -----------------------------------------------------------------------------
 
 int main(int argc, char** argv) {
-    return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(
+    return run_multi_subscription_example<MySession, MyMessageRing>(
         argc,
         argv,
         "Wirekrak Core - Immediate Request Policy Example\n"
         "Demonstrates default request behavior without batching.\n",
-        wirekrak::examples::default_memory_pool
+        memory_pool
     );
 }

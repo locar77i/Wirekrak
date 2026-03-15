@@ -37,12 +37,11 @@
 //
 // ============================================================================
 
-#include "common/run_retry_example.hpp"
-
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
 
-using namespace wirekrak::core;
+#include "common/run_retry_example.hpp"
+#include "common/default_memory_pool.hpp"
 
 
 // -----------------------------------------------------------------------------
@@ -52,7 +51,7 @@ using namespace wirekrak::core;
 // Protocol policies (replay enabled)
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Strict<>,
+        policy::protocol::backpressure::Strict,
         policy::protocol::liveness::Passive,
         policy::protocol::DefaultSymbolLimit,
         policy::protocol::replay::Enabled
@@ -75,6 +74,7 @@ int main(int argc, char** argv) {
 
     return run_retry_example<MySession, preset::DefaultMessageRing>(argc, argv,
         "Wirekrak Core - Protocol Replay Enabled Example\n"
-        "Reconnect automatically restores previous subscriptions.\n"
+        "Reconnect automatically restores previous subscriptions.\n",
+        wirekrak::examples::default_memory_pool
     );
 }

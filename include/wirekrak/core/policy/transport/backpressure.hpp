@@ -35,27 +35,27 @@ namespace wirekrak::core::policy::transport {
 template<typename P>
 concept HasBackpressureMembers =
 requires {
-    { P::mode } -> std::same_as<const BackpressureMode&>;
+    { P::mode }  -> std::convertible_to<BackpressureMode>;
+    { P::spins } -> std::convertible_to<std::uint32_t>;
     typename P::hysteresis;
-};
+}
+&& (P::spins >= 1);
 
 template<typename P>
 concept BackpressureConcept =
     HasBackpressureMembers<P>
     &&
     (
-        // ZeroTolerance → no hysteresis allowed
+        // ZeroTolerance -> no hysteresis allowed
         (
             P::mode == BackpressureMode::ZeroTolerance &&
             std::same_as<typename P::hysteresis, std::nullptr_t>
         )
         ||
-        // Strict / Relaxed → hysteresis required
+        // Any other mode -> hysteresis required
         (
-            (P::mode == BackpressureMode::Strict ||
-             P::mode == BackpressureMode::Relaxed)
-            &&
-            (!std::same_as<typename P::hysteresis, std::nullptr_t>)
+            P::mode != BackpressureMode::ZeroTolerance &&
+            !std::same_as<typename P::hysteresis, std::nullptr_t>
         )
     );
 
@@ -74,7 +74,7 @@ namespace backpressure {
 struct ZeroTolerance {
 
     static constexpr BackpressureMode mode = BackpressureMode::ZeroTolerance;
-
+    static constexpr std::uint32_t spins = 1;
     using hysteresis = std::nullptr_t;
 
     // ------------------------------------------------------------
@@ -88,6 +88,7 @@ struct ZeroTolerance {
     static void dump(std::ostream& os) {
         os << "[Transport Backpressure Policy]\n";
         os << "- Mode        : " << mode_name() << "\n";
+        os << "- Spins       : " << spins << "\n";
         os << "- Hysteresis  : none\n";
         os << "- Behavior    : Immediate close on first saturation\n\n";
     }
@@ -103,15 +104,15 @@ static_assert(BackpressureConcept<ZeroTolerance>, "backpressure::ZeroTolerance d
 // Immediate activation
 // Stabilized recovery
 
-template<
-    std::uint32_t DeactivateThreshold = config::backpressure::STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD
->
-requires (DeactivateThreshold > 0)
 struct Strict {
 
     static constexpr BackpressureMode mode = BackpressureMode::Strict;
-
-    using hysteresis = lcr::control::BinaryHysteresis<config::backpressure::STRICT_HYSTERESIS_ACTIVATION_THRESHOLD, DeactivateThreshold>;
+    static constexpr std::uint32_t spins = config::backpressure::STRICT_LOCAL_SPINS;
+    using hysteresis =
+        lcr::control::BinaryHysteresis<
+            config::backpressure::STRICT_HYSTERESIS_ACTIVATION_THRESHOLD,
+            config::backpressure::STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD
+        >;
 
     // ------------------------------------------------------------
     // Introspection Helpers (Zero Runtime Cost)
@@ -124,15 +125,16 @@ struct Strict {
     static void dump(std::ostream& os) {
         os << "[Transport Backpressure Policy]\n";
         os << "- Mode        : " << mode_name() << "\n";
+        os << "- Spins       : " << spins << "\n";
         os << "- Hysteresis  : enabled\n";
-        os << "- Activation  : " << config::backpressure::STRICT_HYSTERESIS_ACTIVATION_THRESHOLD << " (threshold)\n";
-        os << "- Deactivation: " << DeactivateThreshold << " (threshold)\n";
+        os << "- Activation  : " << hysteresis::activate_threshold << " (threshold)\n";
+        os << "- Deactivation: " << hysteresis::deactivate_threshold << " (threshold)\n";
         os << "- Behavior    : Immediate activation, stabilized recovery\n\n";
     }
 };
 
 // Assert that Strict satisfies the BackpressureConcept
-static_assert(BackpressureConcept<Strict<>>, "backpressure::Strict does not satisfy BackpressureConcept");
+static_assert(BackpressureConcept<Strict>, "backpressure::Strict does not satisfy BackpressureConcept");
 
 
 // ------------------------------------------------------------
@@ -141,17 +143,15 @@ static_assert(BackpressureConcept<Strict<>>, "backpressure::Strict does not sati
 // Delayed activation
 // Stabilized recovery
 
-template<
-    std::uint32_t ActivateThreshold   = config::backpressure::RELAXED_HYSTERESIS_ACTIVATION_THRESHOLD,
-    std::uint32_t DeactivateThreshold = config::backpressure::RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD
->
-requires (ActivateThreshold > 0) &&
-         (DeactivateThreshold > 0)
 struct Relaxed {
 
     static constexpr BackpressureMode mode = BackpressureMode::Relaxed;
-
-    using hysteresis = lcr::control::BinaryHysteresis<ActivateThreshold, DeactivateThreshold>;
+    static constexpr std::uint32_t spins = config::backpressure::RELAXED_LOCAL_SPINS;
+    using hysteresis =
+        lcr::control::BinaryHysteresis<
+            config::backpressure::RELAXED_HYSTERESIS_ACTIVATION_THRESHOLD,
+            config::backpressure::RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD
+        >;
 
     // ------------------------------------------------------------
     // Introspection Helpers (Zero Runtime Cost)
@@ -164,24 +164,64 @@ struct Relaxed {
     static void dump(std::ostream& os) {
         os << "[Transport Backpressure Policy]\n";
         os << "- Mode        : " << mode_name() << "\n";
+        os << "- Spins       : " << spins << "\n";
         os << "- Hysteresis  : enabled\n";
-        os << "- Activation  : " << ActivateThreshold << " (threshold)\n";
-        os << "- Deactivation: " << DeactivateThreshold << " (threshold)\n";
+        os << "- Activation  : " << hysteresis::activate_threshold << " (threshold)\n";
+        os << "- Deactivation: " << hysteresis::deactivate_threshold << " (threshold)\n";
         os << "- Behavior    : Delayed activation, stabilized recovery\n\n";
     }
 };
 
 // Assert that Relaxed satisfies the BackpressureConcept
-static_assert(BackpressureConcept<Relaxed<>>, "backpressure::Relaxed does not satisfy BackpressureConcept");
+static_assert(BackpressureConcept<Relaxed>, "backpressure::Relaxed does not satisfy BackpressureConcept");
+
+
+// ------------------------------------------------------------
+// Custom
+// ------------------------------------------------------------
+
+template<
+    std::uint32_t Spins,
+    std::uint32_t Activate,
+    std::uint32_t Deactivate
+>
+requires (Spins >= 1) && (Activate >= 1) && (Deactivate >= 1)
+struct Custom
+{
+    static constexpr BackpressureMode mode = BackpressureMode::Custom;
+    static constexpr std::uint32_t spins = Spins;
+    using hysteresis = lcr::control::BinaryHysteresis<Activate, Deactivate>;
+    
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "Custom";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Transport Backpressure Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Spins       : " << spins << "\n";
+        os << "- Hysteresis  : enabled\n";
+        os << "- Activation  : " << hysteresis::activate_threshold << " (threshold)\n";
+        os << "- Deactivation: " << hysteresis::deactivate_threshold << " (threshold)\n";
+        os << "- Behavior    : Customized\n\n";
+    }
+};
+
+// Assert that Custom satisfies the BackpressureConcept
+static_assert(BackpressureConcept<Custom<1, 1, 1>>, "backpressure::Custom does not satisfy BackpressureConcept");
 
 } // namespace backpressure
 
 
 // ============================================================================
-// Default Liveness Policy
+// Default Backpressure Policy
 // ============================================================================
 
-using DefaultBackpressure = backpressure::Strict<>;
+using DefaultBackpressure = backpressure::Strict;
 
 // Assert that DefaultBackpressure satisfies the BackpressureConcept
 static_assert(BackpressureConcept<DefaultBackpressure>, "DefaultBackpressure does not satisfy BackpressureConcept");

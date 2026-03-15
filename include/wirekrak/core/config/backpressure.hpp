@@ -92,17 +92,19 @@ namespace wirekrak::core::config::backpressure {
 // Backpressure hysteresis thresholds
 // -----------------------------------------------------------------------------
 
-inline constexpr static std::uint32_t STRICT_HYSTERESIS_ACTIVATION_THRESHOLD    =  1;
-inline constexpr static std::uint32_t STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD  =  8;
+inline constexpr static std::uint32_t STRICT_LOCAL_SPINS                        =   32;
+inline constexpr static std::uint32_t STRICT_HYSTERESIS_ACTIVATION_THRESHOLD    =    1;
+inline constexpr static std::uint32_t STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD  = 1024;
 
-inline constexpr static std::uint32_t RELAXED_HYSTERESIS_ACTIVATION_THRESHOLD   = 64;
-inline constexpr static std::uint32_t RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD =  8;
+inline constexpr static std::uint32_t RELAXED_LOCAL_SPINS =                       32;
+inline constexpr static std::uint32_t RELAXED_HYSTERESIS_ACTIVATION_THRESHOLD   = 1024;
+inline constexpr static std::uint32_t RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD = 1024;
 
 // -----------------------------------------------------------------------------
 // Backpressure escalation thresholds
 // -----------------------------------------------------------------------------
 
-inline constexpr static std::uint32_t STRICT_ESCALATION_THRESHOLD  = STRICT_HYSTERESIS_DEACTIVATION_THRESHOLD  +  8;
-inline constexpr static std::uint32_t RELAXED_ESCALATION_THRESHOLD = RELAXED_HYSTERESIS_DEACTIVATION_THRESHOLD + 64;
+inline constexpr static std::uint32_t STRICT_ESCALATION_THRESHOLD  = (1 << 12); // overload active for 4096 consecutive polls
+inline constexpr static std::uint32_t RELAXED_ESCALATION_THRESHOLD = (1 << 24); // overload active for 16777216 consecutive polls
 
 } // namespace wirekrak::core::config::backpressure

@@ -14,12 +14,14 @@ namespace wirekrak::core::policy {
 // ZeroTolerance -> signal immediately and force close
 // Strict        -> signal immediately and let session decide fate
 // Relaxed       -> tolerate temporarily before signal to let session decide fate
+// Custom        -> user-defined behavior before signal to let session decide fate
 // ============================================================================
 
 enum class BackpressureMode {
     ZeroTolerance,
     Strict,
-    Relaxed
+    Relaxed,
+    Custom
 };
 
 } // namespace wirekrak::core::policy

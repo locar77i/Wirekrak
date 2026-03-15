@@ -89,13 +89,13 @@ struct alignas(64) Session final {
     // Transport backpressure
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::stats::sampler16 transport_overload_streak;     // Allows to measure how severe is the transport backpressure escalation
+    lcr::metrics::atomic::stats::sampler32 transport_overload_streak;     // Allows to measure how severe is the transport backpressure escalation
     
     // ---------------------------------------------------------------------
     // User backpressure
     // ---------------------------------------------------------------------
     
-    lcr::metrics::atomic::stats::sampler16 user_overload_streak;     // Allows to measure how severe is the user backpressure escalation
+    lcr::metrics::atomic::stats::sampler32 user_overload_streak;     // Allows to measure how severe is the user backpressure escalation
 
     // ---------------------------------------------------------------------
     // Sub-telemetry

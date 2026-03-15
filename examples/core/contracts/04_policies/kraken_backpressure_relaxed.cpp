@@ -55,36 +55,29 @@
 // - Systems prioritizing availability over immediate throttling
 //
 // ============================================================================
-#include "common/run_multi_subscription_example.hpp"
+
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+
+#include "common/run_multi_subscription_example.hpp"
+#include "common/default_memory_pool.hpp"
 
 
 // -------------------------------------------------------------------------
 // Session setup
 // -------------------------------------------------------------------------
-// Number of consecutive signals before activation (for Relaxed policy)
-constexpr std::size_t HYSTERESIS_ACTIVATION_THRESHOLD   = 64; 
-
-// Number of consecutive signals before deactivation (for Relaxed policy)
-constexpr std::size_t HYSTERESIS_DEACTIVATION_THRESHOLD = 8;
 
 // Session escalates if overload persists for twice the activation threshold
-constexpr std::size_t ESCALATION_THRESHOLD = HYSTERESIS_ACTIVATION_THRESHOLD + 128;
+constexpr std::size_t ESCALATION_THRESHOLD = 264;
 
 using MyWebSocketPolicies =
     policy::transport::websocket_bundle<
-        policy::transport::backpressure::Relaxed<
-            HYSTERESIS_ACTIVATION_THRESHOLD,
-            HYSTERESIS_DEACTIVATION_THRESHOLD
-        >
+        policy::transport::backpressure::Relaxed
     >;
 
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Relaxed<
-            ESCALATION_THRESHOLD
-        >
+        policy::protocol::backpressure::Relaxed
     >;
 
 using MyWebSocket =
@@ -101,12 +94,14 @@ using MySession =
         MySessionPolicies
     >;
 
+
 // -----------------------------------------------------------------------------
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(argc, argv,
         "Wirekrak Core - Relaxed Backpressure Policy Example\n"
-        "Demonstrates burst-tolerant overload handling.\n"
+        "Demonstrates burst-tolerant overload handling.\n",
+        wirekrak::examples::default_memory_pool
     );
 }

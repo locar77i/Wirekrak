@@ -59,32 +59,29 @@
 // - Systems where the protocol layer controls mitigation strategy
 //
 // ============================================================================
-#include "common/run_multi_subscription_example.hpp"
+
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+
+#include "common/run_multi_subscription_example.hpp"
+#include "common/default_memory_pool.hpp"
 
 
 // -------------------------------------------------------------------------
 // Session setup
 // -------------------------------------------------------------------------
-// Number of consecutive signals before deactivation (for Strict policy)
-constexpr std::size_t HYSTERESIS_DEACTIVATION_THRESHOLD = 8;
 
 // Session escalates if overload persists for twice the activation threshold
-constexpr std::size_t ESCALATION_THRESHOLD = HYSTERESIS_DEACTIVATION_THRESHOLD + 16;
+constexpr std::size_t ESCALATION_THRESHOLD = 16;
 
 using MyWebSocketPolicies =
     policy::transport::websocket_bundle<
-        policy::transport::backpressure::Strict<
-            HYSTERESIS_DEACTIVATION_THRESHOLD
-        >
+        policy::transport::backpressure::Strict
     >;
 
 using MySessionPolicies =
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Strict<
-            ESCALATION_THRESHOLD
-        >
+        policy::protocol::backpressure::Strict
     >;
 
 using MyWebSocket =
@@ -101,12 +98,14 @@ using MySession =
         MySessionPolicies
     >;
 
+
 // -----------------------------------------------------------------------------
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(argc, argv,
         "Wirekrak Core - Strict Backpressure Policy Example\n"
-        "Demonstrates deterministic overload detection.\n"
+        "Demonstrates deterministic overload detection.\n",
+        wirekrak::examples::default_memory_pool
     );
 }

@@ -16,8 +16,8 @@ namespace wirekrak::core::policy::protocol {
 template<typename P>
 concept HasBackpressureMembers =
 requires {
-    { P::mode } -> std::same_as<const BackpressureMode&>;
-    { P::escalation_threshold } -> std::same_as<const std::uint32_t&>;
+    { P::mode }                 -> std::convertible_to<BackpressureMode>;
+    { P::escalation_threshold } -> std::convertible_to<std::uint32_t>;
 };
 
 template<typename P>
@@ -25,17 +25,16 @@ concept BackpressureConcept =
     HasBackpressureMembers<P>
     &&
     (
-        // ZeroTolerance → threshold must be exactly 1
+        // ZeroTolerance -> threshold must be exactly 1
         (
             P::mode == BackpressureMode::ZeroTolerance &&
             P::escalation_threshold == 1
         )
         ||
-        // Strict / Relaxed → threshold must be > 0
+        // Any other mode -> threshold must be greater than 1
         (
-            (P::mode == BackpressureMode::Strict || P::mode == BackpressureMode::Relaxed)
-            &&
-            (P::escalation_threshold > 0)
+            P::mode != BackpressureMode::ZeroTolerance &&
+            P::escalation_threshold > 1
         )
     );
 
@@ -84,14 +83,11 @@ static_assert(BackpressureConcept<ZeroTolerance>, "ZeroTolerance does not satisf
 // Immediate activation
 // Stabilized recovery
 
-template<
-    std::uint32_t EscalationThreshold = config::backpressure::STRICT_ESCALATION_THRESHOLD
->
 struct Strict {
 
     static constexpr BackpressureMode mode = BackpressureMode::Strict;
 
-    static constexpr std::uint32_t escalation_threshold = EscalationThreshold;
+    static constexpr std::uint32_t escalation_threshold = config::backpressure::STRICT_ESCALATION_THRESHOLD;
 
     // ------------------------------------------------------------
     // Introspection Helpers (Zero Runtime Cost)
@@ -110,7 +106,7 @@ struct Strict {
 };
 
 // Assert that Strict satisfies the BackpressureConcept
-static_assert(BackpressureConcept<Strict<>>, "Strict does not satisfy BackpressureConcept");
+static_assert(BackpressureConcept<Strict>, "Strict does not satisfy BackpressureConcept");
 
 
 // ------------------------------------------------------------
@@ -119,14 +115,11 @@ static_assert(BackpressureConcept<Strict<>>, "Strict does not satisfy Backpressu
 // Delayed activation
 // Stabilized recovery
 
-template<
-    std::uint32_t EscalationThreshold = config::backpressure::RELAXED_ESCALATION_THRESHOLD
->
 struct Relaxed {
 
     static constexpr BackpressureMode mode = BackpressureMode::Relaxed;
 
-    static constexpr std::uint32_t escalation_threshold = EscalationThreshold;
+    static constexpr std::uint32_t escalation_threshold = config::backpressure::RELAXED_ESCALATION_THRESHOLD;
 
     // ------------------------------------------------------------
     // Introspection Helpers (Zero Runtime Cost)
@@ -145,7 +138,40 @@ struct Relaxed {
 };
 
 // Assert that Relaxed satisfies the BackpressureConcept
-static_assert(BackpressureConcept<Relaxed<>>, "Relaxed does not satisfy BackpressureConcept");
+static_assert(BackpressureConcept<Relaxed>, "Relaxed does not satisfy BackpressureConcept");
+
+
+// ------------------------------------------------------------
+// Custom
+// ------------------------------------------------------------
+// Fully user-defined escalation threshold
+
+template<std::uint32_t EscalationThreshold>
+requires (EscalationThreshold > 1)
+struct Custom {
+
+    static constexpr BackpressureMode mode = BackpressureMode::Custom;
+
+    static constexpr std::uint32_t escalation_threshold = EscalationThreshold;
+
+    // ------------------------------------------------------------
+    // Introspection Helpers (Zero Runtime Cost)
+    // ------------------------------------------------------------
+
+    static constexpr const char* mode_name() noexcept {
+        return "Custom";
+    }
+
+    static void dump(std::ostream& os) {
+        os << "[Protocol Backpressure Policy]\n";
+        os << "- Mode        : " << mode_name() << "\n";
+        os << "- Escalation  : " << escalation_threshold << " (threshold)\n";
+        os << "- Behavior    : Customized\n\n";
+    }
+};
+
+// Assert that Custom satisfies the BackpressureConcept
+static_assert(BackpressureConcept<Custom<2>>, "Custom does not satisfy BackpressureConcept");
 
 } // namespace backpressure
 
@@ -154,7 +180,7 @@ static_assert(BackpressureConcept<Relaxed<>>, "Relaxed does not satisfy Backpres
 // Default
 // ----------------------------------------------------------------------------
 
-using DefaultBackpressure = backpressure::Strict<>;
+using DefaultBackpressure = backpressure::Strict;
 // Assert that DefaultBackpressure satisfies the BackpressureConcept
 static_assert(BackpressureConcept<DefaultBackpressure>, "DefaultBackpressure does not satisfy BackpressureConcept");
 

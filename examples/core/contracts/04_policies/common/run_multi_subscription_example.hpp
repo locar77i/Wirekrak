@@ -75,7 +75,7 @@ void on_signal(int) {
 // Generic runner
 // -----------------------------------------------------------------------------
 template<typename Session, typename MessageRing>
-int run_multi_subscription_example(int argc, char** argv, const char* title) {
+int run_multi_subscription_example(int argc, char** argv, const char* title, lcr::memory::block_pool& memory_pool) {
     using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
@@ -97,13 +97,6 @@ int run_multi_subscription_example(int argc, char** argv, const char* title) {
 
     // List of high-volume symbols to stress the system.
     const auto& symbols = wirekrak::symbols::kraken::top200;
-
-    // -------------------------------------------------------------------------
-    // Global memory block pool
-    // -------------------------------------------------------------------------
-    constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
-    constexpr static std::size_t BLOCK_COUNT = 16;
-    static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 
     // -----------------------------------------------------------------------------
     // Golbal SPSC ring buffer (transport → session)

@@ -78,7 +78,7 @@ void on_signal(int) {
 // Generic runner
 // -----------------------------------------------------------------------------
 template<typename Session, typename MessageRing>
-int run_zero_subscriptions_example(int argc, char** argv, const char* title) {
+int run_zero_subscriptions_example(int argc, char** argv, const char* title, lcr::memory::block_pool& memory_pool) {
     using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
@@ -100,13 +100,6 @@ int run_zero_subscriptions_example(int argc, char** argv, const char* title) {
 
     // Dump the session configuration (policies) for observability
     Session::dump_configuration(std::cout);
-
-    // -------------------------------------------------------------------------
-    // Global memory block pool
-    // -------------------------------------------------------------------------
-    constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
-    constexpr static std::size_t BLOCK_COUNT = 24;
-    static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 
     // -----------------------------------------------------------------------------
     // Golbal SPSC ring buffer (transport → session)

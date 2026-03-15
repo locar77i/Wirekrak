@@ -64,10 +64,13 @@
 // without introducing time-based throttling.
 //
 // ============================================================================
-#include "common/run_multi_subscription_example.hpp"
+
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+
+#include "common/run_multi_subscription_example.hpp"
+#include "common/default_memory_pool.hpp"
 
 
 // -------------------------------------------------------------------------
@@ -93,12 +96,14 @@ using MySession =
         MySessionPolicies
     >;
 
+
 // -----------------------------------------------------------------------------
 // Main
 // -----------------------------------------------------------------------------
 int main(int argc, char** argv) {
     return run_multi_subscription_example<MySession, preset::DefaultMessageRing>(argc, argv,
         "Wirekrak Core - Batch Request Policy Example\n"
-        "Demonstrates batching behavior with a batch size of 10 and zero interval.\n"
+        "Demonstrates batching behavior with a batch size of 10 and zero interval.\n",
+        wirekrak::examples::default_memory_pool
     );
 }

@@ -52,13 +52,13 @@
 //
 // ============================================================================
 
-#include "common/run_zero_subscriptions_example.hpp"
-
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
 
-using namespace wirekrak::core;
+#include "common/run_zero_subscriptions_example.hpp"
+#include "common/default_memory_pool.hpp"
+
 
 // -----------------------------------------------------------------------------
 // Session Setup
@@ -92,6 +92,7 @@ int main(int argc, char** argv) {
 
     return run_zero_subscriptions_example<MySession, preset::DefaultMessageRing>(argc, argv,
         "Wirekrak Core - Passive Liveness Example\n"
-        "Transport enforces liveness; Session does not intervene.\n"
+        "Transport enforces liveness; Session does not intervene.\n",
+        wirekrak::examples::default_memory_pool
     );
 }

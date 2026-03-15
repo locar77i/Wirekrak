@@ -38,7 +38,7 @@ Single-producer / single-consumer only.
 ===============================================================================
 */
 
-#include <string>
+#include <cstdint>
 #include <string_view>
 #include <concepts>
 
