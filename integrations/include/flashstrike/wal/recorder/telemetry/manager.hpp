@@ -7,7 +7,6 @@
 #include "lcr/metrics.hpp"
 #include "lcr/system/monotonic_clock.hpp"
 
-using lcr::time_unit;
 using namespace lcr::metrics;
 
 

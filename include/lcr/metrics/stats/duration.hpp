@@ -5,6 +5,7 @@
 #include <atomic>
 #include <type_traits>
 #include <cstdint>
+#include <limits>
 
 #include "lcr/metrics/counter.hpp"
 #include "lcr/metrics/gauge.hpp"
@@ -59,16 +60,16 @@ struct alignas(64) duration {
     }
 
     // Derived metrics
-    inline double avg_ns() const noexcept {
+    inline uint64_t avg_ns() const noexcept {
         const auto n = samples_.load();
-        if (n == 0) return 0.0;
-        return total_ns_.load() / static_cast<double>(n);
+        if (n == 0) return 0;
+        return total_ns_.load() / n;
     }
 
-    inline double jitter_ns() const noexcept {
+    inline uint64_t jitter_ns() const noexcept {
        const auto count = samples_.load();
-        if (count < 2) return 0.0;
-        return static_cast<double>(max_ns_.load() - min_ns_.load());
+        if (count < 2) return 0;
+        return max_ns_.load() - min_ns_.load();
     }
 
     inline double rate_per_sec() const noexcept {
@@ -86,7 +87,7 @@ struct alignas(64) duration {
         max_ns_.reset();
     }
 
-    void dump(std::ostream& os) const noexcept {
+    inline void dump(std::ostream& os) const noexcept {
         T samples = samples_.load();
         os << "samples=" << samples;
         if (samples >= 1) {

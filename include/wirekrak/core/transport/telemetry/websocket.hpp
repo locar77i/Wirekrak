@@ -180,12 +180,12 @@ struct alignas(64) WebSocket final {
 
         // Message shape
         os << "\nMessage shape\n";
-        os << "  RX message bytes: " << rx_message_bytes.str() << '\n';
+        os << "  RX message bytes: "; rx_message_bytes.dump(os); os << '\n';
 
         // Fragmentation
         os << "\nFragments total\n";
         os << "  RX fragments   : " << lcr::format_number_exact(rx_fragments_total.load()) << '\n';
-        os << "  Fragments/msg  : " << fragments_per_message.str() << '\n';
+        os << "  Fragments/msg  : "; fragments_per_message.dump(os); os << '\n';
 
         // Access failures
         os << "\nAccess failures\n";
@@ -205,7 +205,7 @@ struct alignas(64) WebSocket final {
 
         // Data-plane pressure
         os << "\nData-plane pressure\n";
-        os << "  Memory pool depth: " << memory_pool_depth.str() << '\n';
+        os << "  Memory pool depth: "; memory_pool_depth.dump(os); os << '\n';
 
         // Control plane events
         os << "\nControl plane events\n";

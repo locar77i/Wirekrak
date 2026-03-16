@@ -4,7 +4,6 @@
 #include "lcr/system/monotonic_clock.hpp"
 
 using namespace lcr::metrics;
-using lcr::time_unit;
 using lcr::system::monotonic_clock;
 
 

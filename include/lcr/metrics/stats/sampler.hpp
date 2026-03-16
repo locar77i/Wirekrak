@@ -5,6 +5,7 @@
 #include <atomic>
 #include <type_traits>
 #include <cstdint>
+#include <limits>
 
 #include "lcr/metrics/counter.hpp"
 #include "lcr/metrics/gauge.hpp"
@@ -76,19 +77,23 @@ struct alignas(64) sampler {
         max_.reset();
     }
 
-    inline std::string str() const {
-        std::ostringstream oss;
+    inline void dump(std::ostream& os) const noexcept {
         T samples = samples_.load();
-        oss << "samples=" << lcr::format_number_exact(samples);
+        os << "samples=" << lcr::format_number_exact(samples);
         if (samples >= 1) {
-            oss << " total=" << lcr::format_number_exact(total_.load());
+            os << " total=" << lcr::format_number_exact(total_.load());
         }
         if (samples >= 2) {
-            oss << " min=" << lcr::format_number_exact(min_.load())
+            os << " min=" << lcr::format_number_exact(min_.load())
                 << " max=" << lcr::format_number_exact(max_.load())
                 << " avg=" << avg();
         }
-        return oss.str();
+    }
+
+    inline std::string str() const noexcept {
+        std::ostringstream os;
+        dump(os);
+        return os.str();
     }
 
     // Metrics collector

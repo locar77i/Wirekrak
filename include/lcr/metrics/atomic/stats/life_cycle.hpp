@@ -8,6 +8,7 @@
 
 #include "lcr/metrics/atomic/counter.hpp"
 #include "lcr/metrics/atomic/gauge.hpp"
+#include "lcr/time_unit.hpp"
 
 namespace lcr {
 namespace metrics {
@@ -61,16 +62,16 @@ struct alignas(64) life_cycle {
         return 100.0 * static_cast<double>(total_active_time_ns_.load()) / static_cast<double>(total);
     }
 
-    inline double avg_cycle_time(time_unit unit = time_unit::milliseconds) const noexcept {
+    inline double avg_cycle_ns() const noexcept {
         const uint64_t n = cycle_count_.load();
         if (n == 0) return 0.0;
-        return convert_ns(total_cycle_time_ns_.load() / static_cast<double>(n), unit);
+        return total_cycle_time_ns_.load() / static_cast<double>(n);
     }
 
-    inline double avg_active_time(time_unit unit = time_unit::milliseconds) const noexcept {
+    inline double avg_active_ns() const noexcept {
         const uint64_t n = cycle_count_.load();
         if (n == 0) return 0.0;
-        return convert_ns(total_active_time_ns_.load() / static_cast<double>(n), unit);
+        return total_active_time_ns_.load() / static_cast<double>(n);
     }
 
     // Reset (single-threaded only)
@@ -82,19 +83,22 @@ struct alignas(64) life_cycle {
         last_sleep_ms_.reset();
     }
 
-    // String formatter (for debug/logs)
-    // TODO: use lcr::format() helpers to enhance readability
-    inline std::string str(time_unit tunit = time_unit::seconds, time_unit unit = time_unit::milliseconds) const {
-        std::ostringstream oss;
-        oss << "cycles=" << cycle_count_.load()
+    inline void dump(std::ostream& os) const noexcept {
+        os << "cycles=" << cycle_count_.load()
             << " did_work=" << did_work_total_.load()
-            << " total=" << convert_ns(total_cycle_time_ns_.load(), tunit) << to_string(tunit)
-            << " active=" << convert_ns(total_active_time_ns_.load(), tunit) << to_string(tunit)
+            << " total=" << lcr::format_duration(total_cycle_time_ns_.load())
+            << " active=" << lcr::format_duration(total_active_time_ns_.load())
             << " ratio=" << active_ratio() << "%"
-            << " avg_cycle=" << avg_cycle_time(unit) << to_string(unit)
-            << " avg_active=" << avg_active_time(unit) << to_string(unit)
-            << " last_sleep_ms=" << last_sleep_ms_.load();
-        return oss.str();
+            << " avg_cycle=" << lcr::format_duration(avg_cycle_ns())
+            << " avg_active=" << lcr::format_duration(avg_active_ns())
+            << " last_sleep_ms=" << last_sleep_ms_.load() << "ms";
+    }
+
+    // String formatter (for debug/logs)
+    inline std::string str() const noexcept {
+        std::ostringstream os;
+        dump(os);
+        return os.str();
     }
 
     // Metrics collector
@@ -107,8 +111,8 @@ struct alignas(64) life_cycle {
         last_sleep_ms_.collect(prefix + "_last_sleep_ms", "Duration of last sleep in milliseconds", collector);
         // Derived ratios/averages
         collector.add_gauge(active_ratio(), prefix + "_active_ratio_percent", "Percentage of time active during cycles");
-        collector.add_gauge(avg_cycle_time(time_unit::milliseconds), prefix + "_avg_cycle_time_ms", "Average cycle time in milliseconds");
-        collector.add_gauge(avg_active_time(time_unit::milliseconds), prefix + "_avg_active_time_ms", "Average active time in milliseconds");
+        collector.add_gauge(convert_ns(avg_cycle_ns(), time_unit::milliseconds), prefix + "_avg_cycle_time_ms", "Average cycle time in milliseconds");
+        collector.add_gauge(convert_ns(avg_active_ns(), time_unit::milliseconds), prefix + "_avg_active_time_ms", "Average active time in milliseconds");
     }
 
 private:

@@ -170,7 +170,7 @@ struct alignas(64) Session final {
         // Message processing
         os << "Message processing\n";
         os << "  Messages total     : " << lcr::format_number_exact(messages_processed_total.load()) << '\n';
-        os << "  Messages per poll  : " << messages_per_poll.str() << '\n';
+        os << "  Messages per poll  : "; messages_per_poll.dump(os); os << '\n';
 
         // Parser outcomes
         os << "\nParser\n";
@@ -200,15 +200,15 @@ struct alignas(64) Session final {
 
         // Data-plane pressure
         os << "\nData-plane pressure\n";
-        os << "  Message ring depth : " << message_ring_depth.str() << '\n';
+        os << "  Message ring depth : "; message_ring_depth.dump(os); os << '\n';
 
         // Transport backpressure
         os << "\nTransport backpressure\n";
-        os << "  Overload streak    : " << transport_overload_streak.str() << '\n';
+        os << "  Overload streak    : "; transport_overload_streak.dump(os); os << '\n';
 
         // User backpressure
         os << "\nUser backpressure\n";
-        os << "  Overload streak    : " << user_overload_streak.str() << '\n';
+        os << "  Overload streak    : "; user_overload_streak.dump(os); os << '\n';
 
         os << "\nTiming\n";
         os << "  Poll duration      : "; poll_duration.dump(os); os << '\n';

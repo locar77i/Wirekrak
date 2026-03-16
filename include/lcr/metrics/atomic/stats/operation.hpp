@@ -5,10 +5,10 @@
 #include <atomic>
 #include <type_traits>
 #include <cstdint>
+#include <limits>
 
 #include "lcr/metrics/atomic/counter.hpp"
 #include "lcr/metrics/atomic/gauge.hpp"
-#include "lcr/time_unit.hpp"
 #include "lcr/system/cpu_relax.hpp"
 #include "lcr/format.hpp"
 
@@ -80,30 +80,17 @@ struct alignas(64) operation {
         return total_ns_.load();
     }
 
-    // Raw metrics with unit conversion
-    inline double total(time_unit unit = time_unit::nanoseconds) const noexcept {
-        return convert_ns(static_cast<double>(total_ns_.load()), unit);
-    }
-
-    inline double min(time_unit unit = time_unit::nanoseconds) const noexcept {
-        return convert_ns(static_cast<double>(min_ns_.load()), unit);
-    }
-
-    inline double max(time_unit unit = time_unit::nanoseconds) const noexcept {
-        return convert_ns(static_cast<double>(max_ns_.load()), unit);
-    }
-
     // Derived metrics
-    inline double avg(time_unit unit = time_unit::nanoseconds) const noexcept {
+    inline uint64_t avg_ns() const noexcept {
         const auto count = samples_.load();
-        if (count == 0) return 0.0;
-        return convert_ns(static_cast<double>(total_ns_.load()) / count, unit);
+        if (count == 0) return 0;
+        return total_ns_.load() / count;
     }
 
-    inline double jitter(time_unit unit = time_unit::nanoseconds) const noexcept {
+    inline uint64_t jitter_ns() const noexcept {
         const auto count = samples_.load();
-        if (count < 2) return 0.0;
-        return convert_ns(static_cast<double>(max_ns_.load() - min_ns_.load()), unit);
+        if (count < 2) return 0;
+        return max_ns_.load() - min_ns_.load();
     }
 
     inline double rate_per_sec() const noexcept {
@@ -133,25 +120,28 @@ struct alignas(64) operation {
         max_ns_.reset();
     }
 
-    // Optional string formatter (for debug or Prometheus output)
-    // TODO: use lcr::format() helpers to enhance readability
-    inline std::string str(time_unit tunit = time_unit::seconds, time_unit unit = time_unit::milliseconds) const {
-        std::ostringstream oss;
+    inline void dump(std::ostream& os) const noexcept {
         T samples = samples_.load();
         if (samples == 0) {
-            oss << "samples=0";
+            os << "samples=0";
         }
         else if (samples >= 1) {
-            oss << "samples=" << samples << " [ok=" << success_.load() << " fail=" << failures() << "]";
-            oss << " total=" << total(tunit) << to_string(tunit);
+            os << "samples=" << samples << " [ok=" << success_.load() << " fail=" << failures() << "]";
+            os << " total=" << lcr::format_duration(total_ns_.load());
         }
         if (samples >= 2) {
-            oss << " min=" << min(unit) << to_string(unit)
-                << " max=" << max(unit) << to_string(unit)
-                << " avg=" << avg(unit) << to_string(unit)
+            os << " min=" << lcr::format_duration(min_ns_.load())
+                << " max=" << lcr::format_duration(max_ns_.load())
+                << " avg=" << lcr::format_duration(avg_ns())
                 << " rate=" << lcr::format_throughput(rate_per_sec());
         }
-        return oss.str();
+    }
+
+    // Optional string formatter (for debug or Prometheus output)
+    inline std::string str() const noexcept {
+        std::ostringstream os;
+        dump(os);
+        return os.str();
     }
 
     // Metrics collector
@@ -166,8 +156,8 @@ struct alignas(64) operation {
         if (samples >= 2) {
             min_ns_.collect(prefix + "_min_ns", "Minimum observed duration in nanoseconds", collector);
             max_ns_.collect(prefix + "_max_ns", "Maximum observed duration in nanoseconds", collector);
-            collector.add_gauge(avg(), prefix + "_avg_ns", "Average duration in nanoseconds");
-            collector.add_gauge(jitter(), prefix + "_jitter_ns", "Absolute jitter (max - min) in nanoseconds");
+            collector.add_gauge(avg_ns(), prefix + "_avg_ns", "Average duration in nanoseconds");
+            collector.add_gauge(jitter_ns(), prefix + "_jitter_ns", "Absolute jitter (max - min) in nanoseconds");
             collector.add_gauge(rate_per_sec(), prefix + "_rate_per_second", "Rate of observed samples per second");
         }
     }

@@ -169,7 +169,7 @@ struct alignas(64) Connection final {
 
         // Control plane pressure (transport)
         os << "\nControl plane pressure\n";
-        os << "  Control ring depth : " << control_ring_depth.str() << '\n';
+        os << "  Control ring depth : "; control_ring_depth.dump(os); os << '\n';
 
         // Control plane signals (protocol)
         os << "\nControl plane signals\n";

@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <cstdint>
 
-#include "lcr/time_unit.hpp"
+#include "lcr/format.hpp"
 
 
 namespace lcr {
@@ -28,17 +28,22 @@ struct latency_percentiles {
     uint64_t p9999{0};
     uint64_t p99999{0};
     uint64_t p999999{0};
-    std::string str(time_unit unit = time_unit::nanoseconds) const noexcept {
-        std::ostringstream oss;
-        oss << "Latency Percentiles: "
-            << " p50=" << convert_ns(p50, unit) << to_string(unit)
-            << " p90=" << convert_ns(p90, unit) << to_string(unit)
-            << " p99=" << convert_ns(p99, unit) << to_string(unit)
-            << " p99.9=" << convert_ns(p999, unit) << to_string(unit)
-            << " p99.99=" << convert_ns(p9999, unit) << to_string(unit)
-            << " p99.999=" << convert_ns(p99999, unit) << to_string(unit)
-            << " p99.9999=" << convert_ns(p999999, unit) << to_string(unit);
-        return oss.str();
+
+    inline void dump(std::ostream& os) const noexcept {
+        os << "Latency Percentiles: "
+            << " p50=" << lcr::format_duration(p50)
+            << " p90=" << lcr::format_duration(p90)
+            << " p99=" << lcr::format_duration(p99)
+            << " p99.9=" << lcr::format_duration(p999)
+            << " p99.99=" << lcr::format_duration(p9999)
+            << " p99.999=" << lcr::format_duration(p99999)
+            << " p99.9999=" << lcr::format_duration(p999999);
+    }
+
+    inline std::string str() const noexcept {
+        std::ostringstream os;
+        dump(os);
+        return os.str();
     }
 };
 
