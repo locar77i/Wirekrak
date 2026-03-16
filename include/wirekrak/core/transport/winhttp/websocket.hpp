@@ -46,6 +46,7 @@ is validated independently from the operating system and network stack.
 #include "lcr/memory/footprint.hpp"
 #include "lcr/buffer/concepts.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/system/monotonic_clock.hpp"
 #include "lcr/format.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/trap.hpp"
@@ -290,6 +291,7 @@ private:
     // - ULL-safe
     // - Deterministic
     void receive_loop_() noexcept {
+        auto& clock = lcr::system::monotonic_clock::instance();
 #ifdef WK_UNIT_TEST
         // Debug builds exposed a race in the test harness.
         // Fixed it by adding a test-only synchronization hook to the transport so
@@ -299,8 +301,9 @@ private:
         }
 #endif // WK_UNIT_TEST
 
-        uint32_t fragments = 0;
+        std::uint32_t fragments = 0;
         slot_type* current_slot = nullptr;
+        std::uint64_t blocking_ns = 0;
         
         // Receive internal loop
         while (running_.load(std::memory_order_acquire)) {
@@ -313,11 +316,14 @@ private:
                 if (!current_slot) [[unlikely]] {
                     continue; // backpressure handling (no slot available)
                 }
+                WK_TL3(
+                    current_slot->set_timestamp(clock.now_ns())
+                );
                 LCR_ASSERT_MSG(current_slot->size() == 0, "On receive loop - acquired slot should be empty");
             }
             // === Reactive promotion (ONLY if not starting a new message and capacity is exhausted) ===
             else if (current_slot->remaining() == 0) [[unlikely]] {
-                if (!promote_slot_(current_slot)) {
+                if (!promote_slot_(current_slot, blocking_ns)) [[unlikely]] {
                     continue; // backpressure handling (failed to promote)
                 }
             }
@@ -327,13 +333,12 @@ private:
             if (writable == 0) [[unlikely]] {
                 handle_fatal_error_("[WS] Failed to receive incoming message (size exceeds buffer capacity)"
                     " - transport correctness compromised (message will be truncated)", Error::ProtocolError);
-                // abandon current slot (not committed)
-                message_ring_.discard_producer_slot(current_slot);
-                current_slot = nullptr;
+                discard_current_message_(current_slot, blocking_ns);
                 break;
             }
 
             // === Call WebSocket receive API ===
+            WK_TL3( auto api_receive_start_ns = clock.now_ns() );
             //WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
             WK_TL1( telemetry_.receive_calls_total.inc() );
             DWORD result = api_.websocket_receive(
@@ -342,6 +347,12 @@ private:
                 writable,
                 &bytes,
                 &type
+            );
+            WK_TL3(
+                auto now = clock.now_ns();
+                auto delta_ns = now - api_receive_start_ns;
+                blocking_ns += delta_ns;
+                telemetry_.ws_receive_block_duration.record_duration(delta_ns);
             );
 
             // === Handle errors ===
@@ -354,9 +365,7 @@ private:
                 // Stop the loop and signal close
                 running_.store(false, std::memory_order_release);
                 signal_close_();
-                // abandon current slot (not committed)
-                message_ring_.discard_producer_slot(current_slot);
-                current_slot = nullptr;
+                discard_current_message_(current_slot, blocking_ns);
                 break;
             }
 
@@ -370,9 +379,7 @@ private:
                 // Stop the loop and signal close
                 running_.store(false, std::memory_order_release);
                 signal_close_();
-                // abandon current slot (not committed)
-                message_ring_.discard_producer_slot(current_slot);
-                current_slot = nullptr;
+                discard_current_message_(current_slot, blocking_ns);
                 break;
             }
 
@@ -389,15 +396,14 @@ private:
                 WK_TL1( telemetry_.rx_message_bytes.set(total_bytes) );
                 WK_TL1( telemetry_.messages_rx_total.inc() );
                 WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
-                // Commit the complete message to the ring buffer (and reset state for the next message)
+                
                 if (current_slot->is_external()) [[unlikely]] {
                     WK_TL1( telemetry_.external_buffers_total.inc() );
                     WK_TRACE("[WS] Received message exceeded internal buffer capacity and was written directly into an external buffer (size: "
                         << lcr::format_bytes_exact(current_slot->size()) << ")");
                 }
 
-                message_ring_.commit_producer_slot();
-                current_slot = nullptr;
+                commit_current_message_(current_slot, blocking_ns);
                 fragments = 0;
             }
             else // === Handle message fragments ===
@@ -464,7 +470,7 @@ private:
     }
 
     [[nodiscard]]
-    bool promote_slot_(slot_type*& slot) noexcept {
+    bool promote_slot_(slot_type*& slot, std::uint64_t& blocking_ns) noexcept {
         using core::policy::BackpressureMode;
 
         WK_TL1( // Observability: track memory pool depth
@@ -489,8 +495,7 @@ private:
                 WK_WARN("[WS] Backpressure detected (memory pool exhausted)");
                 handle_fatal_error_("[WS] Failed to promote message slot (zero-tolerance policy)"
                     " - transport correctness compromised (protocol is not draining fast enough)", Error::Backpressure);
-                message_ring_.discard_producer_slot(slot);
-                slot = nullptr;
+                discard_current_message_(slot, blocking_ns);
                 return false;
             }
             // =========================================================
@@ -523,6 +528,38 @@ private:
             }
         }
         return true;
+    }
+
+    void commit_current_message_(slot_type*& slot, std::uint64_t& blocking_ns) noexcept {
+        auto& clock = lcr::system::monotonic_clock::instance();
+        // Commit the complete message to the ring buffer (and reset state for the next message)
+        std::uint64_t start_ns;
+        WK_TL3( // Timestamp correction: now it will represents the start of transport processing time for the message (network blocking removed)
+            slot->inc_timestamp(blocking_ns);
+            start_ns = slot->timestamp();
+            blocking_ns = 0;
+        );
+        message_ring_.commit_producer_slot();
+        WK_TL3(
+            telemetry_.ws_process_message_duration.record(start_ns, clock.now_ns());
+        );
+        slot = nullptr;
+    }
+
+    void discard_current_message_(slot_type*& slot, std::uint64_t& blocking_ns) noexcept {
+        auto& clock = lcr::system::monotonic_clock::instance();
+        // Abandon current slot (not committed)
+        std::uint64_t start_ns;
+        WK_TL3( // Timestamp correction: now it will represents the start of transport processing time for the message (network blocking removed)
+            slot->inc_timestamp(blocking_ns);
+            start_ns = slot->timestamp();
+            blocking_ns = 0;
+        );
+        message_ring_.discard_producer_slot(slot);
+        WK_TL3(
+            telemetry_.ws_process_message_duration.record(start_ns, clock.now_ns());
+        );
+        slot = nullptr;
     }
 
     bool emit_event_(websocket::Event event) noexcept {

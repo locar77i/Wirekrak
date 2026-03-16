@@ -99,10 +99,12 @@ struct alignas(64) Session final {
     lcr::metrics::atomic::stats::sampler32 user_overload_streak;     // Allows to measure how severe is the user backpressure escalation
 
     // ---------------------------------------------------------------------
-    // Timming
+    // Timing
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::stats::duration64 poll_duration; // Measures the duration of each poll() cycle
+    lcr::metrics::atomic::stats::duration64 poll_duration;             // Measures the duration of each poll() cycle 
+    lcr::metrics::atomic::stats::duration64 message_handoff_duration;  // Measures the duration of every message handoff (time from transport processing startto protocol consumption)
+    lcr::metrics::atomic::stats::duration64 message_process_duration; // Measures the duration of every message processing (time spent inside the protocol layer to process one message)
 
     // ---------------------------------------------------------------------
     // Sub-telemetry
@@ -150,8 +152,10 @@ struct alignas(64) Session final {
         // User backpressure
         user_overload_streak.copy_to(other.user_overload_streak);
 
-        // Timming
+        // Timing
         poll_duration.copy_to(other.poll_duration);
+        message_handoff_duration.copy_to(other.message_handoff_duration);
+        message_process_duration.copy_to(other.message_process_duration);
 
         // ---------------------------------------------------------------------
         // Sub-telemetry
@@ -212,6 +216,8 @@ struct alignas(64) Session final {
 
         os << "\nTiming\n";
         os << "  Poll duration      : "; poll_duration.dump(os); os << '\n';
+        os << "  Message handoff    : "; message_handoff_duration.dump(os); os << '\n';
+        os << "  Message process    : "; message_process_duration.dump(os); os << '\n';
 
         // ---------------------------------------------------------------------
         // Sub-telemetry

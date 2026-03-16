@@ -62,16 +62,16 @@ struct alignas(64) life_cycle {
         return 100.0 * static_cast<double>(total_active_time_ns_.load()) / static_cast<double>(total);
     }
 
-    inline double avg_cycle_ns() const noexcept {
+    inline uint64_t avg_cycle_ns() const noexcept {
         const uint64_t n = cycle_count_.load();
-        if (n == 0) return 0.0;
-        return total_cycle_time_ns_.load() / static_cast<double>(n);
+        if (n == 0) return 0;
+        return total_cycle_time_ns_.load() / n;
     }
 
-    inline double avg_active_ns() const noexcept {
+    inline uint64_t avg_active_ns() const noexcept {
         const uint64_t n = cycle_count_.load();
-        if (n == 0) return 0.0;
-        return total_active_time_ns_.load() / static_cast<double>(n);
+        if (n == 0) return 0;
+        return total_active_time_ns_.load() / n;
     }
 
     // Reset (single-threaded only)

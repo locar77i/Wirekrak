@@ -173,6 +173,23 @@ public:
     }
 
     // -------------------------------------------------------------------------
+    // Timestamp
+    // -------------------------------------------------------------------------
+
+    inline void set_timestamp(std::uint64_t ts) noexcept {
+        timestamp_ns_ = ts;
+    }
+
+    inline void inc_timestamp(std::uint64_t delta) noexcept {
+        timestamp_ns_ += delta;
+    }
+
+    [[nodiscard]]
+    inline std::uint64_t timestamp() const noexcept {
+        return timestamp_ns_;
+    }
+
+    // -------------------------------------------------------------------------
     // Reset (Consumer side)
     // -------------------------------------------------------------------------
 
@@ -188,12 +205,14 @@ public:
         }
 
         size_ = 0;
+        timestamp_ns_ = 0;
     }
 
 private:
 
     memory::block* external_{nullptr};
     std::size_t size_{0};
+    std::uint64_t timestamp_ns_{0};
 
     alignas(64) char inline_buffer_[InlineSize];
 

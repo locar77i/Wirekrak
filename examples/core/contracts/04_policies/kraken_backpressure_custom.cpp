@@ -59,6 +59,10 @@
 #include "common/run_multi_subscription_example.hpp"
 
 
+constexpr static std::size_t BLOCK_SIZE =      128 * 1024;  // 128 KiB
+constexpr static std::size_t BLOCK_COUNT =             16;  // Number of blocks in the pool
+constexpr static std::size_t MESSAGE_RING_CAPACITY = 1024;  // Number of messages the ring can hold
+
 // -------------------------------------------------------------------------
 // Session setup
 // -------------------------------------------------------------------------
@@ -77,7 +81,7 @@ using MyMessageRing =
         lcr::buffer::managed_spsc_ring<
             lcr::buffer::managed_slot<config::transport::websocket::MIN_FRAME_SIZE>,
             lcr::memory::block_pool,
-            256 // message ring capacity
+            MESSAGE_RING_CAPACITY
         >;
 
 using MyWebSocket =
@@ -100,8 +104,6 @@ using MySession =
 // -------------------------------------------------------------------------
 // Global memory block pool
 // -------------------------------------------------------------------------
-constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
-constexpr static std::size_t BLOCK_COUNT = 6;        // Number of blocks in the pool
 static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 
 

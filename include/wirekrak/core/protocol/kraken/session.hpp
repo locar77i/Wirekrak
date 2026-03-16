@@ -358,7 +358,8 @@ public:
     //   - ACKs and rejections are handled before user-visible messages are drained
     [[nodiscard]]
     inline std::uint64_t poll() {
-        WK_TL1(
+        auto& clock = lcr::system::monotonic_clock::instance();
+        WK_TL3(
             lcr::metrics::util::scope_timer timer{telemetry_.poll_duration}
         );
 
@@ -388,11 +389,21 @@ public:
             }
             // The message slot remains valid until release_message() is called
             std::string_view sv{ slot->data(), slot->size() };
+            // Observability: measure handoff duration (time from transport processing start to protocol consumption)
+            WK_TL3(
+                std::uint64_t delivery_ns = clock.now_ns();
+                telemetry_.message_handoff_duration.record(slot->timestamp(), delivery_ns);
+            );
             // Handle the message (parsing & routing)
             Method method;
             Channel channel;
             auto r = parser_.parse_and_route(sv, method, channel);
             handle_parser_result_(r, sv);
+            // Observability: measure protocol processing duration (time spent inside the protocol layer to process one message)
+            WK_TL3(
+                telemetry_.message_process_duration.record(delivery_ns, clock.now_ns());
+            );
+            // Check to handle parser backpressure if needed
             if (r == parser::Result::Backpressure) {
                 WK_WARN("[SESSION] Failed to deliver " << to_string(channel) << " message (backpressure)"
                     " - protocol correctness compromised (user is not draining fast enough)");

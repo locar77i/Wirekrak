@@ -5,6 +5,7 @@
 #include "lcr/metrics/atomic/counter.hpp"
 #include "lcr/metrics/atomic/stats/size.hpp"
 #include "lcr/metrics/atomic/stats/sampler.hpp"
+#include "lcr/metrics/atomic/stats/duration.hpp"
 #include "lcr/format.hpp"
 
 namespace wirekrak::core::transport::telemetry {
@@ -101,6 +102,13 @@ struct alignas(64) WebSocket final {
     // --------------------------------------------------------
 
     lcr::metrics::atomic::counter64 events_emitted_total; // Number of control plane events emitted by the transport (e.g. close, error, backpressure)
+
+    // ---------------------------------------------------------------------
+    // Timing
+    // ---------------------------------------------------------------------
+
+    lcr::metrics::atomic::stats::duration64 ws_receive_block_duration; // Measures the blocking duration of every WebSocket receive calls
+    lcr::metrics::atomic::stats::duration64 ws_process_message_duration; // Measures the processing duration of every message (including network + fragmentation)
     
     // ---------------------------------------------------------------------
     // Snapshot support
@@ -149,6 +157,10 @@ struct alignas(64) WebSocket final {
 
         // Control plane events
         events_emitted_total.copy_to(other.events_emitted_total);
+
+        // Timing
+        ws_receive_block_duration.copy_to(other.ws_receive_block_duration);
+        ws_process_message_duration.copy_to(other.ws_process_message_duration);
     }
 
 
@@ -159,49 +171,49 @@ struct alignas(64) WebSocket final {
         // Traffic
         const uint64_t rx_msgs = messages_rx_total.load();
         os << "Traffic\n";
-        os << "  RX bytes       : " << lcr::format_bytes(bytes_rx_total.load()) << '\n';
-        os << "  TX bytes       : " << lcr::format_bytes(bytes_tx_total.load()) << '\n';
-        os << "  RX messages    : " << lcr::format_number_exact(rx_msgs) << '\n';
-        os << "  TX messages    : " << lcr::format_number_exact(messages_tx_total.load()) << '\n';
+        os << "  RX bytes         : " << lcr::format_bytes(bytes_rx_total.load()) << '\n';
+        os << "  TX bytes         : " << lcr::format_bytes(bytes_tx_total.load()) << '\n';
+        os << "  RX messages      : " << lcr::format_number_exact(rx_msgs) << '\n';
+        os << "  TX messages      : " << lcr::format_number_exact(messages_tx_total.load()) << '\n';
 
         // API activity
         os << "\nAPI Activity\n";
-        os << "  Receive calls  : " << lcr::format_number_exact(receive_calls_total.load()) << '\n';
+        os << "  Receive calls    : " << lcr::format_number_exact(receive_calls_total.load()) << '\n';
 
         // Errors
         os << "\nErrors\n";
-        os << "  RX errors      : " << lcr::format_number_exact(rx_errors_total.load()) << '\n';
-        os << "  Send errors    : " << lcr::format_number_exact(send_errors_total.load()) << '\n';
+        os << "  RX errors        : " << lcr::format_number_exact(rx_errors_total.load()) << '\n';
+        os << "  Send errors      : " << lcr::format_number_exact(send_errors_total.load()) << '\n';
 
         // Lifecycle
         os << "\nLifecycle\n";
-        os << "  Connect events : " << lcr::format_number_exact(connect_events_total.load()) << '\n';
-        os << "  Close events   : " << lcr::format_number_exact(close_events_total.load()) << '\n';
+        os << "  Connect events   : " << lcr::format_number_exact(connect_events_total.load()) << '\n';
+        os << "  Close events     : " << lcr::format_number_exact(close_events_total.load()) << '\n';
 
         // Message shape
         os << "\nMessage shape\n";
-        os << "  RX message bytes: "; rx_message_bytes.dump(os); os << '\n';
+        os << "  RX message bytes : "; rx_message_bytes.dump(os); os << '\n';
 
         // Fragmentation
         os << "\nFragments total\n";
-        os << "  RX fragments   : " << lcr::format_number_exact(rx_fragments_total.load()) << '\n';
-        os << "  Fragments/msg  : "; fragments_per_message.dump(os); os << '\n';
+        os << "  RX fragments     : " << lcr::format_number_exact(rx_fragments_total.load()) << '\n';
+        os << "  Fragments/msg    : "; fragments_per_message.dump(os); os << '\n';
 
         // Access failures
         os << "\nAccess failures\n";
-        os << "  Message ring   : " << lcr::format_number_exact(message_ring_failures_total.load()) << '\n';
-        os << "  Memory pool    : " << lcr::format_number_exact(memory_pool_failures_total.load()) << '\n';
-        os << "  Control ring   : " << lcr::format_number_exact(control_ring_failures_total.load()) << '\n';
+        os << "  Message ring     : " << lcr::format_number_exact(message_ring_failures_total.load()) << '\n';
+        os << "  Memory pool      : " << lcr::format_number_exact(memory_pool_failures_total.load()) << '\n';
+        os << "  Control ring     : " << lcr::format_number_exact(control_ring_failures_total.load()) << '\n';
 
         // Backpressure events
         os << "\nBackpressure events\n";
-        os << "  Detected       : " << lcr::format_number_exact(backpressure_detected_total.load()) << '\n';
-        os << "  Cleared        : " << lcr::format_number_exact(backpressure_cleared_total.load()) << '\n';
+        os << "  Detected         : " << lcr::format_number_exact(backpressure_detected_total.load()) << '\n';
+        os << "  Cleared          : " << lcr::format_number_exact(backpressure_cleared_total.load()) << '\n';
 
         // Memory behavior
         os << "\nMemory behavior\n";
-        os << "  Slot promotions : " << lcr::format_number_exact(slot_promotions_total.load()) << '\n';
-        os << "  External buffers: " << lcr::format_number_exact(external_buffers_total.load()) << '\n';
+        os << "  Slot promotions  : " << lcr::format_number_exact(slot_promotions_total.load()) << '\n';
+        os << "  External buffers : " << lcr::format_number_exact(external_buffers_total.load()) << '\n';
 
         // Data-plane pressure
         os << "\nData-plane pressure\n";
@@ -209,7 +221,12 @@ struct alignas(64) WebSocket final {
 
         // Control plane events
         os << "\nControl plane events\n";
-        os << "  Events emitted  : " << lcr::format_number_exact(events_emitted_total.load()) << '\n';
+        os << "  Events emitted   : " << lcr::format_number_exact(events_emitted_total.load()) << '\n';
+
+        // Timing
+        os << "\nTiming\n";
+        os << "  Blocking duration: "; ws_receive_block_duration.dump(os); os << '\n';
+        os << "  Process message  : "; ws_process_message_duration.dump(os); os << '\n';
     }
 };
 
