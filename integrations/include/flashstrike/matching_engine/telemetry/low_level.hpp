@@ -51,17 +51,17 @@ struct alignas(64) LowLevel {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
         os << " Partition size     : " << partition_size.str() << "\n";
-        os << " Allocate partition : " << allocate_partition.str(time_unit::seconds, time_unit::microseconds) << "\n";
-        os << " Release partition  : " << release_partition.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
+        os << " Allocate partition : " << allocate_partition.str() << "\n";
+        os << " Release partition  : " << release_partition.str() << "\n";
         os << " --\n";
         os << " Order ID Map size  : " << order_id_map_size.str() << "\n";
-        os << " Insert order id    : " << insert_ordid.str(time_unit::seconds, time_unit::microseconds) << "\n";
-        os << " Remove order id    : " << remove_ordid.str(time_unit::seconds, time_unit::microseconds) << "\n";
+        os << " Insert order id    : " << insert_ordid.str() << "\n";
+        os << " Remove order id    : " << remove_ordid.str() << "\n";
         os << " Order ID Map probes: " << order_id_map_probes.str() << "\n";
         os << " --\n";
         os << " Order Pool size    : " << order_pool_size.str() << "\n";
-        os << " Allocate order     : " << allocate_order.str(time_unit::seconds, time_unit::microseconds) << "\n";
-        os << " Release order      : " << release_order.str(time_unit::seconds, time_unit::microseconds) << "\n";
+        os << " Allocate order     : " << allocate_order.str() << "\n";
+        os << " Release order      : " << release_order.str() << "\n";
         os << "-----------------------------------------------------------------\n";
     }
 

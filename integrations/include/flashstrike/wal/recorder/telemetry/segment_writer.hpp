@@ -51,15 +51,15 @@ struct alignas(64) SegmentWriter {
     inline void dump(const std::string& label, std::ostream& os) const noexcept {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
-        os << " Open new segment     : " << open_new_segment.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
-        os << " Open existing segment: " << open_existing_segment.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
-        os << " Close segment        : " << close_segment.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
+        os << " Open new segment     : " << open_new_segment.str() << "\n";
+        os << " Open existing segment: " << open_existing_segment.str() << "\n";
+        os << " Close segment        : " << close_segment.str() << "\n";
         os << " Verify segment:\n";
         os << " - Header checksum failures : " << total_header_checksum_failures.load() << "\n";
         os << " - Block checksum failures  : " << total_block_checksum_failures.load() << "\n";
         os << " - Chained checksum failures: " << total_chained_checksum_failures.load() << "\n";
         os << " - Validation failures      : " << total_validation_failures.load() << "\n";
-        os << " Write block: " << write_block.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
+        os << " Write block: " << write_block.str() << "\n";
         os << "-----------------------------------------------------------------\n";
     }
 

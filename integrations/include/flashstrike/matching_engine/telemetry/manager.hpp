@@ -123,38 +123,38 @@ struct alignas(64) Manager {
         os << "-----------------------------------------------------------------\n";
         os << " Request processing  : " << lcr::format_throughput(rps, "req/s") << "\n";
         os << " --\n";
-        os << " Process order        : " << process.str(time_unit::seconds, time_unit::microseconds) << "\n";
-        os << " -> " << process_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Process order        : " << process.str() << "\n";
+        os << " -> " << process_latency.compute_percentiles().str() << "\n";
 #ifdef ENABLE_FS1_METRICS
-        os << " Process on-fly order : " << process_on_fly.str(time_unit::seconds, time_unit::microseconds) << "\n";
+        os << " Process on-fly order : " << process_on_fly.str() << "\n";
 #endif
 #ifdef ENABLE_FS2_METRICS
-        os << " -> " << process_on_fly_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " -> " << process_on_fly_latency.compute_percentiles().str() << "\n";
 #endif
 #ifdef ENABLE_FS1_METRICS
-        os << " Process resting order: " << process_resting.str(time_unit::seconds, time_unit::microseconds) << "\n";
+        os << " Process resting order: " << process_resting.str() << "\n";
 #endif
 #ifdef ENABLE_FS2_METRICS
-        os << " -> " << process_resting_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " -> " << process_resting_latency.compute_percentiles().str() << "\n";
 #endif
         os << " --\n";
-        os << " Modify order price: " << modify_price.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << modify_price_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Modify order price: " << modify_price.str() << "\n";
+        os << " -> " << modify_price_latency.compute_percentiles().str() << "\n";
         os << " - Not found: " << modify_price_not_found_total.load() << "\n";
         os << " - Rejected : " << modify_price_rejected_total.load() << "\n";
         os << " --\n";
-        os << " Modify order quantity: " << modify_qty.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << modify_qty_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Modify order quantity: " << modify_qty.str() << "\n";
+        os << " -> " << modify_qty_latency.compute_percentiles().str() << "\n";
         os << " - Not found: " << modify_qty_not_found_total.load() << "\n";
         os << " - Rejected : " << modify_qty_rejected_total.load() << "\n";
         os << " --\n";
-        os << " Cancel order: " << cancel.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << cancel_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Cancel order: " << cancel.str() << "\n";
+        os << " -> " << cancel_latency.compute_percentiles().str() << "\n";
         os << " - Not found: " << cancel_not_found_total.load() << "\n";
 #ifdef ENABLE_FS2_METRICS
         os << " --\n";
-        os << " Match order     : " << match.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << match_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Match order     : " << match.str() << "\n";
+        os << " -> " << match_latency.compute_percentiles().str() << "\n";
         os << " - Trades        : " << match_order_trades.str() << "\n";
         os << " - Full fills    : " << full_match_total.load() << "\n";
         os << " - Partial fills : " << partial_match_total.load() << "\n";

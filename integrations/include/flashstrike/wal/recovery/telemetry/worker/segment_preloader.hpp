@@ -36,8 +36,8 @@ struct alignas(64) SegmentPreloader {
     inline void dump(const std::string& label, std::ostream& os) const noexcept {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
-        os << " Preload segment: " << preload_segment.str(time_unit::seconds, time_unit::milliseconds) << "\n";
-        os << " Finish segment : " << finish_segment.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
+        os << " Preload segment: " << preload_segment.str() << "\n";
+        os << " Finish segment : " << finish_segment.str() << "\n";
         os << "-----------------------------------------------------------------\n";
     }
 

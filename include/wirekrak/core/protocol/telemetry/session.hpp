@@ -6,6 +6,7 @@
 #include "lcr/metrics/atomic/counter.hpp"
 #include "lcr/metrics/atomic/stats/size.hpp"
 #include "lcr/metrics/atomic/stats/sampler.hpp"
+#include "lcr/metrics/atomic/stats/duration.hpp"
 #include "lcr/format.hpp"
 
 
@@ -98,6 +99,12 @@ struct alignas(64) Session final {
     lcr::metrics::atomic::stats::sampler32 user_overload_streak;     // Allows to measure how severe is the user backpressure escalation
 
     // ---------------------------------------------------------------------
+    // Timming
+    // ---------------------------------------------------------------------
+
+    lcr::metrics::atomic::stats::duration64 poll_duration; // Measures the duration of each poll() cycle
+
+    // ---------------------------------------------------------------------
     // Sub-telemetry
     // ---------------------------------------------------------------------
 
@@ -143,6 +150,9 @@ struct alignas(64) Session final {
         // User backpressure
         user_overload_streak.copy_to(other.user_overload_streak);
 
+        // Timming
+        poll_duration.copy_to(other.poll_duration);
+
         // ---------------------------------------------------------------------
         // Sub-telemetry
         // ---------------------------------------------------------------------
@@ -185,8 +195,8 @@ struct alignas(64) Session final {
 
         // Delivery failures
         os << "\nDelivery failures\n";
-        os << "  Request batching : " << lcr::format_number_exact(request_batching_failures_total.load()) << '\n';
-        os << "  User delivery    : " << lcr::format_number_exact(user_delivery_failures_total.load()) << '\n';
+        os << "  Request batching   : " << lcr::format_number_exact(request_batching_failures_total.load()) << '\n';
+        os << "  User delivery      : " << lcr::format_number_exact(user_delivery_failures_total.load()) << '\n';
 
         // Data-plane pressure
         os << "\nData-plane pressure\n";
@@ -199,6 +209,9 @@ struct alignas(64) Session final {
         // User backpressure
         os << "\nUser backpressure\n";
         os << "  Overload streak    : " << user_overload_streak.str() << '\n';
+
+        os << "\nTiming\n";
+        os << "  Poll duration      : "; poll_duration.dump(os); os << '\n';
 
         // ---------------------------------------------------------------------
         // Sub-telemetry

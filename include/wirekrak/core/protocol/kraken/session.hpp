@@ -87,6 +87,7 @@ Data-plane model:
 #include "lcr/control/consecutive_state.hpp"
 #include "lcr/buffer/concepts.hpp"
 #include "lcr/sequence.hpp"
+#include "lcr/metrics/util/scope_timer.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/trap.hpp"
 
@@ -357,6 +358,10 @@ public:
     //   - ACKs and rejections are handled before user-visible messages are drained
     [[nodiscard]]
     inline std::uint64_t poll() {
+        WK_TL1(
+            lcr::metrics::util::scope_timer timer{telemetry_.poll_duration}
+        );
+
         // === Advance transport state - Heartbeat liveness & reconnection logic ===
         connection_.poll();
 

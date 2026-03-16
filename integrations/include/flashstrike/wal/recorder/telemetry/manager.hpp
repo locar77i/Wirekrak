@@ -52,11 +52,11 @@ struct alignas(64) Manager {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
         os << " Init active segment   : " << init_active_segment.str() << "\n";
-        os << " Append event          : " << append_event.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
+        os << " Append event          : " << append_event.str() << "\n";
         os << " -> " << append_event_histogram.compute_percentiles().str() << "\n";
-        os << " Rotation              : " << segment_rotation.str(time_unit::microseconds, time_unit::microseconds) << "\n";
-        os << " Work planning         : " << work_planning.str(time_unit::microseconds, time_unit::microseconds) << "\n";
-        os << " Persist current segm. : " << persist_current_segment.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
+        os << " Rotation              : " << segment_rotation.str() << "\n";
+        os << " Work planning         : " << work_planning.str() << "\n";
+        os << " Persist current segm. : " << persist_current_segment.str() << "\n";
         os << " Current hot segments  : " << persistence_hot_segments.load() << "\n";
         os << " Current cold segments : " << persistence_cold_segments.load() << "\n";
         os << "-----------------------------------------------------------------\n";

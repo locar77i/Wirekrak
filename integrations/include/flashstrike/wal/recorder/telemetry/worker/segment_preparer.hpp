@@ -37,7 +37,7 @@ struct alignas(64) SegmentPreparer {
     inline void dump(const std::string& label, std::ostream& os) const noexcept {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
-        os << " Get next segment: " << get_next_segment.str(time_unit::microseconds, time_unit::microseconds) << "\n";
+        os << " Get next segment: " << get_next_segment.str() << "\n";
         os << "-----------------------------------------------------------------\n";
     }
 

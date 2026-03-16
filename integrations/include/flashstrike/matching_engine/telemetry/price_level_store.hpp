@@ -66,23 +66,23 @@ struct alignas(64) PriceLevelStore {
     void dump(const std::string& label, std::ostream& os) const noexcept {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
-        os << " Insert order: " << insert_order.str(time_unit::seconds, time_unit::microseconds) << "\n";
-        os << " -> " << insert_order_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Insert order: " << insert_order.str() << "\n";
+        os << " -> " << insert_order_latency.compute_percentiles().str() << "\n";
         os << " --\n";
-        os << " Modify order price: " << reprice_order.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << reprice_order_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Modify order price: " << reprice_order.str() << "\n";
+        os << " -> " << reprice_order_latency.compute_percentiles().str() << "\n";
         os << " --\n";
-        os << " Modify order quantity: " << resize_order.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << resize_order_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Modify order quantity: " << resize_order.str() << "\n";
+        os << " -> " << resize_order_latency.compute_percentiles().str() << "\n";
         os << " --\n";
-        os << " Cancel order: " << remove_order.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << remove_order_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Cancel order: " << remove_order.str() << "\n";
+        os << " -> " << remove_order_latency.compute_percentiles().str() << "\n";
         os << " --\n";
-        os << " Recompute global best price: " << recompute_global_best.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << recompute_global_best_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Recompute global best price: " << recompute_global_best.str() << "\n";
+        os << " -> " << recompute_global_best_latency.compute_percentiles().str() << "\n";
         os << " --\n";
-        os << " Recompute partition best: " << recompute_partition_best.str(time_unit::milliseconds, time_unit::microseconds) << "\n";
-        os << " -> " << recompute_partition_best_latency.compute_percentiles().str(time_unit::microseconds) << "\n";
+        os << " Recompute partition best: " << recompute_partition_best.str() << "\n";
+        os << " -> " << recompute_partition_best_latency.compute_percentiles().str() << "\n";
         os << "-----------------------------------------------------------------\n";
     }
 

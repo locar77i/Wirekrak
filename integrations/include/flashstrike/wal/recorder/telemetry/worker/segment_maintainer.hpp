@@ -48,7 +48,7 @@ struct alignas(64) SegmentMaintainer {
     inline void dump(const std::string& label, std::ostream& os) const noexcept {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
-        os << " Timing / load balancing: " << persistence_lifecycle.str(time_unit::seconds, time_unit::milliseconds) << "\n";
+        os << " Timing / load balancing: " << persistence_lifecycle.str() << "\n";
         os << " Current hot segments   : " << persistence_max_hot_segments.load() << "\n";
         os << " Current cold segments  : " << persistence_max_cold_segments.load() << "\n";
         os << " Retention metrics      : " << maintenance_retention.str() << "\n";

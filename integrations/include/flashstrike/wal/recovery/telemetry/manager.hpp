@@ -41,10 +41,10 @@ struct alignas(64) Manager {
     inline void dump(const std::string& label, std::ostream& os) const noexcept {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
-        os << " Read segment header: " << read_segment_header.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
-        os << " Resume from event  : " << resume_from_event.str(time_unit::seconds, time_unit::milliseconds) << "\n";
-        os << " Seek event         : " << seek_event.str(time_unit::microseconds, time_unit::microseconds) << "\n";
-        os << " Next event         : " << next_event.str(time_unit::seconds, time_unit::microseconds) << "\n";
+        os << " Read segment header: " << read_segment_header.str() << "\n";
+        os << " Resume from event  : " << resume_from_event.str() << "\n";
+        os << " Seek event         : " << seek_event.str() << "\n";
+        os << " Next event         : " << next_event.str() << "\n";
         os << " -> " << next_event_histogram.compute_percentiles().str() << "\n";
         os << "-----------------------------------------------------------------\n";
     }

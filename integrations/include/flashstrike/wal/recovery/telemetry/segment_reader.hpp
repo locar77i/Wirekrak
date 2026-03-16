@@ -50,15 +50,15 @@ struct alignas(64) SegmentReader {
     inline void dump(const std::string& label, std::ostream& os) const noexcept {
         os  << "[" << label << " Metrics] Snapshot:\n";
         os << "-----------------------------------------------------------------\n";
-        os << " Open segment  : " << open_segment.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
-        os << " Close segment : " << close_segment.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
-        os << " Verify segment: " << verify_segment.str(time_unit::seconds, time_unit::milliseconds) << "\n";
+        os << " Open segment  : " << open_segment.str() << "\n";
+        os << " Close segment : " << close_segment.str() << "\n";
+        os << " Verify segment: " << verify_segment.str() << "\n";
         os << " - Header checksum failures : " << total_header_checksum_failures.load() << "\n";
         os << " - Block checksum failures  : " << total_block_checksum_failures.load() << "\n";
         os << " - Chained checksum failures: " << total_chained_checksum_failures.load() << "\n";
         os << " - Validation failures      : " << total_validation_failures.load() << "\n";
-        os << " Build index   : " << build_index.str(time_unit::milliseconds, time_unit::milliseconds) << "\n";
-        os << " Seek event    : " << seek_event.str(time_unit::microseconds, time_unit::microseconds) << "\n";
+        os << " Build index   : " << build_index.str() << "\n";
+        os << " Seek event    : " << seek_event.str() << "\n";
         os << "-----------------------------------------------------------------\n";
     }
 
