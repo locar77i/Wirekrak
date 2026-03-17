@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.25)
 # -------------------------------------------------------------
 # Add subdirectories
 # -------------------------------------------------------------
+add_subdirectory(lcr)
 add_subdirectory(transport)
 
 # Future:
