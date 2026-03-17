@@ -108,7 +108,7 @@ Result run_queue() {
         Msg msg;
 
         while (!stop.load(std::memory_order_relaxed)) {
-            msg.value = counter;
+            //msg.value = counter;
             if (queue.push(msg)) {
                 counter++;
             }
@@ -124,7 +124,7 @@ Result run_queue() {
 
         while (!stop.load(std::memory_order_relaxed)) {
             if (queue.pop(msg)) {
-                (void)msg.value;
+                //(void)msg.value;
                 local++;
             }
         }
@@ -170,7 +170,7 @@ Result run_ring() {
 
         while (!stop.load(std::memory_order_relaxed)) {
             if (auto* slot = ring.acquire_producer_slot()) {
-                slot->value = counter++;
+                //slot->value = counter++;
                 ring.commit_producer_slot();
             }
         }
@@ -184,7 +184,7 @@ Result run_ring() {
 
         while (!stop.load(std::memory_order_relaxed)) {
             if (auto* slot = ring.peek_consumer_slot()) {
-                (void)slot->value;
+                //(void)slot->value;
                 ring.release_consumer_slot();
                 local++;
             }
@@ -230,7 +230,7 @@ int main() {
     std::cout << "Queue throughput : " << queue_res.throughput_mps << " M msg/s\n";
     std::cout << "Ring throughput  : " << ring_res.throughput_mps  << " M msg/s\n";
     std::cout << "---------------------------------\n";
-    std::cout << "Ring advantage   : +" << diff << " %\n";
+    std::cout << "Ring advantage   : " << diff << " %\n";
 
     return 0;
 }
