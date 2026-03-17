@@ -11,7 +11,7 @@
 
 using namespace std::chrono;
 
-struct alignas(64) Msg {
+struct Msg {
     uint64_t value;
 };
 
@@ -33,15 +33,15 @@ void producer() {
 
     while (!start.load(std::memory_order_acquire));
 
-    uint64_t counter = 0;
+    uint64_t local_counter = 0; // Contador local (sin overhead atómico)
 
     while (!stop.load(std::memory_order_relaxed)) {
         if (auto* slot = ring.acquire_producer_slot()) {
-            slot->value = counter++;
+            slot->value = local_counter++;
             ring.commit_producer_slot();
-            produced.fetch_add(1, std::memory_order_relaxed);
         }
     }
+    produced.store(local_counter, std::memory_order_relaxed); // Actualiza el contador global al final
 }
 
 void consumer() {
@@ -49,14 +49,18 @@ void consumer() {
 
     while (!start.load(std::memory_order_acquire));
 
+    uint64_t local_consumed = 0; // Contador local
+
     while (!stop.load(std::memory_order_relaxed)) {
         if (auto* slot = ring.peek_consumer_slot()) {
-            volatile auto v = slot->value;
+            auto v = slot->value;
             (void)v;
             ring.release_consumer_slot();
-            consumed.fetch_add(1, std::memory_order_relaxed);
+            local_consumed++;
         }
     }
+
+    consumed.store(local_consumed, std::memory_order_relaxed); // Actualiza el contador global al final
 }
 
 int main() {
