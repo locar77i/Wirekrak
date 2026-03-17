@@ -1,239 +1,165 @@
-// -----------------------------------------------------------------------------
-// Ultra-low-latency SPSC ring buffer with compile-time capacity
-// Lock-free, wait-free, cacheline-separated producer/consumer indices.
-// No dynamic memory allocations, perfect for real-time or HFT workloads.
-//
-// Example:
-//     spsc_ring<Event*, 1024> queue;
-//     queue.push(ptr);
-//     Event* ev;
-//     queue.pop(ev);
-//
-// Notes:
-//   - Capacity must be a power of two (compile-time check)
-//   - Single Producer, Single Consumer only
-//   - All operations O(1), noexcept
-// -----------------------------------------------------------------------------
 #pragma once
 
+/*
+===============================================================================
+SPSC Ring (Zero-Copy Two-Phase API)
+===============================================================================
 
-#include <array>
-#include <atomic>
-#include <cstddef>
-#include <cstdint>
-#include <utility>
-#include <type_traits>
+This file defines a high-performance Single-Producer / Single-Consumer (SPSC)
+ring buffer with a two-phase (acquire/commit) API.
 
-#include "lcr/memory/footprint.hpp"
-#include "lcr/trap.hpp"
+Purpose:
+  - Enable zero-copy message passing
+  - Minimize memory movement and latency
+  - Support high-throughput data-plane workloads
+
+Design principles:
+  - Zero dynamic allocation (fixed-size, compile-time capacity)
+  - Lock-free, wait-free operations
+  - Explicit ownership and lifecycle control
+  - Maximum performance with minimal abstraction overhead
+
+API semantics (two-phase protocol):
+
+  Producer:
+    1) acquire_producer_slot()  → obtain writable slot
+    2) write data into slot
+    3) commit_producer_slot()   → publish to consumer
+
+    or:
+    - discard_producer_slot()   → cancel write
+
+  Consumer:
+    1) peek_consumer_slot()     → access readable slot
+    2) process data in-place
+    3) release_consumer_slot()  → free slot
+
+Key properties:
+  - Zero-copy (no intermediate buffers)
+  - No implicit object construction/destruction during transfer
+  - Full control over message lifecycle
+
+Debug safety:
+  - Enforces correct acquire/commit and peek/release pairing (debug builds)
+  - Detects misuse such as double-acquire or missing release
+
+Threading model:
+  - Exactly one producer thread
+  - Exactly one consumer thread
+
+Constraints:
+  - Capacity must be a power of two
+  - Effective usable capacity is (Capacity - 1)
+
+Relationship to spsc_queue:
+  - spsc_ring  : zero-copy, maximum performance, manual control
+  - spsc_queue : value-based, simpler but slightly higher overhead
+
+Typical use cases:
+  - Network transport pipelines
+  - High-frequency trading (HFT) data paths
+  - Large message or fragmented message assembly
+  - Systems where copy avoidance is critical
+
+===============================================================================
+*/
+
+#include "lcr/lockfree/spsc_core.hpp"
 
 
 namespace lcr::lockfree {
 
 template <typename T, size_t Capacity>
-class alignas(64) spsc_ring {
-    static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0), "Capacity must be power of two and >= 2");
-    static_assert(std::is_trivially_destructible_v<T> || std::is_nothrow_destructible_v<T>, "ring element must be safely destructible");
-
-public:
-    spsc_ring() noexcept = default;
-    ~spsc_ring() noexcept = default;
-
-    // Non-copyable / non-movable
-    spsc_ring(const spsc_ring&) = delete;
-    spsc_ring& operator=(const spsc_ring&) = delete;
-
-    // Push (copy)
-    [[nodiscard]] inline bool push(const T& item) noexcept {
-        const size_t head = head_.index.load(std::memory_order_relaxed);
-        const size_t next = (head + 1) & MASK;
-        if (next == tail_.index.load(std::memory_order_acquire))
-            return false; // full
-        buffer_[head] = item;
-        head_.index.store(next, std::memory_order_release);
-        return true;
-    }
-
-    // Push (move)
-    [[nodiscard]] inline bool push(T&& item) noexcept {
-        const size_t head = head_.index.load(std::memory_order_relaxed);
-        const size_t next = (head + 1) & MASK;
-        if (next == tail_.index.load(std::memory_order_acquire))
-            return false; // full
-        buffer_[head] = std::move(item);
-        head_.index.store(next, std::memory_order_release);
-        return true;
-    }
-
-    // Emplace (construct in-place)
-    template <typename... Args>
-    [[nodiscard]] inline bool emplace_push(Args&&... args) noexcept {
-        const size_t head = head_.index.load(std::memory_order_relaxed);
-        const size_t next = (head + 1) & MASK;
-        if (next == tail_.index.load(std::memory_order_acquire))
-            return false; // full
-        buffer_[head] = T(std::forward<Args>(args)...);
-        head_.index.store(next, std::memory_order_release);
-        return true;
-    }
-
-    // Pop (move)
-    [[nodiscard]] inline bool pop(T& out) noexcept {
-        const size_t tail = tail_.index.load(std::memory_order_relaxed);
-        if (tail == head_.index.load(std::memory_order_acquire))
-            return false; // empty
-        out = std::move(buffer_[tail]);
-        tail_.index.store((tail + 1) & MASK, std::memory_order_release);
-        return true;
-    }
-
-    [[nodiscard]] inline bool empty() const noexcept {
-        return tail_.index.load(std::memory_order_acquire) ==
-               head_.index.load(std::memory_order_acquire);
-    }
-
-    [[nodiscard]] inline bool full() const noexcept {
-        const size_t next = (head_.index.load(std::memory_order_relaxed) + 1) & MASK;
-        return next == tail_.index.load(std::memory_order_acquire);
-    }
-
-    [[nodiscard]]
-    constexpr size_t capacity() const noexcept {
-        return Capacity - 1;
-    }
-
-    [[nodiscard]] inline size_t used() const noexcept {
-        const size_t h = head_.index.load(std::memory_order_acquire);
-        const size_t t = tail_.index.load(std::memory_order_acquire);
-        return (h - t) & MASK;
-    }
-
-    [[nodiscard]] inline size_t free_slots() const noexcept {
-        return Capacity - 1 - used();
-    }
-
-    // -----------------------------------------------------------------------------
-    // Zero-copy producer API (two-phase commit)
-    // -----------------------------------------------------------------------------
-
-    // Acquire writable slot (producer only)
-    [[nodiscard]] inline T* acquire_producer_slot() noexcept {
-        const size_t head = head_.index.load(std::memory_order_relaxed);
-        const size_t next = (head + 1) & MASK;
-        if (next == tail_.index.load(std::memory_order_acquire)) [[unlikely]] {
-            return nullptr; // full
-        }
-#ifndef NDEBUG
-         LCR_ASSERT(!producer_slot_acquired_); // double acquire
-        producer_slot_acquired_ = true;
-#endif
-        return &buffer_[head];
-    }
-
-    // Commit previously acquired producer slot
-    inline void commit_producer_slot() noexcept {
-#ifndef NDEBUG
-        LCR_ASSERT(producer_slot_acquired_); // commit without acquire
-        producer_slot_acquired_ = false;
-#endif
-        const size_t head = head_.index.load(std::memory_order_relaxed);
-        head_.index.store((head + 1) & MASK, std::memory_order_release);
-    }
-
-    // Discard producer slot
-    inline void discard_producer_slot() noexcept {
-#ifndef NDEBUG
-        LCR_ASSERT(producer_slot_acquired_); // discard without acquire
-        producer_slot_acquired_ = false;
-#endif
-    }
-
-    // -----------------------------------------------------------------------------
-    // Zero-copy consumer API (two-phase release)
-    // -----------------------------------------------------------------------------
-
-    // Peek readable slot (consumer only)
-    [[nodiscard]] inline T* peek_consumer_slot() noexcept {
-        const size_t tail = tail_.index.load(std::memory_order_relaxed);
-        if (tail == head_.index.load(std::memory_order_acquire)) [[unlikely]] {
-            return nullptr; // empty
-        }
-#ifndef NDEBUG
-        LCR_ASSERT(!consumer_slot_acquired_); // double peek
-        consumer_slot_acquired_ = true;
-#endif
-        return &buffer_[tail];
-    }
-
-    // Release previously consumed slot
-    inline void release_consumer_slot() noexcept {
-#ifndef NDEBUG
-        LCR_ASSERT(consumer_slot_acquired_); // release without peek
-        consumer_slot_acquired_ = false;
-#endif
-        const size_t tail = tail_.index.load(std::memory_order_relaxed);
-        tail_.index.store((tail + 1) & MASK, std::memory_order_release);
-    }
-
-    // -----------------------------------------------------------------------------
-    // Clear the ring (lifecycle operation)
-    // -----------------------------------------------------------------------------
-    //
-    // Drops all unread elements by resetting head and tail to the same value.
-    //
-    // IMPORTANT:
-    //   • Must NOT be called concurrently with push/pop/acquire/peek.
-    //   • Safe only when producer thread is stopped OR externally synchronized.
-    //   • O(1) operation (no element destruction loop).
-    //   • Intended for lifecycle transitions (e.g., reconnect boundary).
-    //
-    // Typical usage:
-    //
-    //   // Stop producer thread first
-    //   ws.close();
-    //   ring.clear();
-    //
-    // After clear():
-    //   empty() == true
-    //   used()  == 0
-    //
-    // -----------------------------------------------------------------------------
-    inline void clear() noexcept {
-        // Reset tail first (consumer side)
-        tail_.index.store(0, std::memory_order_relaxed);
-
-        // Reset head after (producer side)
-        head_.index.store(0, std::memory_order_release);
-
-#ifndef NDEBUG
-        producer_slot_acquired_ = false;
-        consumer_slot_acquired_ = false;
-#endif
-    }
-
-    [[nodiscard]]
-    inline memory::footprint memory_usage() const noexcept {
-        return memory::footprint{
-            .static_bytes = sizeof(spsc_ring<T, Capacity>),
-            .dynamic_bytes = 0
-        };
-    }
-
-private:
-    struct alignas(64) PaddedAtomic {
-        std::atomic<size_t> index{0};
-        char pad[64 - sizeof(std::atomic<size_t>)]{};
-    };
-
-    static constexpr size_t MASK = Capacity - 1;
-    alignas(64) std::array<T, Capacity> buffer_{};
-    alignas(64) PaddedAtomic head_;
-    alignas(64) PaddedAtomic tail_;
+class alignas(64) spsc_ring : private spsc_core<T, Capacity> {
+    using base = spsc_core<T, Capacity>;
 
 #ifndef NDEBUG
     bool producer_slot_acquired_ = false;
     bool consumer_slot_acquired_ = false;
 #endif
+
+public:
+    using base::capacity;
+    using base::empty;
+    using base::full;
+    using base::used;
+    using base::free_slots;
+    using base::memory_usage;
+
+    // -------------------------------------------------------------------------
+    // Producer API (two-phase)
+    // -------------------------------------------------------------------------
+
+    [[nodiscard]] inline T* acquire_producer_slot() noexcept {
+        const size_t head = base::head_.index.load(std::memory_order_relaxed);
+        if (base::is_full(head)) [[unlikely]] {
+            return nullptr;
+        }
+
+#ifndef NDEBUG
+        LCR_ASSERT(!producer_slot_acquired_);
+        producer_slot_acquired_ = true;
+#endif
+
+        return &base::buffer_[head];
+    }
+
+    inline void commit_producer_slot() noexcept {
+#ifndef NDEBUG
+        LCR_ASSERT(producer_slot_acquired_);
+        producer_slot_acquired_ = false;
+#endif
+
+        const size_t head = base::head_.index.load(std::memory_order_relaxed);
+        base::head_.index.store(base::next(head), std::memory_order_release);
+    }
+
+    inline void discard_producer_slot() noexcept {
+#ifndef NDEBUG
+        LCR_ASSERT(producer_slot_acquired_);
+        producer_slot_acquired_ = false;
+#endif
+    }
+
+    // -------------------------------------------------------------------------
+    // Consumer API (two-phase)
+    // -------------------------------------------------------------------------
+
+    [[nodiscard]] inline T* peek_consumer_slot() noexcept {
+        const size_t tail = base::tail_.index.load(std::memory_order_relaxed);
+        if (base::is_empty(tail)) [[unlikely]] {
+            return nullptr;
+        }
+
+#ifndef NDEBUG
+        LCR_ASSERT(!consumer_slot_acquired_);
+        consumer_slot_acquired_ = true;
+#endif
+
+        return &base::buffer_[tail];
+    }
+
+    inline void release_consumer_slot() noexcept {
+#ifndef NDEBUG
+        LCR_ASSERT(consumer_slot_acquired_);
+        consumer_slot_acquired_ = false;
+#endif
+
+        const size_t tail = base::tail_.index.load(std::memory_order_relaxed);
+        base::tail_.index.store(base::next(tail), std::memory_order_release);
+    }
+
+    // --------------------------------------------------------------------------
+    // Lifecycle
+    // --------------------------------------------------------------------------
+
+    inline void clear() noexcept {
+        base::clear();
+    #ifndef NDEBUG
+        producer_slot_acquired_ = false;
+        consumer_slot_acquired_ = false;
+    #endif
+    }
 };
 
 } // namespace lcr::lockfree

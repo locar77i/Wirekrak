@@ -107,7 +107,7 @@ No level-based liveness or health state is exposed.
 #include "wirekrak/core/telemetry.hpp"
 #include "lcr/memory/footprint.hpp"
 #include "lcr/buffer/concepts.hpp"
-#include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/lockfree/spsc_queue.hpp"
 #include "lcr/optional.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/trap.hpp"
@@ -393,7 +393,7 @@ private:
     lcr::optional<ParsedUrl> parsed_url_;           // Invariant: .has() == true -> Valid endpoint
 
     // Control event queue (for signaling events like close and error)
-    lcr::lockfree::spsc_ring<websocket::Event, config::transport::CONTROL_RING_CAPACITY> control_ring_;
+    lcr::lockfree::spsc_queue<websocket::Event, config::transport::CONTROL_RING_CAPACITY> control_ring_;
 
     // Data message queue (transport → connection/session)
     MessageRing& message_ring_;
@@ -432,7 +432,7 @@ private:
     int retry_attempts_{0}; // It is 1-based and represents the ordinal number of the next retry attempt (not completed attempts).
 
     // The pending transition events
-    lcr::lockfree::spsc_ring<connection::Signal, SIGNAL_RING_CAPACITY> events_;
+    lcr::lockfree::spsc_queue<connection::Signal, SIGNAL_RING_CAPACITY> events_;
 
     inline void emit_(connection::Signal sig) noexcept {
         WK_TRACE("[CONN] Emitting signal: " << to_string(sig));
