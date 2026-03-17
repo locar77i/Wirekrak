@@ -1,3 +1,51 @@
+//------------------------------------------------------------------------------
+// SPSC Ring Standalone Benchmark (Global State / Baseline)
+//
+// This benchmark measures the throughput of the spsc_ring (two-phase API)
+// using a traditional standalone setup with global state and free-function
+// threads.
+//
+// IMPORTANT: This benchmark intentionally uses a non-optimized structure to
+// illustrate the impact of compiler visibility and ownership on performance.
+//
+// Characteristics of this setup:
+//   • Global ring instance (shared state)
+//   • Producer/consumer implemented as free functions
+//   • Two-phase API (acquire → commit, peek → release)
+//
+// Implications:
+//
+//   1. Limited compiler optimization
+//      - Global state restricts alias analysis
+//      - Compiler must assume external side effects
+//      - Reduced inlining opportunities
+//
+//   2. Higher apparent overhead
+//      - Two-phase API cannot be fully optimized across boundaries
+//      - Additional control flow becomes more visible in the hot path
+//
+//   3. Lower measured throughput
+//      - Results are typically below optimized (local/lambda) benchmarks
+//      - May exaggerate the cost of the two-phase API
+//
+// Educational purpose:
+//
+//   This benchmark highlights:
+//     • The cost of reduced compiler visibility
+//     • The importance of ownership and scope in low-latency systems
+//
+//   It contrasts with optimized benchmarks where:
+//     • The ring is locally owned
+//     • The full execution context is visible to the compiler
+//
+// Interpretation:
+//
+//   • Use this result as a baseline (non-ideal conditions)
+//   • Do NOT interpret it as the intrinsic cost of the ring design
+//   • Compare against optimized benchmarks for realistic performance
+//
+//------------------------------------------------------------------------------
+
 #include <thread>
 #include <atomic>
 #include <chrono>
@@ -26,6 +74,7 @@ std::atomic<uint64_t> consumed{0};
 
 void pin_thread(int core) {
     SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 }
 
 void producer() {

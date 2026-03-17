@@ -1,3 +1,61 @@
+//------------------------------------------------------------------------------
+// SPSC Queue vs Ring Throughput Benchmark
+//------------------------------------------------------------------------------
+//
+// This benchmark measures and compares the throughput of two SPSC variants:
+//
+//   • spsc_queue  → push/pop API (value semantics)
+//   • spsc_ring   → two-phase API (zero-copy semantics)
+//
+// Both implementations are executed under identical conditions:
+//   • Dedicated producer and consumer threads
+//   • CPU core pinning to avoid migration
+//   • Fixed-duration steady-state measurement
+//
+// IMPORTANT NOTE ON BENCHMARK STRUCTURE
+//
+// This benchmark intentionally uses:
+//   • Local (stack-allocated) queue/ring instances
+//   • Lambda-based producer/consumer threads
+//
+// This design is critical to obtain representative peak performance.
+//
+// Why?
+//
+// 1. Local ownership (non-global objects)
+//    - Enables stronger compiler alias analysis
+//    - Guarantees no external visibility or interference
+//    - Allows more aggressive inlining and optimization
+//
+// 2. Lambda-based threads
+//    - Improve compiler visibility of the full execution context
+//    - Reduce function call boundaries
+//    - Enable tighter hot-loop optimization
+//
+// 3. Combined execution context
+//    - Warms up CPU frequency (turbo boost)
+//    - Stabilizes scheduling and cache behavior
+//
+// As a result, this benchmark typically produces significantly higher
+// throughput than standalone/global-state benchmarks.
+//
+// Interpretation guideline:
+//
+//   • For small trivial types (e.g., uint64_t):
+//       The compiler may optimize queue copies into direct stores,
+//       making spsc_queue approach zero-copy performance.
+//
+//   • For larger or non-trivial payloads:
+//       spsc_ring (zero-copy) is expected to outperform spsc_queue.
+//
+// This benchmark is designed to reflect best-case, production-like
+// conditions where:
+//   • Objects are locally owned
+//   • Code is fully optimized
+//   • Hot paths are free of unnecessary abstraction barriers
+//
+//------------------------------------------------------------------------------
+
 #include <thread>
 #include <atomic>
 #include <chrono>
@@ -21,6 +79,7 @@ constexpr int DURATION_SEC = 10;
 // ------------------------------------------------------------
 void pin_thread(int core) {
     SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 }
 
 // ------------------------------------------------------------

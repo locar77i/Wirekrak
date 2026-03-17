@@ -69,7 +69,13 @@ protected:
 
     struct alignas(64) PaddedAtomic {
         std::atomic<size_t> index{0};
-        char pad[64 - sizeof(std::atomic<size_t>)]{};
+        // Thread-local cache (producer/consumer only). Safe due to SPSC model.
+        // Used for producer/consumer local caching to minimize atomic reads
+        // Cached remote index:
+        // - In head_: caches TAIL (used by producer)
+        // - In tail_: caches HEAD (used by consumer)
+        mutable size_t cached_opposite_index{0};
+        char pad[64 - sizeof(std::atomic<size_t>) - sizeof(size_t)]{};
     };
 
     alignas(64) std::array<T, Capacity> buffer_{};
@@ -83,11 +89,21 @@ protected:
     }
 
     [[nodiscard]] inline bool is_full(size_t head) const noexcept {
-        return next(head) == tail_.index.load(std::memory_order_acquire);
+        const size_t next_val = next(head);
+        if (next_val == head_.cached_opposite_index) { // It looks full, but is it really?
+            // Only if looks full do I need to read the tail atomic. If it doesn't look full, I can trust that there's at least one free slot without reading the atomic.
+            head_.cached_opposite_index = tail_.index.load(std::memory_order_acquire);
+            return next_val == head_.cached_opposite_index;
+        }
+        return false; // There is space, no need to read the atomic
     }
 
     [[nodiscard]] inline bool is_empty(size_t tail) const noexcept {
-        return tail == head_.index.load(std::memory_order_acquire);
+        if (tail == tail_.cached_opposite_index) { // It looks empty, but is it really?
+            tail_.cached_opposite_index = head_.index.load(std::memory_order_acquire);
+            return tail == tail_.cached_opposite_index;
+        }
+        return false; // There is data, no need to read the atomic
     }
 
 public:

@@ -1,3 +1,50 @@
+//------------------------------------------------------------------------------
+// SPSC Queue Standalone Benchmark (Global State / Baseline)
+//
+// This benchmark measures the throughput of the spsc_queue using a traditional
+// standalone setup with global state and free-function threads.
+//
+// IMPORTANT: This benchmark is intentionally written in a "naïve" style to
+// highlight how benchmark structure affects performance results.
+//
+// Characteristics of this setup:
+//   • Global queue instance (shared state)
+//   • Producer/consumer implemented as free functions
+//   • Separate compilation boundaries
+//
+// Implications:
+//
+//   1. Reduced compiler optimization potential
+//      - Global objects limit alias analysis
+//      - Compiler must assume external visibility and interference
+//      - Less aggressive inlining and instruction reordering
+//
+//   2. Weaker hot-path optimization
+//      - Function boundaries inhibit full optimization of the loop
+//      - Harder for the compiler to fuse operations
+//
+//   3. Lower measured throughput
+//      - Results are typically significantly lower than optimized benchmarks
+//      - Does NOT represent peak capability of the data structure
+//
+// Educational purpose:
+//
+//   This benchmark demonstrates how:
+//     "Benchmark structure can dominate measured performance"
+//
+//   It serves as a baseline and contrast against optimized benchmarks using:
+//     • Local ownership
+//     • Lambda-based threads
+//     • Fully visible execution context
+//
+// Interpretation:
+//
+//   • Use this result as a conservative lower bound
+//   • Do NOT use it to compare implementations in isolation
+//   • Compare against the optimized (local/lambda) benchmark for real performance
+//
+//------------------------------------------------------------------------------
+
 #include <thread>
 #include <atomic>
 #include <chrono>
@@ -23,6 +70,7 @@ std::atomic<uint64_t> consumed{0};
 
 void pin_thread(int core) {
     SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 }
 
 void producer() {
