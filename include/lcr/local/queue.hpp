@@ -6,55 +6,41 @@
 #include <type_traits>
 
 #include "lcr/memory/footprint.hpp"
-#include "lcr/trap.hpp"
 
 namespace lcr {
 namespace local {
 
 /*
 ===============================================================================
-Local SPSC Ring (Single-thread, zero-copy two-phase API)
+Local SPSC Queue (Single-thread, value-based API)
 ===============================================================================
 
-Single-threaded circular buffer with explicit acquire/commit semantics.
+Single-threaded circular buffer with push/pop semantics.
 
 Purpose:
-  - Enable zero-copy workflows
-  - Allow in-place construction and processing
-  - Avoid unnecessary data movement
-
-API model:
-
-  Producer:
-    acquire_producer_slot()
-    → write
-    → commit_producer_slot() OR discard_producer_slot()
-
-  Consumer:
-    peek_consumer_slot()
-    → read/process
-    → release_consumer_slot()
+  - Provide a simple, deterministic FIFO container
+  - Value-based semantics (copy/move)
+  - No partial states or multi-step operations
 
 Characteristics:
-  - O(1) operations
+  - O(1) push/pop
   - No dynamic allocation
-  - Zero-copy
-  - Full lifecycle control
+  - Power-of-two capacity
+  - Cache-friendly layout
 
 Threading:
   - NOT thread-safe (single-thread only)
 
 Use cases:
-  - Internal pipelines
-  - Object reuse
-  - High-performance batching
-  - Avoiding copies in hot paths
+  - Internal queues
+  - Control-plane buffering
+  - Lightweight pipelines
 
 ===============================================================================
 */
 
 template <typename T, size_t Capacity>
-class alignas(64) ring {
+class alignas(64) queue {
     static_assert((Capacity >= 2) && ((Capacity & (Capacity - 1)) == 0),
         "Capacity must be power of two and >= 2");
 
@@ -63,66 +49,54 @@ class alignas(64) ring {
         "ring element must be safely destructible");
 
 public:
-    ring() noexcept = default;
-    ~ring() noexcept = default;
+    queue() noexcept = default;
+    ~queue() noexcept = default;
 
-    ring(const ring&) = delete;
-    ring& operator=(const ring&) = delete;
+    queue(const queue&) = delete;
+    queue& operator=(const queue&) = delete;
 
     // -------------------------------------------------------------------------
-    // Producer API
+    // Push
     // -------------------------------------------------------------------------
 
-    [[nodiscard]] inline T* acquire_producer_slot() noexcept {
+    [[nodiscard]] inline bool push(const T& item) noexcept {
         const size_t next = (head_ + 1) & MASK;
         if (next == tail_) [[unlikely]]
-            return nullptr;
-
-#ifndef NDEBUG
-        LCR_ASSERT(!producer_slot_acquired_);
-        producer_slot_acquired_ = true;
-#endif
-
-        return &buffer_[head_];
+            return false;
+        buffer_[head_] = item;
+        head_ = next;
+        return true;
     }
 
-    inline void commit_producer_slot() noexcept {
-#ifndef NDEBUG
-        LCR_ASSERT(producer_slot_acquired_);
-        producer_slot_acquired_ = false;
-#endif
-        head_ = (head_ + 1) & MASK;
+    [[nodiscard]] inline bool push(T&& item) noexcept {
+        const size_t next = (head_ + 1) & MASK;
+        if (next == tail_) [[unlikely]]
+            return false;
+        buffer_[head_] = std::move(item);
+        head_ = next;
+        return true;
     }
 
-    inline void discard_producer_slot() noexcept {
-#ifndef NDEBUG
-        LCR_ASSERT(producer_slot_acquired_);
-        producer_slot_acquired_ = false;
-#endif
+    template <typename... Args>
+    [[nodiscard]] inline bool emplace_push(Args&&... args) noexcept {
+        const size_t next = (head_ + 1) & MASK;
+        if (next == tail_) [[unlikely]]
+            return false;
+        buffer_[head_] = T(std::forward<Args>(args)...);
+        head_ = next;
+        return true;
     }
 
     // -------------------------------------------------------------------------
-    // Consumer API
+    // Pop
     // -------------------------------------------------------------------------
 
-    [[nodiscard]] inline T* peek_consumer_slot() noexcept {
+    [[nodiscard]] inline bool pop(T& out) noexcept {
         if (tail_ == head_) [[unlikely]]
-            return nullptr;
-
-#ifndef NDEBUG
-        LCR_ASSERT(!consumer_slot_acquired_);
-        consumer_slot_acquired_ = true;
-#endif
-
-        return &buffer_[tail_];
-    }
-
-    inline void release_consumer_slot() noexcept {
-#ifndef NDEBUG
-        LCR_ASSERT(consumer_slot_acquired_);
-        consumer_slot_acquired_ = false;
-#endif
+            return false;
+        out = std::move(buffer_[tail_]);
         tail_ = (tail_ + 1) & MASK;
+        return true;
     }
 
     // -------------------------------------------------------------------------
@@ -151,16 +125,12 @@ public:
 
     inline void clear() noexcept {
         head_ = tail_ = 0;
-#ifndef NDEBUG
-        producer_slot_acquired_ = false;
-        consumer_slot_acquired_ = false;
-#endif
     }
 
     [[nodiscard]]
     inline memory::footprint memory_usage() const noexcept {
         return {
-            .static_bytes = sizeof(ring<T, Capacity>),
+            .static_bytes = sizeof(queue<T, Capacity>),
             .dynamic_bytes = 0
         };
     }
@@ -171,11 +141,6 @@ private:
     std::array<T, Capacity> buffer_{};
     size_t head_{0};
     size_t tail_{0};
-
-#ifndef NDEBUG
-    bool producer_slot_acquired_ = false;
-    bool consumer_slot_acquired_ = false;
-#endif
 };
 
 } // namespace local

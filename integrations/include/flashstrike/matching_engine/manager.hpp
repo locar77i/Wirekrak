@@ -8,7 +8,7 @@
 #include "lcr/system/monotonic_clock.hpp"
 #include "lcr/system/cpu_relax.hpp"
 #include "lcr/memory/footprint.hpp"
-#include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/lockfree/spsc_queue.hpp"
 #include "lcr/sequence.hpp"
 #include "lcr/log/Logger.hpp"
 
@@ -198,8 +198,8 @@ public:
     }
 
     // Access to trade events (ring buffer)
-    inline lcr::lockfree::spsc_ring<TradeEvent, TRADES_RING_BUFFER_SIZE>& trades_ring() noexcept { return trades_ring_; }
-    inline const lcr::lockfree::spsc_ring<TradeEvent, TRADES_RING_BUFFER_SIZE>& trades_ring() const noexcept { return trades_ring_; }
+    inline lcr::lockfree::spsc_queue<TradeEvent, TRADES_RING_BUFFER_SIZE>& trades_ring() noexcept { return trades_ring_; }
+    inline const lcr::lockfree::spsc_queue<TradeEvent, TRADES_RING_BUFFER_SIZE>& trades_ring() const noexcept { return trades_ring_; }
 
     inline lcr::memory::footprint memory_usage() const noexcept {
         lcr::memory::footprint mf{
@@ -218,7 +218,7 @@ private:
     conf::Instrument instrument_;
     conf::NormalizedInstrument normalized_instrument_;
     OrderBook book_;
-    lcr::lockfree::spsc_ring<TradeEvent, TRADES_RING_BUFFER_SIZE> trades_ring_{};
+    lcr::lockfree::spsc_queue<TradeEvent, TRADES_RING_BUFFER_SIZE> trades_ring_{};
     lcr::sequence seq_gen_;
 
     telemetry::InitUpdater init_metrics_updater_;

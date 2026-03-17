@@ -82,7 +82,7 @@ Data-plane model:
 #include "wirekrak/core/config/backpressure.hpp"
 #include "lcr/memory/footprint.hpp"
 #include "lcr/local/raw_buffer.hpp"
-#include "lcr/local/ring.hpp"
+#include "lcr/local/queue.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/control/consecutive_state.hpp"
 #include "lcr/buffer/concepts.hpp"
@@ -729,7 +729,7 @@ private:
 
     // User-visible rejection queue.
     // Decoupled from internal protocol processing to prevent user behavior from affecting Core correctness.
-    lcr::local::ring<schema::rejection::Notice, config::protocol::REJECTION_RING_CAPACITY> user_rejection_buffer_;
+    lcr::local::queue<schema::rejection::Notice, config::protocol::REJECTION_RING_CAPACITY> user_rejection_buffer_;
 
     // Channel subscription managers
     channel::Manager trade_channel_manager_{Channel::Trade};
