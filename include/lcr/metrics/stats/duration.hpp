@@ -97,7 +97,7 @@ struct alignas(64) duration {
             os << " min=" << lcr::format_duration(min_ns_.load())
                 << " max=" << lcr::format_duration(max_ns_.load())
                 << " avg=" << lcr::format_duration(avg_ns())
-                << " rate=" << lcr::format_throughput(rate_per_sec());
+                << " inv(avg)=" << lcr::format_throughput(rate_per_sec(), "ops/s");
         }
     }
 

@@ -232,6 +232,17 @@ public:
         consumer_slot_acquired_ = false;
     #endif
     }
+
+    // --------------------------------------------------------------------------
+    // For-each slot (for initialization or introspection)
+    // --------------------------------------------------------------------------
+
+    template <typename Fn>
+    inline void for_each_slot(Fn&& fn) noexcept {
+        for (size_t i = 0; i < Capacity; ++i) {
+            fn(base::buffer_[i], i);
+        }
+    }
 };
 
 } // namespace lcr::lockfree

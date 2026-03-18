@@ -4,8 +4,8 @@
 
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 
-#include "lcr/metrics/atomic/counter.hpp"
-#include "lcr/metrics/atomic/stats/size.hpp"
+#include "lcr/metrics/counter.hpp"
+#include "lcr/metrics/stats/size.hpp"
 #include "lcr/format.hpp"
 
 namespace wirekrak::core::transport::telemetry {
@@ -23,59 +23,59 @@ struct alignas(64) Connection final {
     // Lifecycle & state transitions
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter32 open_calls_total;         // open() invoked by user
-    lcr::metrics::atomic::counter32 connect_success_total;    // Successfully reached State::Connected
-    lcr::metrics::atomic::counter32 connect_failure_total;    // Failed initial connection attempt
-    lcr::metrics::atomic::counter32 close_calls_total;        // Explicit close() invoked by user
-    lcr::metrics::atomic::counter32 disconnect_events_total;  // Transport closed while connected (any cause)
-    lcr::metrics::atomic::counter32 epoch_transitions_total;  // Epoch transitions (for transport-level reconnections)
+    lcr::metrics::counter32 open_calls_total;         // open() invoked by user
+    lcr::metrics::counter32 connect_success_total;    // Successfully reached State::Connected
+    lcr::metrics::counter32 connect_failure_total;    // Failed initial connection attempt
+    lcr::metrics::counter32 close_calls_total;        // Explicit close() invoked by user
+    lcr::metrics::counter32 disconnect_events_total;  // Transport closed while connected (any cause)
+    lcr::metrics::counter32 epoch_transitions_total;  // Epoch transitions (for transport-level reconnections)
 
     // ---------------------------------------------------------------------
     // Liveness decisions
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter32 liveness_timeouts_total;  // Forced disconnect due to liveness timeout
+    lcr::metrics::counter32 liveness_timeouts_total;  // Forced disconnect due to liveness timeout
 
     // ---------------------------------------------------------------------
     // Retry mechanics (decisions, not timing)
     // ---------------------------------------------------------------------
     
-    lcr::metrics::atomic::counter32 retry_cycles_started_total;  // Entered State::WaitingReconnect
-    lcr::metrics::atomic::counter32 retry_attempts_total;        // Reconnect attempt initiated
-    lcr::metrics::atomic::counter32 retry_success_total;         // Reconnect succeeded
-    lcr::metrics::atomic::counter32 retry_failure_total;         // Reconnect failed (attempted but did not connect)
+    lcr::metrics::counter32 retry_cycles_started_total;  // Entered State::WaitingReconnect
+    lcr::metrics::counter32 retry_attempts_total;        // Reconnect attempt initiated
+    lcr::metrics::counter32 retry_success_total;         // Reconnect succeeded
+    lcr::metrics::counter32 retry_failure_total;         // Reconnect failed (attempted but did not connect)
 
     // ---------------------------------------------------------------------
     // Message handoff (WS → user boundary)
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 messages_forwarded_total;  // Messages forwarded to user callback
+    lcr::metrics::counter64 messages_forwarded_total;  // Messages forwarded to user callback
 
     // ---------------------------------------------------------------------
     // Send gating
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 send_calls_total;     // send() called by user
-    lcr::metrics::atomic::counter64 send_rejected_total;  // send() rejected due to non-connected state
+    lcr::metrics::counter64 send_calls_total;     // send() called by user
+    lcr::metrics::counter64 send_rejected_total;  // send() rejected due to non-connected state
 
     // --------------------------------------------------------
     // Access failures
     // --------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 control_ring_failures_total;
+    lcr::metrics::counter64 control_ring_failures_total;
 
     // ---------------------------------------------------------------------
     // Control plane pressure (transport)
     // ---------------------------------------------------------------------
-    lcr::metrics::atomic::stats::size16 control_ring_depth;  // Measures the actual load level of the control ring
+    lcr::metrics::stats::size16 control_ring_depth;  // Measures the actual load level of the control ring
     
     // ---------------------------------------------------------------------
     // Control plane signals (protocol)
     // ---------------------------------------------------------------------
-    lcr::metrics::atomic::counter64 signals_emitted_total;
-    lcr::metrics::atomic::counter32 signals_liveness_threatened_total;
-    lcr::metrics::atomic::counter32 signals_retry_immediate_total;
-    lcr::metrics::atomic::counter32 signals_retry_scheduled_total;
+    lcr::metrics::counter64 signals_emitted_total;
+    lcr::metrics::counter32 signals_liveness_threatened_total;
+    lcr::metrics::counter32 signals_retry_immediate_total;
+    lcr::metrics::counter32 signals_retry_scheduled_total;
 
     // ---------------------------------------------------------------------
     // Sub-telemetry

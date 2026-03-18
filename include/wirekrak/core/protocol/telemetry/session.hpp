@@ -3,10 +3,10 @@
 #include <type_traits>
 
 #include "wirekrak/core/transport/telemetry/connection.hpp"
-#include "lcr/metrics/atomic/counter.hpp"
-#include "lcr/metrics/atomic/stats/size.hpp"
-#include "lcr/metrics/atomic/stats/sampler.hpp"
-#include "lcr/metrics/atomic/stats/duration.hpp"
+#include "lcr/metrics/counter.hpp"
+#include "lcr/metrics/stats/size.hpp"
+#include "lcr/metrics/stats/sampler.hpp"
+#include "lcr/metrics/stats/duration.hpp"
 #include "lcr/format.hpp"
 
 
@@ -41,70 +41,70 @@ struct alignas(64) Session final {
     // Message processing
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 messages_processed_total;  // Total protocol messages processed
-    lcr::metrics::atomic::stats::size32 messages_per_poll;     // Number of messages handled per poll() cycle
+    lcr::metrics::counter64 messages_processed_total;  // Total protocol messages processed
+    lcr::metrics::stats::size32 messages_per_poll;     // Number of messages handled per poll() cycle
 
     // ---------------------------------------------------------------------
     // Parser outcomes
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 parse_success_total;       // Successfully parsed and routed messages
-    lcr::metrics::atomic::counter64 parse_failure_total;       // Parser failures (invalid JSON, schema mismatch, etc.)
-    lcr::metrics::atomic::counter64 parse_backpressure_total;  // Parser rejected message due to backpressure
+    lcr::metrics::counter64 parse_success_total;       // Successfully parsed and routed messages
+    lcr::metrics::counter64 parse_failure_total;       // Parser failures (invalid JSON, schema mismatch, etc.)
+    lcr::metrics::counter64 parse_backpressure_total;  // Parser rejected message due to backpressure
 
     // ---------------------------------------------------------------------
     // Session requests
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 requests_emitted_total;           // Session requests emitted (subscribe, unsubscribe, ping, etc.)
-    lcr::metrics::atomic::counter64 subscriptions_requested_total;    // Subscribe requests issued
-    lcr::metrics::atomic::counter64 unsubscriptions_requested_total;  // Unsubscribe requests issued
+    lcr::metrics::counter64 requests_emitted_total;           // Session requests emitted (subscribe, unsubscribe, ping, etc.)
+    lcr::metrics::counter64 subscriptions_requested_total;    // Subscribe requests issued
+    lcr::metrics::counter64 unsubscriptions_requested_total;  // Unsubscribe requests issued
 
     // ---------------------------------------------------------------------
     // Rejection notices
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 rejection_notices_total;  // Rejection notices received from exchange
+    lcr::metrics::counter64 rejection_notices_total;  // Rejection notices received from exchange
 
     // ---------------------------------------------------------------------
     // Replay activity
     // ---------------------------------------------------------------------
     
-    lcr::metrics::atomic::counter64 replay_requests_total;  // Number of replay operations triggered after reconnect
-    lcr::metrics::atomic::counter64 replay_symbols_total;   // Total symbols replayed during reconnect recovery
+    lcr::metrics::counter64 replay_requests_total;  // Number of replay operations triggered after reconnect
+    lcr::metrics::counter64 replay_symbols_total;   // Total symbols replayed during reconnect recovery
 
     // --------------------------------------------------------
     // Delivery failures
     // --------------------------------------------------------
 
-    lcr::metrics::atomic::counter64 request_batching_failures_total;
-    lcr::metrics::atomic::counter64 user_delivery_failures_total;  // Session backpressure caused by user not draining messages fast enough
+    lcr::metrics::counter64 request_batching_failures_total;
+    lcr::metrics::counter64 user_delivery_failures_total;  // Session backpressure caused by user not draining messages fast enough
 
     // ---------------------------------------------------------------------
     // Data-plane pressure
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::stats::size16 message_ring_depth;  // Measures the actual load level of the message processing ring
+    lcr::metrics::stats::size16 message_ring_depth;  // Measures the actual load level of the message processing ring
 
     // ---------------------------------------------------------------------
     // Transport backpressure
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::stats::sampler32 transport_overload_streak;     // Allows to measure how severe is the transport backpressure escalation
+    lcr::metrics::stats::sampler32 transport_overload_streak;     // Allows to measure how severe is the transport backpressure escalation
     
     // ---------------------------------------------------------------------
     // User backpressure
     // ---------------------------------------------------------------------
     
-    lcr::metrics::atomic::stats::sampler32 user_overload_streak;     // Allows to measure how severe is the user backpressure escalation
+    lcr::metrics::stats::sampler32 user_overload_streak;     // Allows to measure how severe is the user backpressure escalation
 
     // ---------------------------------------------------------------------
     // Timing
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::stats::duration64 poll_duration;             // Measures the duration of each poll() cycle 
-    lcr::metrics::atomic::stats::duration64 message_handoff_duration;  // Measures the duration of every message handoff (time from transport processing startto protocol consumption)
-    lcr::metrics::atomic::stats::duration64 message_process_duration; // Measures the duration of every message processing (time spent inside the protocol layer to process one message)
+    lcr::metrics::stats::duration64 poll_duration;             // Measures the duration of each poll() cycle 
+    lcr::metrics::stats::duration64 message_handoff_duration;  // Measures the duration of every message handoff (time from transport processing startto protocol consumption)
+    lcr::metrics::stats::duration64 message_process_duration; // Measures the duration of every message processing (time spent inside the protocol layer to process one message)
 
     // ---------------------------------------------------------------------
     // Sub-telemetry

@@ -28,8 +28,7 @@ struct latency_percentiles {
     uint64_t p999999{0};
 
     inline void dump(std::ostream& os) const noexcept {
-        os << "Latency Percentiles: "
-            << " p50=" << lcr::format_duration(p50)
+        os << "p50=" << lcr::format_duration(p50)
             << " p90=" << lcr::format_duration(p90)
             << " p99=" << lcr::format_duration(p99)
             << " p99.9=" << lcr::format_duration(p999)
@@ -112,6 +111,10 @@ struct alignas(64) latency_histogram {
         }
 
         return result;
+    }
+
+    inline void dump(std::ostream& os) const noexcept {
+        compute_percentiles().dump(os);
     }
 
     // Reset

@@ -214,7 +214,7 @@ private:
     std::size_t size_{0};
     std::uint64_t timestamp_ns_{0};
 
-    alignas(64) char inline_buffer_[InlineSize];
+    char inline_buffer_[InlineSize];
 
 private:
 
