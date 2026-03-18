@@ -69,7 +69,8 @@ public:
 
     // ---- push ----
 
-    [[nodiscard]] inline bool push(const T& item) noexcept {
+    [[nodiscard]]
+    inline bool push(const T& item) noexcept {
         const size_t head = base::head_.index.load(std::memory_order_relaxed);
         if (base::is_full(head)) return false;
 
@@ -78,7 +79,8 @@ public:
         return true;
     }
 
-    [[nodiscard]] inline bool push(T&& item) noexcept {
+    [[nodiscard]]
+    inline bool push(T&& item) noexcept {
         const size_t head = base::head_.index.load(std::memory_order_relaxed);
         if (base::is_full(head)) return false;
 
@@ -88,7 +90,8 @@ public:
     }
 
     template <typename... Args>
-    [[nodiscard]] inline bool emplace_push(Args&&... args) noexcept {
+    [[nodiscard]]
+    inline bool emplace_push(Args&&... args) noexcept {
         const size_t head = base::head_.index.load(std::memory_order_relaxed);
         if (base::is_full(head)) return false;
 
@@ -99,7 +102,8 @@ public:
 
     // ---- pop ----
 
-    [[nodiscard]] inline bool pop(T& out) noexcept {
+    [[nodiscard]]
+    inline bool pop(T& out) noexcept {
         const size_t tail = base::tail_.index.load(std::memory_order_relaxed);
         if (base::is_empty(tail)) return false;
 

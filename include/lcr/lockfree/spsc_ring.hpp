@@ -90,7 +90,8 @@ public:
     // Producer API (two-phase)
     // -------------------------------------------------------------------------
 
-    [[nodiscard]] inline T* acquire_producer_slot() noexcept {
+    [[nodiscard]]
+    inline T* acquire_producer_slot() noexcept {
         const size_t head = base::head_.index.load(std::memory_order_relaxed);
         if (base::is_full(head)) [[unlikely]] {
             return nullptr;
@@ -125,7 +126,8 @@ public:
     // Consumer API (two-phase)
     // -------------------------------------------------------------------------
 
-    [[nodiscard]] inline T* peek_consumer_slot() noexcept {
+    [[nodiscard]]
+    inline T* peek_consumer_slot() noexcept {
         const size_t tail = base::tail_.index.load(std::memory_order_relaxed);
         if (base::is_empty(tail)) [[unlikely]] {
             return nullptr;
@@ -147,6 +149,76 @@ public:
 
         const size_t tail = base::tail_.index.load(std::memory_order_relaxed);
         base::tail_.index.store(base::next(tail), std::memory_order_release);
+    }
+
+    // -------------------------------------------------------------------------
+    // Producer batch API
+    // -------------------------------------------------------------------------
+
+    [[nodiscard]]
+    inline bool try_acquire_producer_batch(size_t n, size_t& head) noexcept {
+        const size_t h = base::head_.index.load(std::memory_order_relaxed);
+
+        if (!base::has_free_slots(h, n)) [[unlikely]] {
+            return false;
+        }
+
+    #ifndef NDEBUG
+        LCR_ASSERT(!producer_slot_acquired_);
+        producer_slot_acquired_ = true;
+    #endif
+
+        head = h;
+        return true;
+    }
+
+    [[nodiscard]]
+    inline T* producer_slot(size_t head, size_t offset) noexcept {
+        return &base::buffer_[(head + offset) & base::MASK];
+    }
+
+    inline void commit_producer_batch(size_t n) noexcept {
+    #ifndef NDEBUG
+        LCR_ASSERT(producer_slot_acquired_);
+        producer_slot_acquired_ = false;
+    #endif
+
+        base::advance_head(n);
+    }
+
+    // -------------------------------------------------------------------------
+    // Consumer batch API
+    // -------------------------------------------------------------------------
+
+    [[nodiscard]]
+    inline bool try_acquire_consumer_batch(size_t n, size_t& tail) noexcept {
+        const size_t t = base::tail_.index.load(std::memory_order_relaxed);
+
+        if (!base::has_available(t, n)) [[unlikely]] {
+            return false;
+        }
+
+    #ifndef NDEBUG
+        LCR_ASSERT(!consumer_slot_acquired_);
+        consumer_slot_acquired_ = true;
+    #endif
+
+        tail = t;
+        return true;
+    }
+
+    [[nodiscard]]
+    inline T* consumer_slot(size_t tail, size_t offset) noexcept {
+        return &base::buffer_[(tail + offset) & base::MASK];
+    }
+
+    inline void release_consumer_batch(size_t n) noexcept {
+    #ifndef NDEBUG
+        LCR_ASSERT(consumer_slot_acquired_);
+        consumer_slot_acquired_ = false;
+    #endif
+
+        base::advance_tail(n);
     }
 
     // --------------------------------------------------------------------------

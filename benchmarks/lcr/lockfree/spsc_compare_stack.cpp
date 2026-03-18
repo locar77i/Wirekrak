@@ -69,6 +69,7 @@ using namespace std::chrono;
 
 struct Msg {
     uint64_t value;
+    //uint64_t data[39];
 };
 
 constexpr size_t N = 1 << 16;
@@ -108,7 +109,7 @@ Result run_queue() {
         Msg msg;
 
         while (!stop.load(std::memory_order_relaxed)) {
-            //msg.value = counter;
+            msg.value = counter;
             if (queue.push(msg)) {
                 counter++;
             }
@@ -124,7 +125,8 @@ Result run_queue() {
 
         while (!stop.load(std::memory_order_relaxed)) {
             if (queue.pop(msg)) {
-                //(void)msg.value;
+                auto v = msg.value;
+                (void)v;
                 local++;
             }
         }
@@ -170,7 +172,7 @@ Result run_ring() {
 
         while (!stop.load(std::memory_order_relaxed)) {
             if (auto* slot = ring.acquire_producer_slot()) {
-                //slot->value = counter++;
+                slot->value = counter++;
                 ring.commit_producer_slot();
             }
         }
@@ -184,7 +186,8 @@ Result run_ring() {
 
         while (!stop.load(std::memory_order_relaxed)) {
             if (auto* slot = ring.peek_consumer_slot()) {
-                //(void)slot->value;
+                auto v = slot->value;
+                (void)v;
                 ring.release_consumer_slot();
                 local++;
             }
