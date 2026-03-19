@@ -61,6 +61,7 @@ Data-plane model:
 #include <ostream>
 #include <memory>
 
+#include "windows.h"  // For thread affinity/priority
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/connection.hpp"
@@ -111,7 +112,9 @@ public:
         , ctx_(std::make_unique<Context>())
         , ctx_view_(*ctx_)
         , parser_(ctx_view_)
-    {}
+    {
+        pin_thread_(1); // Pin session thread to core 1 for deterministic performance  
+    }
 
     // open connection
     [[nodiscard]]
@@ -358,6 +361,7 @@ public:
     //   - ACKs and rejections are handled before user-visible messages are drained
     [[nodiscard]]
     inline std::uint64_t poll() {
+        std::size_t messages_processed = 0;
         auto& clock = lcr::system::monotonic_clock::instance();
         WK_TL3(
             lcr::metrics::util::scope_timer timer{telemetry_.poll_duration}
@@ -381,18 +385,22 @@ public:
         );
 
         // === Drain transport data-plane (zero-copy) ===
-        std::size_t messages_processed = 0;
         while (messages_processed < config::protocol::MAX_MESSAGES_PER_POLL) {
             auto* slot = connection_.peek_message();
             if (!slot) [[unlikely]] { // No more messages to process
                 break;
             }
+            const bool samples_now = slot->timestamp(); // For telemetry sampling (every 1024 messages)
             // The message slot remains valid until release_message() is called
             std::string_view sv{ slot->data(), slot->size() };
             // Observability: measure handoff duration (time from transport processing start to protocol consumption)
             WK_TL3(
-                std::uint64_t delivery_ns = clock.now_ns();
-                telemetry_.message_handoff_duration.record(slot->timestamp(), delivery_ns);
+                std::uint64_t delivery_ns = 0;
+                if (samples_now) [[unlikely]] {
+                    delivery_ns = clock.now_ns();
+                    telemetry_.handoff_latency.record(slot->timestamp(), delivery_ns);
+                    slot->reset_timestamp(); // Clear timestamp after recording to prevent stale data in future measurements
+                }
             );
             // Handle the message (parsing & routing)
             Method method;
@@ -401,7 +409,9 @@ public:
             handle_parser_result_(r, sv);
             // Observability: measure protocol processing duration (time spent inside the protocol layer to process one message)
             WK_TL3(
-                telemetry_.message_process_duration.record(delivery_ns, clock.now_ns());
+                if (samples_now) [[unlikely]] {
+                    telemetry_.message_process_duration.record(delivery_ns, clock.now_ns());
+                }
             );
             // Check to handle parser backpressure if needed
             if (r == parser::Result::Backpressure) {
@@ -521,12 +531,12 @@ public:
                 std::string_view msg;
                 if (request_scheduler_.peek(msg)) {
                     WK_TRACE("[SESSION] Emitting paced request: " << msg);
-                    if (!connection_.send(msg)) {
-                        WK_ERROR("[SESSION] Failed to send paced request - " << msg);
-                        request_scheduler_.release(); // Release the peeked message back to the scheduler
-                        return false;
+                    if (connection_.send(msg)) [[likely]] {
+                        WK_TL1( telemetry_.requests_emitted_total.inc() );
                     }
-                    WK_TL1( telemetry_.requests_emitted_total.inc() );
+                    else {
+                        WK_ERROR("[SESSION] Failed to send paced request - " << msg);
+                    }
                     request_scheduler_.release();
                 }
             }
@@ -756,6 +766,15 @@ private:
     OverloadState overload_state_;
 
 private:
+    //------------------------------------------------------------------------------
+    // Thread pinning
+    //------------------------------------------------------------------------------
+
+    void pin_thread_(int core) {
+        SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    }
+
     inline void handle_connect_() {
         WK_TRACE("[SESSION] handle connect (transport_epoch = " << transport_epoch() << ")");
         if constexpr (ReplayPolicy::enabled) {

@@ -61,7 +61,7 @@
 
 constexpr static std::size_t BLOCK_SIZE =      128 * 1024;  // 128 KiB
 constexpr static std::size_t BLOCK_COUNT =             16;  // Number of blocks in the pool
-constexpr static std::size_t MESSAGE_RING_CAPACITY = 1024;  // Number of messages the ring can hold
+constexpr static std::size_t MESSAGE_RING_CAPACITY = 2048;  // Number of messages the ring can hold
 
 // -------------------------------------------------------------------------
 // Session setup
@@ -79,7 +79,7 @@ using MySessionPolicies =
 
 using MyMessageRing =
         lcr::buffer::managed_spsc_ring<
-            lcr::buffer::managed_slot<config::transport::websocket::MIN_FRAME_SIZE>,
+            lcr::buffer::managed_slot<1000>,
             lcr::memory::block_pool,
             MESSAGE_RING_CAPACITY
         >;
