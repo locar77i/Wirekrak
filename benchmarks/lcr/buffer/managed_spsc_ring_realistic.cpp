@@ -31,9 +31,9 @@ using namespace std::chrono;
 // Config
 //------------------------------------------------------------------------------
 
-constexpr size_t N = 1 << 16;
-constexpr size_t POOL_BLOCK_SIZE = 4096;
-constexpr size_t POOL_BLOCK_COUNT = 1 << 14;
+constexpr size_t N = 1 << 8;
+constexpr size_t POOL_BLOCK_SIZE = 8192;
+constexpr size_t POOL_BLOCK_COUNT = 1 << 4;
 
 //------------------------------------------------------------------------------
 // Thread pinning
@@ -51,11 +51,11 @@ void pin_thread(int core) {
 inline size_t size_dist(uint64_t i) {
     uint64_t x = i & 0xFF;
 
-    if (x < 200) return 192;      // ~78%
-    if (x < 224) return 1024;     // ~8%
-    if (x < 248) return 2048;     // ~8%
-    if (x < 254) return 4096;     // ~3%
-    return 4096;                  // ~1%
+    if (x < 200) return 232;      // ~78%
+    if (x < 252) return 1000;     // ~19%
+    if (x < 253) return 2024;     // ~1%
+    if (x < 254) return 4072;     // ~1%
+    return 8192;                  // ~1%
 }
 
 //------------------------------------------------------------------------------
@@ -65,7 +65,7 @@ inline size_t size_dist(uint64_t i) {
 int main() {
     auto& clock = lcr::system::monotonic_clock::instance();
 
-    using slot_t = lcr::buffer::managed_slot<232>;
+    using slot_t = lcr::buffer::managed_slot<1000>;
     using pool_t = lcr::memory::block_pool;
     using ring_t = lcr::buffer::managed_spsc_ring<slot_t, pool_t, N>;
 
@@ -129,7 +129,8 @@ int main() {
                 local_promotions++;
             }
 
-            std::memset(slot->write_ptr(), 0xAB, len);
+            std::memset(slot->write_ptr(), 0xAB, len);   // Full write for realistic
+            //slot->write_ptr()[0] = 0xAB;               // Minimal write for maximum throughput
             if ((counter & 0x3FF) == 0) [[unlikely]] {
                 slot->set_timestamp(clock.now_ns());
                 slot->write_ptr()[0] = 1; // mark sampled

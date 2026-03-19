@@ -33,9 +33,9 @@ using namespace std::chrono;
 // Config
 //------------------------------------------------------------------------------
 
-constexpr size_t N = 1 << 16;
+constexpr size_t N = 1 << 8;
 constexpr size_t POOL_BLOCK_SIZE = 4096;
-constexpr size_t POOL_BLOCK_COUNT = 1 << 14;
+constexpr size_t POOL_BLOCK_COUNT = 1 << 4;
 
 //------------------------------------------------------------------------------
 // Thread pinning
