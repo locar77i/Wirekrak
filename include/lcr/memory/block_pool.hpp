@@ -76,7 +76,7 @@ public:
         for (std::size_t i = 0; i < block_count_; ++i) {
             node* n = &blocks_[i];
             // Placement-new constructs memory block inside node
-            new (&n->block) block(block_size_);
+            new (&n->block) block_t(block_size_);
             // Add node to free-list (lock-free)
             push_node_(n);
         }
@@ -96,7 +96,7 @@ public:
     */
     ~block_pool() noexcept {
         for (std::size_t i = 0; i < block_count_; ++i) {
-            blocks_[i].block.~block();
+            blocks_[i].block.~block_t();
         }
         ::operator delete[](blocks_);
     }
@@ -118,7 +118,7 @@ public:
     Lock-free O(1)
     */
     [[nodiscard]]
-    block* acquire() noexcept {
+    block_t* acquire() noexcept {
         node* n = pop_node_();
         if (!n) [[unlikely]] {
             return nullptr; // pool exhausted
@@ -140,7 +140,7 @@ public:
     IMPORTANT:
       Caller must guarantee the block belongs to this pool.
     */
-    void release(block* block) noexcept {
+    void release(block_t* block) noexcept {
         LCR_ASSERT_MSG(block, "release() called with null block");
         node* n = node_from_block_(block);
         push_node_(n);
@@ -191,7 +191,7 @@ private:
       The nodes themselves store linkage.
     */
     struct node {
-        block block; // placement-constructed later
+        block_t block; // placement-constructed later
         node* next{nullptr};
     };
 
@@ -270,7 +270,7 @@ private:
     node_from_block_
     ===========================================================================
 
-    Converts block* back to its containing node*.
+    Converts block_t* back to its containing node*.
 
     Because block is first member inside node, pointer arithmetic
     safely retrieves enclosing structure.
@@ -278,7 +278,7 @@ private:
     This relies on standard layout guarantees.
     */
     [[nodiscard]]
-    node* node_from_block_(block* block) noexcept {
+    node* node_from_block_(block_t* block) noexcept {
         return reinterpret_cast<node*>(
             reinterpret_cast<char*>(block) - offsetof(node, block)
         );

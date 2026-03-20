@@ -2,7 +2,7 @@
 
 /*
 ================================================================================
-block
+block_t
 ================================================================================
 
 Runtime-sized, reusable raw memory container.
@@ -36,22 +36,22 @@ This is the minimal memory unit for buffer pools.
 
 namespace lcr::memory {
 
-class block {
+class block_t {
 public:
-    explicit block(std::size_t capacity) noexcept
+    explicit block_t(std::size_t capacity) noexcept
         : capacity_(capacity),
           data_(static_cast<char*>(::operator new(capacity)))
     {}
 
-    ~block() noexcept {
+    ~block_t() noexcept {
         ::operator delete(data_);
     }
 
-    block(const block&) = delete;
-    block& operator=(const block&) = delete;
+    block_t(const block_t&) = delete;
+    block_t& operator=(const block_t&) = delete;
 
-    block(block&&) = delete;
-    block& operator=(block&&) = delete;
+    block_t(block_t&&) = delete;
+    block_t& operator=(block_t&&) = delete;
 
     // ---------------------------------------------------------------------
     // Raw access

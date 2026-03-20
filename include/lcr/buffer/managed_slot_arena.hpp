@@ -224,7 +224,7 @@ public:
     }
 
 private:
-    memory::block* external_{nullptr};
+    memory::block_t* external_{nullptr};
     char* buffer_{nullptr};
     std::size_t size_{0};
     std::uint64_t timestamp_ns_{0};
@@ -238,7 +238,7 @@ private:
             return PromotionResult::None;
 
         if (!external_) {
-            memory::block* block = pool.acquire();
+            memory::block_t* block = pool.acquire();
             if (!block)
                 return PromotionResult::PoolExhausted;
 
