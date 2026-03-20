@@ -16,13 +16,12 @@
 #include <cstdint>
 #include <cstring>
 
-#include <windows.h>  // for thread pinning
-
 #include "lcr/buffer/managed_spsc_ring.hpp"
 #include "lcr/buffer/managed_slot.hpp"
 #include "lcr/memory/block_pool.hpp"
 #include "lcr/metrics/latency_histogram.hpp"
 #include "lcr/system/monotonic_clock.hpp"
+#include "lcr/system/thread_affinity.hpp"
 #include "lcr/format.hpp"
 
 using namespace std::chrono;
@@ -34,15 +33,6 @@ using namespace std::chrono;
 constexpr size_t N = 1 << 8;
 constexpr size_t POOL_BLOCK_SIZE = 8192;
 constexpr size_t POOL_BLOCK_COUNT = 1 << 4;
-
-//------------------------------------------------------------------------------
-// Thread pinning
-//------------------------------------------------------------------------------
-
-void pin_thread(int core) {
-    SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-}
 
 //------------------------------------------------------------------------------
 // Deterministic size distribution
@@ -97,7 +87,7 @@ int main() {
     //----------------------------------------------------------------------
 
     std::thread producer([&] {
-        pin_thread(0);
+        lcr::system::pin_thread(0);
 
         while (!start.load(std::memory_order_acquire));
 
@@ -153,7 +143,7 @@ int main() {
     //----------------------------------------------------------------------
 
     std::thread consumer([&] {
-        pin_thread(1);
+        lcr::system::pin_thread(1);
 
         while (!start.load(std::memory_order_acquire));
 

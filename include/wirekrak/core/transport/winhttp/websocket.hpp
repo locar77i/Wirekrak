@@ -35,8 +35,6 @@ is validated independently from the operating system and network stack.
 #include <cassert>
 #include <immintrin.h>
 
-#include "windows.h"  // For thread affinity/priority
-
 #include "wirekrak/core/transport/error.hpp"
 #include "wirekrak/core/transport/winhttp/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
@@ -49,6 +47,7 @@ is validated independently from the operating system and network stack.
 #include "lcr/buffer/concepts.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/system/monotonic_clock.hpp"
+#include "lcr/system/thread_affinity.hpp"
 #include "lcr/format.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/trap.hpp"
@@ -287,15 +286,6 @@ private:
 
 private:
 
-    //------------------------------------------------------------------------------
-    // Thread pinning
-    //------------------------------------------------------------------------------
-
-    void pin_thread_(int core) {
-        SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
-        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-    }
-
     // The receive loop is the heart of the transport's receive path.
     // Key features:
     // - Lock-free
@@ -305,7 +295,7 @@ private:
     void receive_loop_() noexcept {
         auto& clock = lcr::system::monotonic_clock::instance();
 
-        pin_thread_(0); // Pin receive thread to core 0 for deterministic performance  
+        lcr::system::pin_thread(0); // Pin receive thread to core 0 for deterministic performance  
 
 #ifdef WK_UNIT_TEST
         // Debug builds exposed a race in the test harness.

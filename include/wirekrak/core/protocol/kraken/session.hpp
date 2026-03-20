@@ -89,6 +89,7 @@ Data-plane model:
 #include "lcr/buffer/concepts.hpp"
 #include "lcr/sequence.hpp"
 #include "lcr/metrics/util/scope_timer.hpp"
+#include "lcr/system/thread_affinity.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/trap.hpp"
 
@@ -113,7 +114,7 @@ public:
         , ctx_view_(*ctx_)
         , parser_(ctx_view_)
     {
-        pin_thread_(1); // Pin session thread to core 1 for deterministic performance  
+        lcr::system::pin_thread(1); // Pin session thread to core 1 for deterministic performance  
     }
 
     // open connection

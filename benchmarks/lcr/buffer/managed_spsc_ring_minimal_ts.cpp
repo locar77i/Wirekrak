@@ -18,13 +18,12 @@
 #include <memory>
 #include <cstdint>
 
-#include <windows.h>
-
 #include "lcr/buffer/managed_spsc_ring.hpp"
 #include "lcr/buffer/managed_slot.hpp"
 #include "lcr/memory/block_pool.hpp"
 #include "lcr/metrics/latency_histogram.hpp"
 #include "lcr/system/monotonic_clock.hpp"
+#include "lcr/system/thread_affinity.hpp"
 #include "lcr/format.hpp"
 
 using namespace std::chrono;
@@ -36,15 +35,6 @@ using namespace std::chrono;
 constexpr size_t N = 1 << 8;
 constexpr size_t POOL_BLOCK_SIZE = 4096;
 constexpr size_t POOL_BLOCK_COUNT = 1 << 4;
-
-//------------------------------------------------------------------------------
-// Thread pinning
-//------------------------------------------------------------------------------
-
-void pin_thread(int core) {
-    SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-}
 
 //------------------------------------------------------------------------------
 // Main benchmark
@@ -81,7 +71,7 @@ int main() {
     //--------------------------------------------------------------------------
 
     std::thread producer([&] {
-        pin_thread(0);  // Optional: pin producer to core 0 for more stable measurements
+        lcr::system::pin_thread(0);
 
         while (!start.load(std::memory_order_acquire));
 
@@ -91,15 +81,6 @@ int main() {
 
             auto* slot = ring.acquire_producer_slot();
             if (!slot) [[unlikely]] continue;
-
-/*
-            auto r = ring.reserve(slot, 1);
-            // Optional sanity (should always be None)
-            if (r != lcr::buffer::PromotionResult::None) [[unlikely]] {
-                ring.discard_producer_slot(slot);
-                continue;
-            }
-*/
 
             // Minimal write with dependency (and sampled timestamp)
             if ((counter & 0x3FF) == 0) [[unlikely]] {
@@ -120,7 +101,7 @@ int main() {
     //--------------------------------------------------------------------------
 
     std::thread consumer([&] {
-        pin_thread(1);  // Optional: pin consumer to core 1 for more stable measurements
+        lcr::system::pin_thread(1);
 
         while (!start.load(std::memory_order_acquire));
 

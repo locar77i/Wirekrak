@@ -60,10 +60,10 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
-#include <windows.h>
 
 #include "lcr/lockfree/spsc_queue.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
+#include "lcr/system/thread_affinity.hpp"
 
 using namespace std::chrono;
 
@@ -74,14 +74,6 @@ struct Msg {
 
 constexpr size_t N = 1 << 16;
 constexpr int DURATION_SEC = 10;
-
-// ------------------------------------------------------------
-// Thread pinning
-// ------------------------------------------------------------
-void pin_thread(int core) {
-    SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-}
 
 // ------------------------------------------------------------
 // Benchmark result
@@ -102,7 +94,7 @@ Result run_queue() {
     std::atomic<uint64_t> consumed{0};
 
     std::thread producer([&] {
-        pin_thread(0);
+        lcr::system::pin_thread(0);
         while (!start.load(std::memory_order_acquire));
 
         uint64_t counter = 0;
@@ -117,7 +109,7 @@ Result run_queue() {
     });
 
     std::thread consumer([&] {
-        pin_thread(1);
+        lcr::system::pin_thread(1);
         while (!start.load(std::memory_order_acquire));
 
         uint64_t local = 0;
@@ -165,7 +157,7 @@ Result run_ring() {
     std::atomic<uint64_t> consumed{0};
 
     std::thread producer([&] {
-        pin_thread(0);
+        lcr::system::pin_thread(0);
         while (!start.load(std::memory_order_acquire));
 
         uint64_t counter = 0;
@@ -179,7 +171,7 @@ Result run_ring() {
     });
 
     std::thread consumer([&] {
-        pin_thread(1);
+        lcr::system::pin_thread(1);
         while (!start.load(std::memory_order_acquire));
 
         uint64_t local = 0;

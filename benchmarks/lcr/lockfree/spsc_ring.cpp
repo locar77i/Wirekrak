@@ -52,10 +52,9 @@
 #include <iostream>
 #include <vector>
 #include <cassert>
-#include <windows.h>
 
 #include "lcr/lockfree/spsc_ring.hpp"
-
+#include "lcr/system/thread_affinity.hpp"
 
 using namespace std::chrono;
 
@@ -72,13 +71,8 @@ std::atomic<bool> stop{false};
 std::atomic<uint64_t> produced{0};
 std::atomic<uint64_t> consumed{0};
 
-void pin_thread(int core) {
-    SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-}
-
 void producer() {
-    pin_thread(0);
+    lcr::system::pin_thread(0);
 
     while (!start.load(std::memory_order_acquire));
 
@@ -94,7 +88,7 @@ void producer() {
 }
 
 void consumer() {
-    pin_thread(1);
+    lcr::system::pin_thread(1);
 
     while (!start.load(std::memory_order_acquire));
 
