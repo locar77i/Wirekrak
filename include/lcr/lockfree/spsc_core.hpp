@@ -189,7 +189,9 @@ public:
 
     inline void clear() noexcept {
         tail_.index.store(0, std::memory_order_relaxed);
+        tail_.cached_opposite_index = 0;
         head_.index.store(0, std::memory_order_release);
+        head_.cached_opposite_index = 0;
     }
 
     [[nodiscard]]

@@ -26,15 +26,8 @@ inline Result parse_side_levels_common(const simdjson::dom::object& book, std::s
         return Result::InvalidSchema;
     }
 
-    simdjson::dom::array arr_value = arr.value();
-    // arr must contain at least one trade
-    if (arr_value.size() == 0) {
-        WK_DEBUG("[PARSER] Empty array in field '" << field << "' in book message -> skip side.");
-        return Result::Ignored;
-    }
-
     present = true;
-    for (auto lvl : arr_value) {
+    for (auto lvl : arr.value()) {
         // each level must be an object with price and qty
         simdjson::dom::object obj;
         if (lvl.get(obj)) {
