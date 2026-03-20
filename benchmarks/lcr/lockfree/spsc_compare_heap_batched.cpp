@@ -60,11 +60,14 @@ Result run_queue() {
     std::thread consumer([&] {
         pin_thread(1);
         while (!start.load(std::memory_order_acquire));
+
         uint64_t local = 0;
+        volatile uint64_t data = 0; // Prevent optimization
         Msg msg;
+
         while (!stop.load(std::memory_order_relaxed)) {
             if (queue.pop(msg)) {
-                auto v = msg.value; (void)v;  // prevent optimization
+                data = msg.value; (void)data;  // prevent optimization
                 local++;
             }
         }
@@ -112,10 +115,11 @@ Result run_ring_single() {
         while (!start.load(std::memory_order_acquire));
 
         uint64_t local = 0;
-        
+        volatile uint64_t data = 0; // Prevent optimization
+
         while (!stop.load(std::memory_order_relaxed)) {
             if (auto* slot = ring.peek_consumer_slot()) {
-                auto v = slot->value; (void)v;  // prevent optimization
+                data = slot->value; (void)data;  // prevent optimization
                 ring.release_consumer_slot();
                 local++;
             }
@@ -169,6 +173,7 @@ Result run_ring_batch() {
         while (!start.load(std::memory_order_acquire));
 
         uint64_t local = 0;
+        volatile uint64_t data = 0; // Prevent optimization
 
         while (!stop.load(std::memory_order_relaxed)) {
             size_t tail;
@@ -176,7 +181,7 @@ Result run_ring_batch() {
             if (ring.try_acquire_consumer_batch(BATCH_SIZE, tail)) {
                 for (size_t i = 0; i < BATCH_SIZE; ++i) {
                     Msg* slot = ring.consumer_slot(tail, i);
-                    auto v = slot->value; (void)v;  // prevent optimization
+                    data = slot->value; (void)data;  // prevent optimization
                     local++;
                 }
                 ring.release_consumer_batch(BATCH_SIZE);

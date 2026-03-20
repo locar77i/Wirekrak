@@ -370,17 +370,25 @@ public:
         // === Advance transport state - Heartbeat liveness & reconnection logic ===
         connection_.poll();
 
+        // Observability: track control plane pressure (ring size) at each poll
+        WK_TL1(
+            const std::size_t pending_signals = connection_.pending_signals();
+             if (pending_signals > 0) [[likely]] {
+                telemetry_.control_ring_depth.set(pending_signals);
+            }
+        );
+
         // === Drain transport control-plane signals ===
         transport::connection::Signal sig;
         while (connection_.poll_signal(sig)) {
             handle_connection_signal_(sig);
         }
 
-        // Observability: track control plane pressure (ring size) at each poll
+        // Observability: track data plane pressure (ring size) at each poll
         WK_TL1(
-            const std::size_t pending = connection_.pending_messages();
-             if (pending > 0) [[likely]] {
-                telemetry_.message_ring_depth.set(pending);
+            const std::size_t pending_messages = connection_.pending_messages();
+             if (pending_messages > 0) [[likely]] {
+                telemetry_.message_ring_depth.set(pending_messages);
             }
         );
 
@@ -850,6 +858,9 @@ private:
     inline void handle_parser_result_(parser::Result result, std::string_view raw_message) noexcept {
         switch (result) {
         case parser::Result::Ignored:
+            WK_DEBUG("[SESSION] Message ignored by parser: " << raw_message);
+            WK_TL1( telemetry_.parse_ignored_total.inc() );
+            break;
         case parser::Result::InvalidJson:
         case parser::Result::InvalidSchema:
         case parser::Result::InvalidValue:

@@ -44,7 +44,7 @@ struct response {
         // data must contain at least one trade
         if (data.size() == 0) {
             WK_DEBUG("[PARSER] Empty 'data' array in trade response -> ignore message.");
-            return Result::InvalidSchema;
+            return Result::Ignored;
         }
 
 

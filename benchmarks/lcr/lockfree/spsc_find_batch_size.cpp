@@ -65,14 +65,13 @@ Result run_batch(size_t BATCH_SIZE) {
         while (!start.load(std::memory_order_acquire));
 
         uint64_t local = 0;
-        uint64_t sink = 0;
+        volatile uint64_t data = 0; // Prevent optimization
 
         while (!stop.load(std::memory_order_relaxed)) {
             size_t tail;
             if (ring.try_acquire_consumer_batch(BATCH_SIZE, tail)) {
                 for (size_t i = 0; i < BATCH_SIZE; ++i) {
-                    sink = ring.consumer_slot(tail, i)->value;
-                    (void)sink;
+                    data = ring.consumer_slot(tail, i)->value; (void)data;
                     local++;
                 }
                 ring.release_consumer_batch(BATCH_SIZE);

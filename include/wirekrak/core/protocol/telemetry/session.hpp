@@ -50,6 +50,7 @@ struct alignas(64) Session final {
     // ---------------------------------------------------------------------
 
     lcr::metrics::counter64 parse_success_total;       // Successfully parsed and routed messages
+    lcr::metrics::counter64 parse_ignored_total;       // Messages ignored by the parser (empty data, irrelevant channels, etc.)
     lcr::metrics::counter64 parse_failure_total;       // Parser failures (invalid JSON, schema mismatch, etc.)
     lcr::metrics::counter64 parse_backpressure_total;  // Parser rejected message due to backpressure
 
@@ -80,6 +81,12 @@ struct alignas(64) Session final {
 
     lcr::metrics::counter64 request_batching_failures_total;
     lcr::metrics::counter64 user_delivery_failures_total;  // Session backpressure caused by user not draining messages fast enough
+
+    // ---------------------------------------------------------------------
+    // Control-plane pressure
+    // ---------------------------------------------------------------------
+
+    lcr::metrics::stats::size16 control_ring_depth;  // Measures the actual load level of the control processing ring
 
     // ---------------------------------------------------------------------
     // Data-plane pressure
@@ -125,6 +132,7 @@ struct alignas(64) Session final {
 
         // Parser outcomes
         parse_success_total.copy_to(other.parse_success_total);
+        parse_ignored_total.copy_to(other.parse_ignored_total);
         parse_failure_total.copy_to(other.parse_failure_total);
         parse_backpressure_total.copy_to(other.parse_backpressure_total);
 
@@ -143,6 +151,9 @@ struct alignas(64) Session final {
         // Delivery failures
         request_batching_failures_total.copy_to(other.request_batching_failures_total);
         user_delivery_failures_total.copy_to(other.user_delivery_failures_total);
+
+        // Control-plane pressure
+        control_ring_depth.copy_to(other.control_ring_depth);
 
         // Data-plane pressure
         message_ring_depth.copy_to(other.message_ring_depth);
@@ -180,6 +191,7 @@ struct alignas(64) Session final {
         // Parser outcomes
         os << "\nParser\n";
         os << "  Parse success      : " << lcr::format_number_exact(parse_success_total.load()) << '\n';
+        os << "  Parse ignored      : " << lcr::format_number_exact(parse_ignored_total.load()) << '\n';
         os << "  Parse failure      : " << lcr::format_number_exact(parse_failure_total.load()) << '\n';
         os << "  Parse backpressure : " << lcr::format_number_exact(parse_backpressure_total.load()) << '\n';
 
@@ -202,6 +214,10 @@ struct alignas(64) Session final {
         os << "\nDelivery failures\n";
         os << "  Request batching   : " << lcr::format_number_exact(request_batching_failures_total.load()) << '\n';
         os << "  User delivery      : " << lcr::format_number_exact(user_delivery_failures_total.load()) << '\n';
+
+        // Control-plane pressure
+        os << "\nControl-plane pressure\n";
+        os << "  Control ring depth : "; control_ring_depth.dump(os); os << '\n';
 
         // Data-plane pressure
         os << "\nData-plane pressure\n";

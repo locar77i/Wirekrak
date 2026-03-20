@@ -123,12 +123,12 @@ Result run_queue() {
         while (!start.load(std::memory_order_acquire));
 
         uint64_t local = 0;
+        volatile uint64_t data = 0; // Prevent optimization
         Msg msg;
 
         while (!stop.load(std::memory_order_relaxed)) {
             if (queue.pop(msg)) {
-                auto v = msg.value;
-                (void)v;
+                data = msg.value; (void)data;
                 local++;
             }
         }
@@ -186,11 +186,11 @@ Result run_ring() {
         while (!start.load(std::memory_order_acquire));
 
         uint64_t local = 0;
+        volatile uint64_t data = 0; // Prevent optimization
 
         while (!stop.load(std::memory_order_relaxed)) {
             if (auto* slot = ring.peek_consumer_slot()) {
-                auto v = slot->value;
-                (void)v;
+                data = slot->value; (void)data;
                 ring.release_consumer_slot();
                 local++;
             }

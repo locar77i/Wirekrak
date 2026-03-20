@@ -99,13 +99,12 @@ void consumer() {
     while (!start.load(std::memory_order_acquire));
 
     uint64_t local_consumed = 0;
-
+    volatile uint64_t data = 0; // Prevent optimization
     Msg msg;
 
     while (!stop.load(std::memory_order_relaxed)) {
         if (queue.pop(msg)) {
-            auto v = msg.value;
-            (void)v;
+            data = msg.value; (void)data;
             local_consumed++;
         }
     }

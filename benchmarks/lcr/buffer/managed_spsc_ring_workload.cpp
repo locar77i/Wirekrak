@@ -92,6 +92,26 @@ int main() {
     std::cout << "Ring Capacity  : " << ring.capacity() << " slots\n";
     std::cout << "Pool Capacity  : " << pool.capacity() << " blocks\n";
 
+
+    // ------------------------------------------------------------------------------
+    // Simulated work functions to create more realistic processing time
+    // ------------------------------------------------------------------------------
+
+    auto do_producer_work = [](uint64_t& counter) {
+        volatile uint64_t data;
+        constexpr int N = 1000;
+        for (int i = 0; i < N; ++i) { // Simulate logic/parsing overhead -> ~(N*3) nanoseconds
+            data += (i * counter);
+        }
+    };
+
+    auto do_consumer_work = [](volatile uint64_t& data, uint64_t& local) {
+        constexpr int N = 1000;
+        for (int i = 0; i < N; ++i) { // Simulate logic/parsing overhead -> ~(N*3) nanoseconds
+            data += (i * local);
+        }
+    };
+    
     //----------------------------------------------------------------------
     // Producer
     //----------------------------------------------------------------------
@@ -130,6 +150,8 @@ int main() {
             if (r == lcr::buffer::PromotionResult::Success) {
                 local_promotions++;
             }
+
+            do_producer_work(counter);
 
             std::memset(slot->write_ptr(), 0xAB, len);   // Full write for realistic
             //slot->write_ptr()[0] = 0xAB;               // Minimal write for maximum throughput
@@ -171,6 +193,8 @@ int main() {
             if (data == 1) [[unlikely]] {
                 handoff_latency.record(slot->timestamp(), clock.now_ns());
             }
+
+            do_consumer_work(data, local);
 
             ring.release_consumer_slot(slot);
             local++;

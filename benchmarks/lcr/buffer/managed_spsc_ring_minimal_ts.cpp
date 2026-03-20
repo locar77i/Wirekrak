@@ -125,14 +125,15 @@ int main() {
         while (!start.load(std::memory_order_acquire));
 
         uint64_t local = 0;
+        volatile uint64_t data = 0; // Prevent optimization
 
         while (!stop.load(std::memory_order_relaxed)) {
 
             auto* slot = ring.peek_consumer_slot();
             if (!slot) [[unlikely]] continue;
 
-            auto v = slot->data()[0];
-            if (v == 1) [[unlikely]] {
+            data = slot->data()[0];
+            if (data == 1) [[unlikely]] {
                 handoff_latency.record(slot->timestamp(), clock.now_ns());
             }
 

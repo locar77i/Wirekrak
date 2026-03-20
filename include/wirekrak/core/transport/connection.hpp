@@ -264,7 +264,7 @@ public:
 
     [[nodiscard]]
     inline bool poll_signal(connection::Signal& out) noexcept {
-        return events_.pop(out);
+        return signals_.pop(out);
     }
 
     [[nodiscard]]
@@ -323,7 +323,7 @@ public:
     [[nodiscard]]
     inline bool is_idle() const noexcept {
         // 1) Pending observable signals → not idle
-        if (!events_.empty()) {
+        if (!signals_.empty()) {
             return false;
         }
 
@@ -337,6 +337,10 @@ public:
 
         // Otherwise, no work pending
         return true;
+    }
+
+    inline std::size_t pending_signals() noexcept {
+        return signals_.used();
     }
 
     [[nodiscard]]
@@ -432,13 +436,13 @@ private:
     int retry_attempts_{0}; // It is 1-based and represents the ordinal number of the next retry attempt (not completed attempts).
 
     // The pending transition events
-    lcr::lockfree::spsc_queue<connection::Signal, SIGNAL_RING_CAPACITY> events_;
+    lcr::lockfree::spsc_queue<connection::Signal, SIGNAL_RING_CAPACITY> signals_;
 
     inline void emit_(connection::Signal sig) noexcept {
         WK_TRACE("[CONN] Emitting signal: " << to_string(sig));
         WK_TL1( telemetry_.signals_emitted_total.inc() );
         // Fast path: try to push
-        if (events_.push(sig)) [[likely]] {
+        if (signals_.push(sig)) [[likely]] {
             return;
         }
         WK_TL1( telemetry_.control_ring_failures_total.inc() );

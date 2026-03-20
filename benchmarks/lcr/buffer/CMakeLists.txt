@@ -12,3 +12,6 @@ target_link_libraries(lcr_buffer_managed_spsc_ring_minimal_ts PRIVATE wirekrak)
 
 add_executable(lcr_buffer_managed_spsc_ring_realistic managed_spsc_ring_realistic.cpp)
 target_link_libraries(lcr_buffer_managed_spsc_ring_realistic PRIVATE wirekrak)
+
+add_executable(lcr_buffer_managed_spsc_ring_workload managed_spsc_ring_workload.cpp)
+target_link_libraries(lcr_buffer_managed_spsc_ring_workload PRIVATE wirekrak)
