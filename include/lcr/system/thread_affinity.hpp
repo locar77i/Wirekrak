@@ -211,6 +211,8 @@ inline bool pin_thread(std::uint32_t core, thread_priority prio = thread_priorit
 inline bool pin_thread(std::thread& t, std::uint32_t core) noexcept {
 #ifdef _WIN32
 
+    if (!t.joinable()) return false;
+
     const DWORD_PTR mask = (1ull << core);
 
     HANDLE h = reinterpret_cast<HANDLE>(t.native_handle());
@@ -218,6 +220,8 @@ inline bool pin_thread(std::thread& t, std::uint32_t core) noexcept {
     return SetThreadAffinityMask(h, mask) != 0;
 
 #else
+
+    if (!t.joinable()) return false;
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
