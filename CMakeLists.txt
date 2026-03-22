@@ -9,15 +9,27 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Print config
+message(STATUS "C++ Compiler: ${CMAKE_CXX_COMPILER}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Using vcpkg toolchain: ${CMAKE_TOOLCHAIN_FILE}")
+
 # -------------------------------------------------------------
 # Dependencies via vcpkg
 # -------------------------------------------------------------
-message(STATUS "Using vcpkg toolchain: ${CMAKE_TOOLCHAIN_FILE}")
+
 
 find_package(simdjson REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(CLI11 REQUIRED)
 
+# Platform-specific dependencies
+if (WIN32)
+    message(STATUS "Configuring for Windows (WinHTTP transport)")
+elseif (UNIX)
+    message(STATUS "Configuring for Linux (Boost.Beast transport)")
+    find_package(Boost REQUIRED COMPONENTS system)
+endif()
 
 # -------------------------------------------------------------
 # Create Wirekrak Library
@@ -29,7 +41,6 @@ target_include_directories(wirekrak INTERFACE
 )
 
 target_link_libraries(wirekrak INTERFACE
-
     simdjson::simdjson
     spdlog::spdlog
 )
@@ -37,13 +48,27 @@ target_link_libraries(wirekrak INTERFACE
 
 if (WIN32)
     # -------------------------------------------------------------
-    # Windows TLS (SChannel) - No OpenSSL required
+    # Windows (WinHTTP)
     # -------------------------------------------------------------
-    target_compile_definitions(wirekrak INTERFACE WIREKRAK_USE_SCHANNEL)
+    target_compile_definitions(wirekrak INTERFACE
+        WIREKRAK_TRANSPORT_WINHTTP
+    )
+
     target_link_libraries(wirekrak INTERFACE
         winhttp
         crypt32
         secur32
+    )
+elseif (UNIX)
+    # -------------------------------------------------------------
+    # Linux (Boost.Asio / Beast)
+    # -------------------------------------------------------------
+    target_compile_definitions(wirekrak INTERFACE
+        WIREKRAK_TRANSPORT_ASIO
+    )
+
+    target_link_libraries(wirekrak INTERFACE
+        Boost::system
     )
 endif()
 
@@ -51,7 +76,7 @@ endif()
 # -----------------------
 # Telemetry configuration
 # -----------------------
-option(WIREKRAK_ENABLE_TELEMETRY_L1 "Enable Wirekrak Telemetry Level 1" ON)
+option(WIREKRAK_ENABLE_TELEMETRY_L1 "Enable Wirekrak Telemetry Level 1" OFF)
 option(WIREKRAK_ENABLE_TELEMETRY_L2 "Enable Wirekrak Telemetry Level 2" OFF)
 option(WIREKRAK_ENABLE_TELEMETRY_L3 "Enable Wirekrak Telemetry Level 3" OFF)
 
@@ -130,7 +155,7 @@ endif()
 # -------------------------------------------------------------
 # Wirekrak Lite (compiled facade)
 # -------------------------------------------------------------
-option(WIREKRAK_BUILD_LITE "Build Wirekrak Lite client library" ON)
+option(WIREKRAK_BUILD_LITE "Build Wirekrak Lite client library" OFF)
 
 if (WIREKRAK_BUILD_LITE)
     message(STATUS "Building Wirekrak Lite client library")
