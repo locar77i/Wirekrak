@@ -19,7 +19,7 @@
 #include "flashstrike/constants.hpp"
 #include "flashstrike/wal/recorder/telemetry/meta.hpp"
 #include "lcr/system/monotonic_clock.hpp"
-#include "lcr/log/Logger.hpp"
+#include "lcr/log/logger.hpp"
 
 
 namespace flashstrike {

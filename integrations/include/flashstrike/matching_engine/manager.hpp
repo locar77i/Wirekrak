@@ -10,7 +10,7 @@
 #include "lcr/memory/footprint.hpp"
 #include "lcr/lockfree/spsc_queue.hpp"
 #include "lcr/sequence.hpp"
-#include "lcr/log/Logger.hpp"
+#include "lcr/log/logger.hpp"
 
 using lcr::system::monotonic_clock;
 

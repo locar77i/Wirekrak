@@ -7,7 +7,7 @@
 #include "flashstrike/matching_engine/telemetry.hpp"
 #include "lcr/system/monotonic_clock.hpp"
 #include "lcr/memory/footprint.hpp"
-#include "lcr/log/Logger.hpp"
+#include "lcr/log/logger.hpp"
 
 using lcr::system::monotonic_clock;
 

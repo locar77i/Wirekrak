@@ -27,7 +27,7 @@
 #include "flashstrike/wal/recorder/telemetry/segment_writer.hpp"
 #include "flashstrike/wal/utils.hpp"
 #include "lcr/system/monotonic_clock.hpp"
-#include "lcr/log/Logger.hpp"
+#include "lcr/log/logger.hpp"
 
 
 namespace flashstrike {

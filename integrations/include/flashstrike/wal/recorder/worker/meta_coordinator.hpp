@@ -10,7 +10,7 @@
 // Project headers
 #include "flashstrike/wal/recorder/meta.hpp"
 #include "flashstrike/wal/recorder/telemetry/Meta.hpp"
-#include "lcr/log/Logger.hpp"
+#include "lcr/log/logger.hpp"
 
 
 namespace flashstrike {

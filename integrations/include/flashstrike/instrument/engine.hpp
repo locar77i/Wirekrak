@@ -8,7 +8,7 @@
 #include "lcr/system/cpu_relax.hpp"
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/adaptive_backoff_until.hpp"
-#include "lcr/log/Logger.hpp"
+#include "lcr/log/logger.hpp"
 
 constexpr uint64_t ON_PROCESS_EVENT_PERIOD = 1ULL << 23;    // On every 8 million events (must be power of two)
 

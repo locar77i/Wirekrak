@@ -22,7 +22,7 @@
 #include "lcr/lockfree/spsc_ring.hpp"
 #include "lcr/system/cpu_relax.hpp"
 #include "lcr/system/monotonic_clock.hpp"
-#include "lcr/log/Logger.hpp"
+#include "lcr/log/logger.hpp"
 
 
 // ╔═══════════════════════════════════════════════════════════════════════════════╗

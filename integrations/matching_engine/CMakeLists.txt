@@ -39,7 +39,7 @@ target_link_libraries(flashstrike_matching_gateway
 )
 target_include_directories(flashstrike_matching_gateway
     PRIVATE
-        ${PROJECT_SOURCE_DIR}/examples/
+        ${PROJECT_SOURCE_DIR}/examples
         ${PROJECT_SOURCE_DIR}/integrations/include
 )
 
