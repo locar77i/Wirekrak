@@ -13,9 +13,11 @@
 
 #include <openssl/ssl.h>   // REQUIRED for SNI
 
-#include "api_concept.hpp"
+#include "wirekrak/core/transport/websocket/backend_concept.hpp"
 
-namespace wirekrak::core::transport::asio {
+
+namespace wirekrak::core::transport {
+namespace asio {
 
 namespace net       = boost::asio;
 namespace ssl       = boost::asio::ssl;
@@ -24,12 +26,12 @@ namespace beast_ws  = beast::websocket;
 using tcp = net::ip::tcp;
 
 // ============================================================================
-// RealApi (Beast-based WebSocket wrapper, TLS-enabled)
+// Backend (Beast-based WebSocket wrapper, TLS-enabled)
 // ============================================================================
 
-class RealApi {
+class Backend {
 public:
-    RealApi()
+    Backend()
         : resolver_(ioc_)
         , ssl_ctx_(ssl::context::tls_client)
         , ws_(ioc_, ssl_ctx_)
@@ -89,29 +91,29 @@ public:
     }
 
     // ZERO-COPY RECEIVE
-    ReceiveStatus read_some(void* buffer, std::size_t size, std::size_t& bytes) noexcept {
+    websocket::ReceiveStatus read_some(void* buffer, std::size_t size, std::size_t& bytes) noexcept {
         try {
             bytes = ws_.read_some(net::buffer(buffer, size));
-            return ReceiveStatus::Ok;
+            return websocket::ReceiveStatus::Ok;
         }
         catch (const beast::system_error& e) {
             const auto& ec = e.code();
 
             // Closed (normal / expected)
             if (ec == beast::websocket::error::closed || ec == net::error::operation_aborted) {
-                return ReceiveStatus::Closed;
+                return websocket::ReceiveStatus::Closed;
             }
 
             // Timeout (rare unless configured)
             if (ec == net::error::timed_out || ec == beast::error::timeout) {
-                return ReceiveStatus::Timeout;
+                return websocket::ReceiveStatus::Timeout;
             }
 
             // Everything else = transport failure
-            return ReceiveStatus::TransportError;
+            return websocket::ReceiveStatus::TransportError;
         }
         catch (...) {
-            return ReceiveStatus::TransportError;
+            return websocket::ReceiveStatus::TransportError;
         }
     }
 
@@ -142,7 +144,9 @@ private:
     std::string host_;
 };
 
-// Enforce concept
-static_assert(ApiConcept<RealApi>, "RealApi does not satisfy Asio ApiConcept");
+} // namespace asio
 
-} // namespace wirekrak::core::transport::asio
+// Enforce concept
+static_assert(websocket::BackendConcept<asio::Backend>, "asio::Backend does not satisfy websocket::BackendConcept");
+
+} // namespace wirekrak::core::transport

@@ -46,9 +46,9 @@ Extension:
 */
 template<class ResponseT>
 class Partitioner {
-    using traits = traits<ResponseT>;
-    using message_type = typename traits::message_type;
-    using view_type    = typename traits::view_type;
+    using message_traits = traits<ResponseT>;
+    using message_type = typename message_traits::message_type;
+    using view_type    = typename message_traits::view_type;
 
 public:
     Partitioner() = default;
@@ -79,17 +79,17 @@ private:
         }
         views_.clear();
 
-        for (const auto& msg : traits::messages(*response_)) {
-            buckets_[traits::symbol_of(msg)].push_back(&msg);
+        for (const auto& msg : message_traits::messages(*response_)) {
+            buckets_[message_traits::symbol_of(msg)].push_back(&msg);
         }
 
         views_.reserve(buckets_.size());
 
         for (auto& [symbol, vec] : buckets_) {
             views_.push_back(
-                traits::make_view(
+                message_traits::make_view(
                     symbol,
-                    traits::payload_type(*response_),
+                    message_traits::payload_type(*response_),
                     std::span<const message_type* const>(
                         vec.data(),
                         vec.size()
