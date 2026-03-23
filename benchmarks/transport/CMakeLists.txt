@@ -4,5 +4,5 @@
 # -------------------------------------------------------------
 # Benchmarks
 # -------------------------------------------------------------
-add_executable(winhttp_websocket_throughput winhttp_websocket_throughput.cpp)
-target_link_libraries(winhttp_websocket_throughput PRIVATE wirekrak)
+add_executable(websocket_throughput websocket_throughput.cpp)
+target_link_libraries(websocket_throughput PRIVATE wirekrak)

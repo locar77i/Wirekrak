@@ -49,7 +49,7 @@
 // ============================================================================
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/transport/websocket.hpp"
 #include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "lcr/buffer/managed_slot.hpp"
@@ -61,7 +61,7 @@
 
 constexpr static std::size_t BLOCK_SIZE =      128 * 1024;  // 128 KiB
 constexpr static std::size_t BLOCK_COUNT =             16;  // Number of blocks in the pool
-constexpr static std::size_t MESSAGE_RING_CAPACITY = 2048;  // Number of messages the ring can hold
+constexpr static std::size_t MESSAGE_RING_CAPACITY = 8192;  // Number of messages the ring can hold
 
 // -------------------------------------------------------------------------
 // Session setup
@@ -85,7 +85,7 @@ using MyMessageRing =
         >;
 
 using MyWebSocket =
-        wirekrak::core::transport::winhttp::WebSocketImpl<
+        wirekrak::core::transport::WebSocket<
             wirekrak::core::preset::DefaultControlRing,
             MyMessageRing,
             MyWebSocketPolicies

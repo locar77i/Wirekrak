@@ -61,11 +61,9 @@ Data-plane model:
 #include <ostream>
 #include <memory>
 
-#include "windows.h"  // For thread affinity/priority
-
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/transport/websocket.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/request/scheduler.hpp"
@@ -775,15 +773,7 @@ private:
     OverloadState overload_state_;
 
 private:
-    //------------------------------------------------------------------------------
-    // Thread pinning
-    //------------------------------------------------------------------------------
-
-    void pin_thread_(int core) {
-        SetThreadAffinityMask(GetCurrentThread(), 1ull << core);
-        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-    }
-
+    
     inline void handle_connect_() {
         WK_TRACE("[SESSION] handle connect (transport_epoch = " << transport_epoch() << ")");
         if constexpr (ReplayPolicy::enabled) {

@@ -17,15 +17,26 @@ namespace wirekrak::core::loop {
 //     // ... process messages ...
 //     manage_idle_spins(did_work, idle_spins);
 // }
-inline void manage_idle_spins(bool& did_work, int& idle_spins, int max_idle_spins = 100) {
+inline void manage_idle_spins(bool& did_work, int& idle_spins, int max_idle_spins = 1024) {
     if (did_work) {
         idle_spins = 0;
         did_work = false;
-    } else {
-        if (++idle_spins > max_idle_spins) {
-            std::this_thread::yield();
-            idle_spins = 0;
-        }
+        return;
+    }
+
+    ++idle_spins;
+
+    if (idle_spins < 64) {
+        _mm_pause();                               // 1x
+    }
+    else if (idle_spins < 256) {
+        for (int i = 0; i < 8; ++i) _mm_pause();   // 8x
+    }
+    else if (idle_spins < max_idle_spins) {
+        for (int i = 0; i < 32; ++i) _mm_pause();  // 32x 
+    }
+    else {
+        for (int i = 0; i < 128; ++i) _mm_pause(); // 128x 
     }
 }
 

@@ -97,7 +97,7 @@
       "inherits": "ninja-debug-core",
       "binaryDir": "build/debug-bench",
       "cacheVariables": {
-        "WIREKRAK_BUILD_LITE": "ON",
+        "WIREKRAK_BUILD_LITE": "OFF",
         "WIREKRAK_BUILD_BENCHMARKS": "ON",
         "WIREKRAK_ENABLE_TELEMETRY_L3": "ON"
       }
@@ -108,7 +108,7 @@
       "inherits": "ninja-release-core",
       "binaryDir": "build/release-bench",
       "cacheVariables": {
-        "WIREKRAK_BUILD_LITE": "ON",
+        "WIREKRAK_BUILD_LITE": "OFF",
         "WIREKRAK_BUILD_BENCHMARKS": "ON",
         "WIREKRAK_ENABLE_TELEMETRY_L3": "ON"
       }
@@ -119,7 +119,7 @@
       "inherits": "ninja-release-core",
       "binaryDir": "build/bench-minimal",
       "cacheVariables": {
-        "WIREKRAK_BUILD_LITE": "ON",
+        "WIREKRAK_BUILD_LITE": "OFF",
         "WIREKRAK_BUILD_BENCHMARKS": "ON",
         "WIREKRAK_ENABLE_TELEMETRY_L1": "ON"
       }

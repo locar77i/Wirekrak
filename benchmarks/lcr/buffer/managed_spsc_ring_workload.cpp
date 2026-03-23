@@ -108,7 +108,7 @@ int main() {
     //----------------------------------------------------------------------
 
     std::thread producer([&] {
-        lcr::system::pin_thread(0);
+        lcr::system::pin_thread(0, lcr::system::thread_priority::realtime);
 
         while (!start.load(std::memory_order_acquire));
 
@@ -166,7 +166,7 @@ int main() {
     //----------------------------------------------------------------------
 
     std::thread consumer([&] {
-        lcr::system::pin_thread(1);
+        lcr::system::pin_thread(1, lcr::system::thread_priority::realtime);
 
         while (!start.load(std::memory_order_acquire));
 

@@ -53,8 +53,8 @@
 //
 // ============================================================================
 
-#include "wirekrak/core/preset/control_ring_default.hpp"
-#include "wirekrak/core/preset/message_ring_default.hpp"
+#include "wirekrak/core/preset/protocol/kraken_default.hpp"
+
 
 #include "common/run_multi_subscription_example.hpp"
 #include "common/default_memory_pool.hpp"
@@ -74,7 +74,7 @@ using MySessionPolicies =
     >;
 
 using MyWebSocket =
-    transport::winhttp::WebSocketImpl<
+    transport::WebSocket<
         preset::DefaultControlRing,
         preset::DefaultMessageRing,
         MyWebSocketPolicies

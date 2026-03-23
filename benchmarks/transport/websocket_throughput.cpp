@@ -1,91 +1,141 @@
 /*
 ===============================================================================
-WinHTTP WebSocket Transport – Benchmark Commentary
+WebSocket Transport Benchmark (Wirekrak)
 ===============================================================================
 
-This benchmark evaluates the performance characteristics of the WinHTTP-based
-WebSocket transport under sustained, real-world Kraken market data load.
+This benchmark evaluates the performance of the Wirekrak WebSocket transport
+layer under sustained, real-world Kraken market data load.
 
-Test conditions (representative):
-  - ~4.5 million messages received
-  - ~950 MB total RX traffic
-  - Mixed workload: frequent small updates + rare large snapshots
-  - RX buffer size: 8 KB
-  - Zero-copy fast path enabled via std::string_view callbacks
+The transport is backend-agnostic and can be compiled against:
+  - WinHTTP (Windows)
+  - Asio/Beast (Linux / cross-platform)
+
+Both implementations share the same transport core semantics:
+  - Lock-free SPSC message pipeline
+  - Zero-copy receive path (steady state)
+  - Explicit backpressure handling
+  - Deterministic lifecycle and failure signaling
+
+-------------------------------------------------------------------------------
+Test conditions (representative)
+-------------------------------------------------------------------------------
+  - Millions of messages received
+  - Mixed workload: frequent small updates + occasional large snapshots
+  - Real exchange traffic (Kraken WebSocket v2)
+  - Single producer thread (transport)
+  - Single consumer thread (main loop, draining message ring)
+
+-------------------------------------------------------------------------------
+Benchmark methodology
+-------------------------------------------------------------------------------
+The benchmark measures steady-state transport throughput under continuous load.
+
+Key properties:
+  - The message ring is actively drained by the main thread
+  - No artificial backpressure is introduced
+  - Consumer performs minimal work (no parsing) to isolate transport cost
+  - Metrics are sampled periodically (time-driven, low overhead)
+
+Pipeline under test:
+
+    Network → Transport (producer thread)
+            → Lock-free message ring
+            → Main thread (consumer / drain)
+
+This ensures that measurements reflect transport performance rather than
+queue saturation or downstream processing limitations.
 
 -------------------------------------------------------------------------------
 Key architectural observations
 -------------------------------------------------------------------------------
 
-1. Fragmentation behavior
+1. Zero-copy receive path
 -------------------------
-WebSocket fragmentation is server-driven (RFC 6455 framing), not buffer-driven.
+Incoming data is written directly into pre-allocated ring slots.
 
-Observed metrics:
-  - Average fragments per message ≈ 1.0007
-  - Max fragments observed ≈ 11
-  - Fragmented messages ≈ 0.15% of total
+Implications:
+  - No intermediate buffers
+  - No per-message allocations
+  - No copy on the fast path
+
+Large messages exceeding slot capacity are handled via controlled promotion
+into external buffers.
+
+-------------------------------------------------------------------------------
+2. Slot promotion (large message handling)
+------------------------------------------
+When a message exceeds the current slot capacity:
+
+  - The slot is promoted using the memory pool
+  - Data continues to be written without truncation
+  - No transport-level failure occurs
+
+This guarantees:
+  - Correct handling of large snapshots
+  - Bounded and explicit memory behavior
+  - No hidden reallocations
+
+-------------------------------------------------------------------------------
+3. Fragmentation handling
+-------------------------
+WebSocket fragmentation is handled at the transport/API boundary:
+
+  - WinHTTP: explicit fragment handling (buffer types)
+  - Asio/Beast: implicit via streaming + message_done()
+
+In both cases:
+  - Transport preserves message boundaries
+  - Fragmentation does not impact steady-state performance
+  - Assembly cost is only incurred when required
+
+-------------------------------------------------------------------------------
+4. Backpressure model
+---------------------
+Backpressure is enforced via:
+
+  - Message ring capacity
+  - Memory pool availability
+
+Behavior is policy-driven:
+  - ZeroTolerance: immediate transport shutdown
+  - Strict/Relaxed: hysteresis + signaling
+
+Guarantees:
+  - No silent message loss
+  - Explicit overload signaling
+  - Deterministic failure modes
+
+-------------------------------------------------------------------------------
+5. Throughput characteristics
+-----------------------------
+Under steady-state conditions:
+
+  - Transport operates in pure fast-path mode
+  - No backpressure is triggered
+  - Throughput is bounded by upstream data rate (exchange)
 
 This confirms:
-  - WinHTTP correctly preserves WebSocket framing semantics
-  - Fragmentation occurs primarily for large snapshot messages
-  - RX buffer size does not induce artificial fragmentation
-
--------------------------------------------------------------------------------
-2. Zero-copy fast path effectiveness
-------------------------------------
-By switching the message callback signature to std::string_view, unfragmented
-messages bypass all intermediate copying and allocation.
-
-Observed metrics:
-  - Fast-path messages ≈ 99.85%
-  - Assembled (fragmented) messages ≈ 0.15%
-
-This demonstrates:
-  - The transport is overwhelmingly zero-copy in steady state
-  - Assembly logic is only exercised when strictly required
-  - Transport overhead is effectively eliminated for the common case
-
--------------------------------------------------------------------------------
-3. Assembly cost isolation
---------------------------
-Assembly cost is measured only for fragmented messages (diagnostic / L3).
-
-Observed metrics:
-  - Total RX assembly time ≈ 26 ms
-  - Average assembly cost ≈ 3.7 µs per fragmented message
-  - Total messages processed ≈ 4.5 million
-
-Conclusion:
-  - Assembly cost is bounded, predictable, and negligible in aggregate
-  - No assembly cost is amortized across unfragmented messages
-  - Transport CPU cost remains flat as message volume scales
-
--------------------------------------------------------------------------------
-4. RX buffer sizing
--------------------
-An 8 KB receive buffer provides the best balance for this workload:
-
-  - Small enough for cache-friendly operation
-  - Large enough to avoid excessive WinHTTP receive calls
-  - Snapshot bursts handled correctly without pathological behavior
-
-Increasing buffer size beyond 8–16 KB shows no measurable benefit, while
-reducing cache locality.
+  - Transport introduces no measurable bottlenecks
+  - CPU cost is flat with respect to message volume
+  - Performance is dominated by downstream processing
 
 -------------------------------------------------------------------------------
 Final conclusion
 -------------------------------------------------------------------------------
-At scale, the WinHTTP WebSocket transport exhibits:
+The Wirekrak WebSocket transport provides:
 
-  - Stable throughput
-  - Correct framing semantics
-  - Near-total zero-copy message delivery
-  - Isolated and bounded assembly overhead
-  - No transport-level performance bottlenecks
+  - Zero-copy message delivery in steady state
+  - Correct handling of large messages via slot promotion
+  - Deterministic, lock-free data flow
+  - Explicit and observable backpressure behavior
+  - Backend-independent performance characteristics
 
-Further performance work should focus on protocol parsing and downstream
-application logic, not the transport layer.
+At this stage, the transport layer is not a limiting factor.
+
+Further performance work should focus on:
+  - Protocol parsing (e.g. JSON decoding)
+  - Application-level processing
+  - End-to-end latency optimization
 ===============================================================================
 */
 
@@ -95,9 +145,10 @@ application logic, not the transport layer.
 #include <thread>
 #include <locale>
 #include <csignal>
+#include <immintrin.h>
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/transport/websocket.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
@@ -153,7 +204,7 @@ using MessageRingUnderTest = preset::DefaultMessageRing; // Golbal message ring 
 
 
 using WebSocketUnderTest =
-    winhttp::WebSocketImpl<
+    WebSocket<
         ControlRingUnderTest,
         MessageRingUnderTest,
         policy::transport::DefaultWebsocket
@@ -171,7 +222,7 @@ static ControlRingUnderTest control_ring;
 // Global memory block pool
 // -------------------------------------------------------------------------
 inline constexpr static std::size_t BLOCK_SIZE = 128 * 1024; // 128 KiB
-inline constexpr static std::size_t BLOCK_COUNT = 8;
+inline constexpr static std::size_t BLOCK_COUNT = 16;
 static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 
 // -----------------------------------------------------------------------------
@@ -270,15 +321,37 @@ int main() {
         last_tx = m.bytes_tx_total.load();
     };
 
+    auto drain_messages = [&]() {
+        while (true) {
+          auto* slot = message_ring.peek_consumer_slot();
+          if (!slot) break;
+
+          volatile std::size_t size = slot->size();
+          (void)size;
+
+          message_ring.release_consumer_slot(slot);
+       }
+    };
+  
     // Keep running until interrupted
     // Benchmark control loop (time-driven, low overhead)
     using clock = std::chrono::steady_clock;
     constexpr auto dump_interval = std::chrono::seconds(5);
     auto next_dump = clock::now();
     while (running.load(std::memory_order_relaxed)) {
-        dump_metrics("running");
-        next_dump += dump_interval;
-        std::this_thread::sleep_until(next_dump);
+        drain_messages();
+
+        // =========================================================
+        // Metrics (time-driven)
+        // =========================================================
+        auto now = clock::now();
+        if (now >= next_dump) {
+            dump_metrics("running");
+            next_dump += dump_interval;
+        }
+
+        // Small pause to avoid 100% CPU spin
+        _mm_pause();
     }
 
     telemetry_mgr.take_snapshot();

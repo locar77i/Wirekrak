@@ -2,10 +2,10 @@
 
 /*
 ================================================================================
-WebSocket Transport (WinHTTP minimal implementation)
+WebSocket Transport (asio minimal implementation)
 ================================================================================
 
-This header implements the Wirekrak WebSocket transport using WinHTTP, following
+This header implements the Wirekrak WebSocket transport using asio, following
 a strict separation between *transport mechanics* and *connection policy*.
 
 Design highlights:
@@ -14,11 +14,11 @@ Design highlights:
   • Failure-first signaling — transport errors and close frames are propagated
     immediately and exactly once
   • Deterministic lifecycle — idempotent close() and explicit state transitions
-  • Testability by construction — WinHTTP calls are injected as a compile-time
+  • Testability by construction — asio calls are injected as a compile-time
     policy (WebSocketImpl<ApiConcept>), enabling unit tests without OS or network
 
 The templated design allows the same WebSocket implementation to be exercised
-against a fake WinHTTP backend in unit tests, while remaining zero-overhead and
+against a fake asio backend in unit tests, while remaining zero-overhead and
 fully inlined in production builds.
 
 This approach mirrors production-grade trading SDKs, where transport correctness
@@ -32,11 +32,12 @@ is validated independently from the operating system and network stack.
 #include <functional>
 #include <atomic>
 #include <vector>
+#include <cstring>
 #include <cassert>
 #include <immintrin.h>
 
 #include "wirekrak/core/transport/error.hpp"
-#include "wirekrak/core/transport/winhttp/real_api.hpp"
+#include "wirekrak/core/transport/asio/real_api.hpp"
 #include "wirekrak/core/transport/telemetry/websocket.hpp"
 #include "wirekrak/core/transport/websocket/events.hpp"
 #include "wirekrak/core/policy/transport/websocket_bundle.hpp"
@@ -52,27 +53,14 @@ is validated independently from the operating system and network stack.
 #include "lcr/log/logger.hpp"
 #include "lcr/trap.hpp"
 
-#include <windows.h>
-#include <winhttp.h>
-#include <winerror.h>
+#include <boost/asio.hpp>
+#include <boost/beast.hpp>
+#include <boost/beast/websocket.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
 
 
-// helper to convert UTF-8 string to wide string
-inline std::wstring to_wide(std::string_view utf8) {
-    if (utf8.empty()) [[unlikely]] {
-        return {};
-    }
-    int size = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
-    if (size <= 0) [[unlikely]] {
-        return {};
-    }
-    std::wstring out(size, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), out.data(), size);
-    return out;
-}
 
-
-namespace wirekrak::core::transport::winhttp {
+namespace wirekrak::core::transport::asio {
 
 template<
     typename ControlRing,
@@ -90,75 +78,18 @@ public:
 
     ~WebSocketImpl() {
         close();
-        if (hSession_) {
-            WinHttpCloseHandle(hSession_);
-            hSession_ = nullptr;
-        }
     }
 
     [[nodiscard]]
     Error connect(std::string_view host, std::uint16_t port, std::string_view path, bool secure) noexcept {
-        hSession_ = WinHttpOpen(
-            L"Wirekrak/1.0",
-            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-            WINHTTP_NO_PROXY_NAME,
-            WINHTTP_NO_PROXY_BYPASS,
-            0
-        );
-        if (!hSession_) {
-            WK_ERROR("[WS] WinHttpOpen failed");
-            return Error::TransportFailure;
-        }
-
-        host_w_ = to_wide(host);
-        path_w_ = to_wide(path);
-
-        hConnect_ = WinHttpConnect(hSession_, host_w_.c_str(), port, 0);
-        if (!hConnect_) {
-            WK_ERROR("[WS] WinHttpConnect failed");
+        if (!api_.connect(host, port, path, secure)) {
+            WK_ERROR("[WS] connect failed");
             return Error::ConnectionFailed;
-        }
-
-        DWORD flags = secure ? WINHTTP_FLAG_SECURE : 0;
-
-        hRequest_ = WinHttpOpenRequest(
-            hConnect_,
-            L"GET",
-            path_w_.c_str(),
-            nullptr,
-            WINHTTP_NO_REFERER,
-            WINHTTP_DEFAULT_ACCEPT_TYPES,
-            flags
-        );
-
-        if (!hRequest_) {
-            WK_ERROR("[WS] WinHttpOpenRequest failed");
-            return Error::TransportFailure;
-        }
-
-        if (!WinHttpSetOption(hRequest_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) {
-            WK_ERROR("[WS] WinHttpSetOption failed");
-            return Error::ProtocolError;
-        }
-
-        if (!WinHttpSendRequest(hRequest_, nullptr, 0, nullptr, 0, 0, 0)) {
-            WK_ERROR("[WS] WinHttpSendRequest failed");
-            return Error::HandshakeFailed;
-        }
-
-        if (!WinHttpReceiveResponse(hRequest_, nullptr)) {
-            WK_ERROR("[WS] WinHttpReceiveResponse failed");
-            return Error::HandshakeFailed;
-        }
-
-        hWebSocket_ = WinHttpWebSocketCompleteUpgrade(hRequest_, 0);
-        if (!hWebSocket_) {
-            WK_ERROR("[WS] WinHttpWebSocketCompleteUpgrade failed");
-            return Error::HandshakeFailed;
         }
 
         running_.store(true, std::memory_order_relaxed);
         closed_.store(false, std::memory_order_relaxed);
+
         recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
 
         WK_TL1( telemetry_.connect_events_total.inc() );
@@ -171,28 +102,22 @@ public:
     // Errors are reported asynchronously via the error callback.
     [[nodiscard]]
     bool send(std::string_view msg) noexcept {
-        // 1. Check preconditions (connected state)
-        if (!hWebSocket_) [[unlikely]] {
-            WK_ERROR("[WS] send() called on unconnected WebSocket");
+        if (!api_.is_open()) [[unlikely]] {
+            WK_ERROR("[WS] send() on closed WebSocket");
             return false;
         }
-        // 2. Call WebSocket send API
+
         WK_TRACE("[WS:API] Sending message ... (size: " << lcr::format_bytes_exact(msg.size()) << ")");
-        const DWORD result = api_.websocket_send(
-            hWebSocket_,
-            WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE,
-            const_cast<char*>(msg.data()),
-            static_cast<DWORD>(msg.size())
-        );
-        // 3. Handle possible errors
-        if (result != ERROR_SUCCESS) [[unlikely]] {
-            WK_ERROR("[WS] websocket_send() failed");
+
+        if (!api_.send(msg)) [[unlikely]] {
+            WK_ERROR("[WS] send failed");
             WK_TL1( telemetry_.send_errors_total.inc() );
             return false;
         }
-        // 4. Update telemetry
+
         WK_TL1( telemetry_.bytes_tx_total.inc(msg.size()) );
         WK_TL1( telemetry_.messages_tx_total.inc() );
+
         return true;
     }
 
@@ -201,22 +126,12 @@ public:
         // 1. Stop receive loop
         running_.store(false, std::memory_order_release);
 
-        // 2. Cancel blocking receive (if still active)
-        if (hWebSocket_) {
-            WK_TRACE("[WS:API] Closing WebSocket ...");
-            api_.websocket_close(hWebSocket_);
-        }
+        api_.close();
 
-        // 3. Join thread if joinable
         if (recv_thread_.joinable()) {
             recv_thread_.join();
         }
 
-        // 4. Always release handles deterministically
-        if (hWebSocket_) { WinHttpCloseHandle(hWebSocket_); hWebSocket_ = nullptr; }
-        if (hRequest_)   { WinHttpCloseHandle(hRequest_);   hRequest_ = nullptr; }
-        if (hConnect_)   { WinHttpCloseHandle(hConnect_);   hConnect_ = nullptr; }
-        //if (hSession_)   { WinHttpCloseHandle(hSession_);   hSession_ = nullptr; }
         WK_TRACE("[WS] WebSocket closed.");
     }
 
@@ -262,15 +177,6 @@ private:
     // Compile-time API policy (default: RealApi)
     Api api_;
 
-    std::wstring host_w_;
-    std::wstring path_w_;
-
-    // WinHTTP handles
-    HINTERNET hSession_   = nullptr;
-    HINTERNET hConnect_   = nullptr;
-    HINTERNET hRequest_   = nullptr;
-    HINTERNET hWebSocket_ = nullptr;
-
     std::thread recv_thread_;
     std::atomic<bool> running_{false};
     std::atomic<bool> closed_{false};
@@ -295,162 +201,147 @@ private:
     void receive_loop_() noexcept {
         auto& clock = lcr::system::monotonic_clock::instance();
 
-        lcr::system::pin_thread(0); // Pin receive thread to core 0 for deterministic performance  
-
-#ifdef WK_UNIT_TEST
-        // Debug builds exposed a race in the test harness.
-        // Fixed it by adding a test-only synchronization hook to the transport so
-        // tests wait on real transport state instead of timing assumptions.
-        if (receive_started_flag_) {
-            receive_started_flag_->store(true, std::memory_order_release);
-        }
-#endif // WK_UNIT_TEST
+        lcr::system::pin_thread(0);
 
         std::size_t message_count = 0;
 
-        std::uint32_t fragments = 0;
         slot_type* current_slot = nullptr;
-        std::uint64_t blocking_ns = 0;
-        
-        // Receive internal loop
-        while (running_.load(std::memory_order_acquire)) {
-            const bool samples_now = !(message_count & 0x3FF); // For telemetry sampling (every 1024 messages)
-            DWORD bytes = 0;
-            WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
 
-            // === Lazy slot acquisition (start of new message) ===
+        while (running_.load(std::memory_order_acquire)) {
+            const bool samples_now = !(message_count & 0x3FF);
+
+            // =========================================================
+            // Acquire slot (start of new message)
+            // =========================================================
             if (!current_slot) [[likely]] {
-                current_slot = acquire_slot_(); 
+                current_slot = acquire_slot_();
                 if (!current_slot) [[unlikely]] {
-                    continue; // backpressure handling (no slot available)
+                    continue;  // backpressure handling (no slot available)
                 }
                 WK_TL3(
                     if (samples_now) [[unlikely]] {
                         current_slot->set_timestamp(clock.now_ns());
                     }
                 );
-                LCR_ASSERT_MSG(current_slot->size() == 0, "On receive loop - acquired slot should be empty");
+                LCR_ASSERT_MSG(current_slot->size() == 0, "acquired slot must be empty");
             }
-            // === Reactive promotion (ONLY if not starting a new message and capacity is exhausted) ===
+            // =========================================================
+            // Promotion (buffer exhausted mid-message)
+            // =========================================================
             else if (current_slot->remaining() == 0) [[unlikely]] {
                 if (!promote_slot_(current_slot)) [[unlikely]] {
-                    continue; // backpressure handling (failed to promote)
+                    continue;
                 }
             }
 
-            // === Amount writable this iteration ===
-            DWORD writable = static_cast<DWORD>(current_slot->remaining());
-            if (writable == 0) [[unlikely]] {
-                handle_fatal_error_("[WS] Failed to receive incoming message (size exceeds buffer capacity)"
-                    " - transport correctness compromised (message will be truncated)", Error::ProtocolError);
-                message_ring_.discard_producer_slot(current_slot);
-                current_slot = nullptr;
-                break;
-            }
+            // =========================================================
+            // Read into slot (ZERO-COPY)
+            // =========================================================
 
-            // === Call WebSocket receive API ===
-            WK_TL3(
-                std::uint64_t api_receive_start_ns;
-                if (samples_now) [[unlikely]] {
-                    api_receive_start_ns = clock.now_ns();
-                }
-            );
-            //WK_TRACE("[WS:API] Blocking on WebSocket receive ...");
             WK_TL1( telemetry_.receive_calls_total.inc() );
-            DWORD result = api_.websocket_receive(
-                hWebSocket_,
-                current_slot->write_ptr(),
-                writable,
-                &bytes,
-                &type
-            );
-            WK_TL3(
-                if (samples_now) [[unlikely]] {
-                    auto now = clock.now_ns();
-                    auto delta_ns = now - api_receive_start_ns;
-                    blocking_ns += delta_ns;
-                    telemetry_.ws_receive_block_duration.record_duration(delta_ns);
-                }
-            );
 
-            // === Handle errors ===
-            if (result != ERROR_SUCCESS) [[unlikely]] { // abnormal termination
-                WK_TL1( telemetry_.rx_errors_total.inc() );
-                auto error = handle_receive_error_(result);
-                if (!emit_event_(transport::websocket::Event::make_error(error))) {
-                    WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">  - Event lost in transport shutdown");
+            std::size_t bytes = 0;
+            const auto status = api_.read_some(current_slot->write_ptr(), current_slot->remaining(), bytes);
+            if (status != ReceiveStatus::Ok) [[unlikely]] {
+
+                // =========================================================
+                // CLOSE (graceful, NOT an error)
+                // =========================================================
+                if (status == ReceiveStatus::Closed) {
+                    WK_DEBUG("[WS] Received CLOSE frame");
+
+                    running_.store(false, std::memory_order_release);
+
+                    // Discard partial message
+                    if (current_slot) {
+                        message_ring_.discard_producer_slot(current_slot);
+                        current_slot = nullptr;
+                    }
+
+                    signal_close_();
+                    break;
                 }
-                // Stop the loop and signal close
+
+                // =========================================================
+                // ERRORS (failure-first)
+                // =========================================================
+                WK_TL1( telemetry_.rx_errors_total.inc() );
+
+                Error error = Error::TransportFailure;
+
+                switch (status) {
+                    case ReceiveStatus::Closed:
+                        WK_DEBUG("[WS] connection closed");
+                        error = Error::RemoteClosed;
+                        break;
+
+                    case ReceiveStatus::Timeout:
+                        WK_WARN("[WS] receive timeout");
+                        error = Error::Timeout;
+                        break;
+
+                    case ReceiveStatus::ProtocolError:
+                        WK_ERROR("[WS] protocol error");
+                        error = Error::ProtocolError;
+                        break;
+
+                    case ReceiveStatus::TransportError:
+                    default:
+                        WK_ERROR("[WS] transport error");
+                        error = Error::TransportFailure;
+                        break;
+                }
+
+                // Emit error (failure-first model)
+                if (!emit_event_(transport::websocket::Event::make_error(error))) {
+                    WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">");
+                }
+
+                // Stop loop
                 running_.store(false, std::memory_order_release);
+
+                // Discard partial message if any
+                if (current_slot) {
+                    message_ring_.discard_producer_slot(current_slot);
+                    current_slot = nullptr;
+                }
+
                 signal_close_();
-                message_ring_.discard_producer_slot(current_slot);
-                current_slot = nullptr;
                 break;
             }
 
-            // === Successful receive ===
-            // bytes_rx_total counts raw bytes received from the WebSocket API, including fragments and control frames.
             WK_TL1( telemetry_.bytes_rx_total.inc(bytes) );
 
-            // === Handle close frame ===
-            if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) { // normal termination
-                WK_DEBUG("[WS] Received WebSocket close frame.");
-                // Stop the loop and signal close
-                running_.store(false, std::memory_order_release);
-                signal_close_();
-                message_ring_.discard_producer_slot(current_slot);
-                current_slot = nullptr;
-                break;
-            }
+            // Commit bytes into slot
+            auto total = current_slot->commit(bytes);
 
-            // === Commit received bytes into slot ===
-            auto total_bytes = current_slot->commit(bytes);
+            // =========================================================
+            // Message boundary
+            // =========================================================
+            if (api_.message_done()) [[likely]] {
 
-            // === Handle final message frame ===
-            if (type == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE) [[likely]] {
-                if (fragments > 0) {
-                    WK_TRACE("[WS] Received final message fragment (size: " << lcr::format_bytes_exact(bytes) << ", total message size: "
-                        << lcr::format_bytes_exact(total_bytes) << ", fragments: " << fragments << ")");
-                    WK_TL1( telemetry_.rx_fragments_total.inc() );
-                }
-                WK_TL1( telemetry_.rx_message_bytes.set(total_bytes) );
                 WK_TL1( telemetry_.messages_rx_total.inc() );
-                WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
-                
+                WK_TL1( telemetry_.rx_message_bytes.set(total) );
+
                 if (current_slot->is_external()) [[unlikely]] {
                     WK_TL1( telemetry_.external_buffers_total.inc() );
-                    WK_TRACE("[WS] Received message exceeded internal buffer capacity and was written directly into an external buffer (size: "
-                        << lcr::format_bytes_exact(current_slot->size()) << ")");
                 }
 
-                // === Commit current message ===
-                WK_TL3( // Timestamp correction: now it will represents the start of transport processing time for the message (network blocking removed)
-                    std::uint64_t start_ns;
-                    if (samples_now) [[unlikely]] {
-                        current_slot->inc_timestamp(blocking_ns);
-                        start_ns = current_slot->timestamp();
-                        current_slot->set_timestamp(clock.now_ns());  // TODO: Remove to send the receive timestamp (not the current time)
-                    }
-                );
-                message_ring_.commit_producer_slot();
                 WK_TL3(
                     if (samples_now) [[unlikely]] {
-                        telemetry_.ws_process_message_duration.record(start_ns, clock.now_ns());
-                        blocking_ns = 0;
+                        auto start_ns = current_slot->timestamp();
+                        auto now = clock.now_ns();
+                        telemetry_.ws_process_message_duration.record(start_ns, now);
                     }
                 );
+
+                message_ring_.commit_producer_slot();
+
                 current_slot = nullptr;
                 ++message_count;
-                fragments = 0;
-            }
-            else // === Handle message fragments ===
-            if (type == WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE || type == WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE) {
-                WK_TRACE("[WS] Received message fragment (size: " << lcr::format_bytes_exact(bytes) << ")");
-                WK_TL1( telemetry_.rx_fragments_total.inc() );
-                ++fragments;
             }
         }
-        // If we exit loop without explicit close signaling
+
         signal_close_();
     }
 
@@ -609,41 +500,6 @@ private:
         }
     }
 
-    [[nodiscard]]
-    Error handle_receive_error_(DWORD error) noexcept {
-        switch (error) {
-        case ERROR_WINHTTP_OPERATION_CANCELLED: // ERR_OPERATION_CANCELLED 12017 (local close)
-            // Local shutdown, expected during close()
-            WK_TRACE("[WS] Receive cancelled (local shutdown)");
-            return Error::LocalShutdown;
-
-        case ERROR_WINHTTP_CONNECTION_ERROR: // ERR_CONNECTION_ABORTED 12030 (peer closed)
-            // Remote closed connection (no CLOSE frame)
-            WK_DEBUG("[WS] Connection closed by peer");
-            return Error::RemoteClosed;
-
-        case ERROR_WINHTTP_TIMEOUT: // ERR_TIMED_OUT 12002 (timeout)
-            // Network stalled or idle timeout
-            WK_WARN("[WS] Receive timeout");
-            return Error::Timeout;
-
-        case ERROR_WINHTTP_CANNOT_CONNECT: // ERR_CONNECTION_FAILED 12029 (connect failed)
-            // Usually handshake or DNS issues
-            WK_ERROR("[WS] Cannot connect to remote host");
-            return Error::ConnectionFailed;
-
-        case ERROR_WINHTTP_INVALID_SERVER_RESPONSE: // ERR_INVALID_RESPONSE 12152 (invalid response)
-            // Protocol error or unexpected server response
-            WK_ERROR("[WS] Invalid response from server");
-            return Error::ProtocolError;
-
-        default:
-            // Anything else is unexpected
-            WK_ERROR("[WS] Receive failed with error code " << error);
-            return Error::TransportFailure;
-        }
-    }
-
     void signal_close_() noexcept {
         // Ensure close callback is invoked exactly once
         if (closed_.exchange(true)) {
@@ -701,7 +557,6 @@ public:
         LCR_ASSERT_MSG(!test_receive_loop_started_, "test_start_receive_loop() called twice");
         test_receive_loop_started_ = true;
         // Fake non-null WebSocket handle
-        hWebSocket_ = reinterpret_cast<HINTERNET>(1);
         running_.store(true, std::memory_order_release);
         recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
     }
@@ -725,4 +580,4 @@ private:
 
 };
 
-} // namespace wirekrak::core::transport::winhttp
+} // namespace wirekrak::core::transport::asio

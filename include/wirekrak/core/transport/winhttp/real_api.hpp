@@ -1,6 +1,6 @@
 #pragma once
 
-#include "wirekrak/core/transport/winhttp/concepts.hpp"
+#include "wirekrak/core/transport/winhttp/api_concept.hpp"
 
 
 namespace wirekrak::core {

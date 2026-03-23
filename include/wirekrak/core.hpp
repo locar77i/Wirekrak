@@ -168,6 +168,6 @@ Wirekrak Core is built to evolve without breaking contracts.
 */
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/transport/websocket.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/protocol/kraken/session.hpp"

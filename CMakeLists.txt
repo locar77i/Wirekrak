@@ -29,6 +29,7 @@ if (WIN32)
 elseif (UNIX)
     message(STATUS "Configuring for Linux (Boost.Beast transport)")
     find_package(Boost REQUIRED COMPONENTS system)
+    find_package(OpenSSL REQUIRED)
 endif()
 
 # -------------------------------------------------------------
@@ -69,6 +70,8 @@ elseif (UNIX)
 
     target_link_libraries(wirekrak INTERFACE
         Boost::system
+        OpenSSL::SSL
+        OpenSSL::Crypto
     )
 endif()
 
