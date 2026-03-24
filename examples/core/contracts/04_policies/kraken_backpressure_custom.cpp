@@ -60,7 +60,7 @@
 
 
 constexpr static std::size_t BLOCK_SIZE =      128 * 1024;  // 128 KiB
-constexpr static std::size_t BLOCK_COUNT =             16;  // Number of blocks in the pool
+constexpr static std::size_t BLOCK_COUNT =             32;  // Number of blocks in the pool
 constexpr static std::size_t MESSAGE_RING_CAPACITY = 8192;  // Number of messages the ring can hold
 
 // -------------------------------------------------------------------------

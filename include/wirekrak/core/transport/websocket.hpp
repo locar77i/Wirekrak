@@ -261,18 +261,18 @@ private:
                 switch (status) {
 
                     case websocket::ReceiveStatus::Timeout:
-                        WK_WARN("[WS] receive timeout");
+                        WK_WARN("[WS] Receive timeout");
                         error = Error::Timeout;
                         break;
 
                     case websocket::ReceiveStatus::ProtocolError:
-                        WK_ERROR("[WS] protocol error");
+                        WK_ERROR("[WS] Protocol error");
                         error = Error::ProtocolError;
                         break;
 
                     case websocket::ReceiveStatus::TransportError:
                     default:
-                        WK_ERROR("[WS] transport error");
+                        WK_ERROR("[WS] Transport error");
                         error = Error::TransportFailure;
                         break;
                 }
@@ -316,7 +316,8 @@ private:
                     if (samples_now) [[unlikely]] {
                         auto start_ns = current_slot->timestamp();
                         auto now = clock.now_ns();
-                        telemetry_.ws_process_message_duration.record(start_ns, now);
+                        telemetry_.ws_message_assembly_duration.record(start_ns, now);
+                        current_slot->set_timestamp(now);
                     }
                 );
 
