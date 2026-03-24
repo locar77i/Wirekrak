@@ -1,5 +1,70 @@
 #pragma once
 
+// ============================================================================
+// WinHTTP WebSocket Backend
+// ============================================================================
+//
+// Overview
+// --------
+// This backend provides a WebSocket transport implementation using the
+// Windows WinHTTP API. It is intended primarily for compatibility and ease of
+// deployment on Windows systems where Boost.Asio or lower-level socket access
+// may not be desirable or available.
+//
+// Characteristics
+// ---------------
+// - Blocking, synchronous API
+// - Minimal dependencies (Windows-native)
+// - Simple integration with system networking stack
+//
+// Limitations (Important)
+// ----------------------
+// This backend does NOT provide deterministic or bounded-latency behavior.
+// In particular:
+//
+// 1. Receive Interruptibility
+//    - `WinHttpWebSocketReceive` is a blocking call.
+//    - Calls to `WinHttpWebSocketClose` or `WinHttpCloseHandle` do NOT guarantee
+//      immediate interruption of a pending receive operation.
+//    - Shutdown latency may vary from microseconds to several seconds depending
+//      on OS, network state, and internal WinHTTP behavior.
+//
+// 2. Non-Deterministic Shutdown
+//    - The backend does not guarantee bounded-time shutdown.
+//    - Threads blocked in `read_some()` may delay transport termination.
+//
+// 3. Not Suitable for ULL (Ultra-Low Latency)
+//    - Due to the above properties, this backend is NOT suitable for:
+//        * latency-sensitive trading systems
+//        * deterministic protocol execution
+//        * high-frequency data ingestion pipelines
+//
+// Design Positioning
+// ------------------
+// This backend is provided as a compatibility layer and reference implementation.
+// It prioritizes portability and simplicity over performance and determinism.
+//
+// For systems requiring strict correctness guarantees, bounded latency, and
+// precise control over I/O behavior, use the Asio-based backend or a custom
+// socket implementation.
+//
+// Backend Contract Notes
+// ----------------------
+// - `close()` is idempotent and thread-safe (guarded internally).
+// - `read_some()` follows the BackendConcept contract, but may block
+//   uninterruptibly for an unbounded duration.
+// - Error reporting is best-effort and dependent on WinHTTP error codes.
+//
+// Summary
+// -------
+// ✔ Easy to use
+// ✔ Windows-native
+// ❌ Not deterministic
+// ❌ Not interruptible in bounded time
+// ❌ Not suitable for ULL systems
+//
+// ============================================================================
+
 #include <windows.h>
 #include <winhttp.h>
 #include <winerror.h>
@@ -7,6 +72,7 @@
 #include <string>
 #include <string_view>
 #include <cstdint>
+#include <atomic>
 
 #include "wirekrak/core/transport/websocket/backend_concept.hpp"
 
@@ -90,6 +156,12 @@ public:
     }
 
     void close() noexcept {
+        // Fast path: ensure only one thread executes shutdown
+        if (closed_.exchange(true, std::memory_order_acq_rel)) [[unlikely]] {
+            return;
+        }
+
+        // Interrupt receive ASAP
         if (hWebSocket_) {
             WinHttpWebSocketClose(
                 hWebSocket_,
@@ -98,6 +170,7 @@ public:
                 0);
         }
 
+        // Then close handles
         if (hWebSocket_) { WinHttpCloseHandle(hWebSocket_); hWebSocket_ = nullptr; }
         if (hRequest_)   { WinHttpCloseHandle(hRequest_);   hRequest_ = nullptr; }
         if (hConnect_)   { WinHttpCloseHandle(hConnect_);   hConnect_ = nullptr; }
@@ -185,6 +258,8 @@ private:
     HINTERNET hWebSocket_ = nullptr;
 
     WINHTTP_WEB_SOCKET_BUFFER_TYPE last_type_{};
+
+    std::atomic<bool> closed_{false};
 };
 
 } // namespace winhttp

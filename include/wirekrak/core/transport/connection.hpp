@@ -175,11 +175,10 @@ public:
         return Error::None;
     }
 
-    // Manual disconnect - close() performs an unconditional shutdown and
-    // cancels any pending reconnection attempts.
+    // Manual disconnect - Performs an unconditional shutdown and cancels any pending reconnection attempts.
     inline void close() noexcept {
         WK_TL1( telemetry_.close_calls_total.inc() ); // This represents explicit user intent
-        // Guard close() by state
+        // Guard by state
         const auto state = get_state_();
         if (state == State::Disconnected) {
             return; // idempotent
@@ -692,7 +691,6 @@ private:
 
     inline void destroy_transport_if_needed_() {
         // We don't clear the rings here because pending events/messages may still be processed after transport destruction
-        // (e.g. transport closed event after close() is called).
         // The rings are cleared at the start of create_transport_() to ensure a clean state for the new transport instance.
         // Ensure old transport is torn down deterministically
         if (ws_) {
@@ -702,6 +700,7 @@ private:
     }
 
     // Placeholder for user-defined behavior on transport errors
+    // Errors do not trigger state transitions until transport closure is observed
     inline void on_transport_error_(Error error) {
         // Do not override an intentional disconnect decision
         if (disconnect_reason_ == DisconnectReason::LivenessTimeout || disconnect_reason_ == DisconnectReason::LocalClose) {

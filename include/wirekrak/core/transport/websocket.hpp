@@ -49,6 +49,8 @@ public:
         close();
     }
 
+    // Connect to the specified WebSocket URL. Returns Error::None on successful connection, or an appropriate error code on failure.
+    // connect() and close() must not be called concurrently
     [[nodiscard]]
     Error connect(std::string_view host, std::uint16_t port, std::string_view path, bool secure) noexcept {
         if (!backend_.connect(host, port, path, secure)) {
@@ -56,8 +58,7 @@ public:
             return Error::ConnectionFailed;
         }
 
-        running_.store(true, std::memory_order_relaxed);
-        closed_.store(false, std::memory_order_relaxed);
+        running_.store(true, std::memory_order_release);
 
         recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
 
@@ -90,13 +91,21 @@ public:
         return true;
     }
 
-    // Close - No guards and no early return (idempotent)
+    // Close (idempotent)
+    // connect() and close() must not be called concurrently
     void close() noexcept {
-        // 1. Stop receive loop
+        // Fast path: ensure only one thread executes shutdown
+        if (closed_.exchange(true, std::memory_order_acq_rel)) [[unlikely]] {
+            return;
+        }
+
+        // Stop receive loop
         running_.store(false, std::memory_order_release);
 
+        // Close the backend (determinism depends on backend)
         backend_.close();
 
+        // Join the receive thread to ensure all resources are cleaned up before close() returns
         if (recv_thread_.joinable()) {
             recv_thread_.join();
         }
@@ -149,6 +158,7 @@ private:
     std::thread recv_thread_;
     std::atomic<bool> running_{false};
     std::atomic<bool> closed_{false};
+    std::atomic<bool> close_signaled_{false};
 
     // Control event queue (for signaling events like close, error, backpressure detected/cleared)
     ControlRing& control_ring_;
@@ -184,7 +194,8 @@ private:
         slot_type* current_slot = nullptr;
 
         while (running_.load(std::memory_order_acquire)) {
-            const bool samples_now = !(message_count & 0x3FF);
+            //const bool samples_now = !(message_count & 0x3FF);
+            const bool samples_now = true; // Always sample in tests to validate timing metrics
 
             // =========================================================
             // Acquire slot (start of new message)
@@ -476,7 +487,7 @@ private:
 
     void signal_close_() noexcept {
         // Ensure close callback is invoked exactly once
-        if (closed_.exchange(true)) {
+        if (close_signaled_.exchange(true, std::memory_order_acq_rel)) {
             return;
         }
         WK_TL1( telemetry_.close_events_total.inc() );

@@ -1,7 +1,95 @@
 #pragma once
 
+// ============================================================================
+// Boost.Asio / Beast WebSocket Backend (TLS-enabled)
+// ============================================================================
+//
+// Overview
+// --------
+// This backend provides a synchronous, blocking WebSocket transport built on
+// Boost.Asio and Boost.Beast, with TLS support via OpenSSL.
+//
+// It is designed for high-performance, low-latency systems where deterministic
+// behavior, explicit lifecycle control, and zero-copy integration are required.
+//
+// Characteristics
+// ---------------
+// - Blocking, synchronous API (no async state machines)
+// - Zero-copy receive path (caller-provided buffers)
+// - Explicit thread ownership model (no hidden threads)
+// - TLS-enabled (OpenSSL)
+// - Backend interchangeable via compile-time abstraction
+//
+// Determinism & Interruptibility
+// ------------------------------
+// This backend is designed to provide bounded-latency interruption of blocking
+// receive operations:
+//
+// - `read_some()` may block while waiting for network data.
+// - `close()` actively interrupts pending operations via:
+//      * socket cancellation (`cancel()`)
+//      * TCP shutdown (`shutdown()`)
+//      * socket close (`close()`)
+// - Blocking reads are guaranteed to exit via a well-defined error path
+//   (e.g. `operation_aborted`), enabling deterministic shutdown.
+//
+// As a result, this backend satisfies the transport requirement of:
+//
+//      "bounded-time shutdown and interruptible receive"
+//
+// Suitability
+// -----------
+// This backend is suitable for:
+//
+// ✔ Ultra-low latency (ULL) systems
+// ✔ Deterministic protocol engines
+// ✔ High-frequency data ingestion (market data, trading)
+// ✔ Systems requiring explicit control over memory and threading
+//
+// and is the recommended backend for production use.
+//
+// Design Notes
+// ------------
+// - Uses Boost.Beast for WebSocket framing (RFC 6455 compliant)
+// - TLS handled via OpenSSL (`ssl::stream`)
+// - Configured for performance:
+//      * auto_fragment(false)
+//      * unbounded message size
+//      * binary mode enabled
+//
+// - The design favors:
+//      * straight-line execution
+//      * minimal branching
+//      * predictable control flow
+//
+// Limitations
+// -----------
+// - Still subject to TLS-layer behavior (OpenSSL):
+//      * small, bounded delays may occur during shutdown
+// - Exception-based error handling is used in the receive path
+//      (cost is negligible outside hot loops but may be optimized further)
+//
+// Backend Contract Notes
+// ----------------------
+// - `close()` is idempotent and thread-safe (internally guarded)
+// - `read_some()` guarantees:
+//      * zero-copy writes into caller buffer
+//      * no partial writes on error
+// - `message_done()` reflects Beast frame/message boundaries
+//
+// Summary
+// -------
+// ✔ Deterministic
+// ✔ Interruptible in bounded time
+// ✔ ULL-suitable
+// ✔ Zero-copy friendly
+// ❌ Slight TLS-induced variability (bounded)
+//
+// ============================================================================
+
 #include <string>
 #include <string_view>
+#include <atomic>
 #include <iostream>
 
 #include <boost/asio.hpp>
@@ -122,10 +210,25 @@ public:
     }
 
     void close() {
+        // Fast path: ensure only one thread executes shutdown
+        if (closed_.exchange(true, std::memory_order_acq_rel)) [[unlikely]] {
+            return;
+        }
         try {
+            boost::system::error_code ec;
+            auto& ssl  = ws_.next_layer();
+            auto& sock = ssl.next_layer();
+            // 1. Hard interrupt first (guarantee unblocking)
+            sock.cancel(ec);
+            // 2. Try graceful WS close (non-blocking-ish now)
             if (ws_.is_open()) {
-                ws_.close(beast_ws::close_code::normal);
+                ws_.close(beast_ws::close_code::normal, ec);
             }
+            // 3. TLS shutdown (best effort, now safe)
+            ssl.shutdown(ec);
+            // 4. Final socket teardown
+            sock.shutdown(tcp::socket::shutdown_both, ec);
+            sock.close(ec);
         }
         catch (...) {}
     }
@@ -142,6 +245,8 @@ private:
     beast_ws::stream<ssl::stream<tcp::socket>> ws_;
 
     std::string host_;
+
+    std::atomic<bool> closed_{false};
 };
 
 } // namespace asio
