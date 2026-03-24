@@ -146,7 +146,7 @@ private:
 
 } // namespace asio
 
-// Enforce concept
+// Assert BackendConcept compliance at compile-time
 static_assert(websocket::BackendConcept<asio::Backend>, "asio::Backend does not satisfy websocket::BackendConcept");
 
 } // namespace wirekrak::core::transport

@@ -172,6 +172,13 @@ private:
 
         lcr::system::pin_thread(0);
 
+#ifdef WK_UNIT_TEST
+    // Signal test that receive loop has started (for better synchronization in tests)
+    if (receive_started_flag_) {
+        receive_started_flag_->store(true, std::memory_order_release);
+    }
+#endif // WK_UNIT_TEST
+
         std::size_t message_count = 0;
 
         slot_type* current_slot = nullptr;
@@ -580,7 +587,7 @@ private:
 // -----------------------------------------------------------------------------
 
 #if defined(WK_BACKEND_WINHTTP)
-    #include "wirekrak/core/transport/winhttp/websocket.hpp"
+    #include "wirekrak/core/transport/winhttp/backend.hpp"
 #elif defined(WK_BACKEND_ASIO)
     #include "wirekrak/core/transport/asio/backend.hpp"
 #endif
@@ -592,31 +599,23 @@ namespace wirekrak::core::transport {
 // -----------------------------------------------------------------------------
 
 #if defined(WK_BACKEND_WINHTTP)
-    template<
-        typename ControlRing,
-        typename MessageRing,
-        typename PolicyBundle = policy::transport::DefaultWebsocket,
-        typename Api = typename winhttp::RealApi
-    >
-    using WebSocket = winhttp::WebSocketImpl<
-        ControlRing,
-        MessageRing,
-        PolicyBundle,
-        Api
-    >;
+    using DefaultBackend = winhttp::Backend;
 #elif defined(WK_BACKEND_ASIO)
-    template<
+    using DefaultBackend = asio::Backend;
+#endif
+
+
+template<
         typename ControlRing,
         typename MessageRing,
         typename PolicyBundle = policy::transport::DefaultWebsocket,
-        typename Api = typename asio::Backend
+        typename Backend = DefaultBackend
     >
     using WebSocket = WebSocketImpl<
         ControlRing,
         MessageRing,
         PolicyBundle,
-        Api
+        Backend
     >;
-#endif
 
 } // namespace wirekrak::core::transport

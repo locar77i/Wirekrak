@@ -35,74 +35,95 @@ avoiding timing assumptions and relying only on observable transport invariants.
 #include <algorithm>
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
-#include "wirekrak/core/transport/winhttp/api_concept.hpp"
-#include "wirekrak/core/transport/winhttp/websocket.hpp"
+#include "wirekrak/core/transport/websocket.hpp"
 #include "wirekrak/core/policy/transport/websocket_bundle.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
 #include "lcr/memory/block_pool.hpp"
 #include "common/test_check.hpp"
 
-using namespace wirekrak::core::transport;
 
+namespace wirekrak::core::transport {
+namespace test {
 
-namespace wirekrak::core::transport::winhttp {
+using transport::websocket::ReceiveStatus;
 
-// -----------------------------------------------------------------------------
-// Fake WinHTTP API (test-only)
-// -----------------------------------------------------------------------------
-struct FakeApi {
-    std::queue<DWORD> results;
-    std::queue<WINHTTP_WEB_SOCKET_BUFFER_TYPE> types;
+struct TestBackend {
+    std::queue<ReceiveStatus> statuses;
+    mutable std::queue<bool> message_done_flags;
     std::queue<std::string> payloads;
 
-    int receive_count = 0;
+    int read_count = 0;
     int send_count = 0;
     int close_count = 0;
 
-    DWORD send_result = ERROR_SUCCESS;
+    bool open = true;
+    bool send_result = true;
 
-    DWORD websocket_receive(HINTERNET, void* buffer, DWORD buffer_len, DWORD* bytes, WINHTTP_WEB_SOCKET_BUFFER_TYPE* type) {
-        ++receive_count;
-        if (results.empty()) {
-            std::this_thread::yield();
-            return ERROR_WINHTTP_OPERATION_CANCELLED;
-        }
-        *bytes = 0;
-        // Pop next type
-        *type  = types.front();
-        types.pop();
-        // Pop next result
-        DWORD r = results.front();
-        results.pop();
-        // If result is error, return immediately without writing to buffer
-        if (r != ERROR_SUCCESS) {
-            return r;
-        }
-        //Write payload if provided
-        if (!payloads.empty()) {
-            const std::string& p = payloads.front();
-            const DWORD to_copy = static_cast<DWORD>(std::min<std::size_t>(p.size(), buffer_len));
-            std::memcpy(buffer, p.data(), to_copy);
-            *bytes = to_copy;
-            payloads.pop();
-        }
-        return r;
+    // --- Lifecycle ---
+    bool connect(std::string_view, std::uint16_t, std::string_view, bool) noexcept {
+        open = true;
+        return true;
     }
 
-    DWORD websocket_send(HINTERNET, WINHTTP_WEB_SOCKET_BUFFER_TYPE, void*, DWORD) {
+    void close() noexcept {
+        open = false;
+        ++close_count;
+    }
+
+    bool is_open() const noexcept {
+        return open;
+    }
+
+    // --- Send ---
+    bool send(std::string_view) noexcept {
         ++send_count;
         return send_result;
     }
 
-    void websocket_close(HINTERNET) {
-        ++close_count;
+    // --- Receive ---
+    ReceiveStatus read_some(void* buffer, std::size_t size, std::size_t& bytes) noexcept {
+        ++read_count;
+
+        if (statuses.empty()) {
+            std::this_thread::yield();
+            return ReceiveStatus::Closed;
+        }
+
+        auto status = statuses.front();
+        statuses.pop();
+
+        bytes = 0;
+
+        if (status != ReceiveStatus::Ok) {
+            return status;
+        }
+
+        if (!payloads.empty()) {
+            const auto& p = payloads.front();
+            auto n = std::min(p.size(), size);
+            std::memcpy(buffer, p.data(), n);
+            bytes = n;
+            payloads.pop();
+        }
+
+        return ReceiveStatus::Ok;
+    }
+
+    bool message_done() const noexcept {
+        if (message_done_flags.empty()) return true;
+
+        bool done = message_done_flags.front();
+        message_done_flags.pop();
+        return done;
     }
 };
-// Defensive check that FakeApi conforms to ApiConcept concept
-static_assert(ApiConcept<FakeApi>, "FakeApi must model ApiConcept");
 
-} // namespace wirekrak::core::transport::winhttp
+} // namespace test
+
+static_assert(websocket::BackendConcept<test::TestBackend>);
+
+} // namespace wirekrak::core::transport
 
 
 // -----------------------------------------------------------------------------
@@ -116,11 +137,11 @@ using MessageRingUnderTest = preset::DefaultMessageRing; // Golbal message ring 
 
 
 using WebSocketUnderTest =
-    winhttp::WebSocketImpl<
+    WebSocketImpl<
         ControlRingUnderTest,
         MessageRingUnderTest,
         policy::transport::DefaultWebsocket,
-        winhttp::FakeApi
+        test::TestBackend
     >;
 
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
@@ -162,11 +183,11 @@ void test_close_called_once() {
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
 
-    // Simulate close frame
-    ws.test_api().results.push(ERROR_SUCCESS);
-    ws.test_api().types.push(WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE);
+    // --- Simulate CLOSE from backend ---
+    auto& backend = ws.test_backend();
+    backend.statuses.push(websocket::ReceiveStatus::Closed);
 
-    // ws.connect("x", 443, "/", true))
+    // Start receive loop (no real connect needed) - ws.connect("x", 443, "/", true))
     ws.test_start_receive_loop();
 
     // Wait for receive loop to start (better synchronization than sleep)
@@ -196,6 +217,7 @@ void test_close_called_once() {
     std::cout << "[TEST] Done." << std::endl;
 }
 
+
 void test_error_triggers_close() {
     std::cout << "[TEST] Running error triggers close test..." << std::endl;
 
@@ -209,11 +231,11 @@ void test_error_triggers_close() {
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
 
-    // Simulate error
-    ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
-    ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
+    // --- Simulate transport error ---
+    auto& backend = ws.test_backend();
+    backend.statuses.push(websocket::ReceiveStatus::TransportError);
 
-    // ws.connect("x", 443, "/", true))
+    // Start receive loop
     ws.test_start_receive_loop();
 
     // Wait until receive loop is active
@@ -221,10 +243,11 @@ void test_error_triggers_close() {
         std::this_thread::yield();
     }
 
-    // Wait until receive thread processes one receive call
-    while (ws.test_api().receive_count < 1) {
+    // Ensure backend was actually polled at least once
+    while (backend.read_count == 0) {
         std::this_thread::yield();
     }
+
     ws.close();
 
     // Drain control-plane events
@@ -249,17 +272,18 @@ void test_error_triggers_close() {
         }
     }
 
-    // Now assert observed behavior
+    // --- Assertions (transport invariants) ---
+
+    // At most one error (failure-first model)
     assert(error_count <= 1);
+
+    // Close must ALWAYS happen
     assert(close_count == 1);
 
-    // If error happened, it must have happened before close
+    // If error emitted → must be TransportFailure
     if (error_count == 1) {
-        assert(ws.test_api().receive_count >= 1);
+        assert(last_error == Error::TransportFailure);
     }
-
-    // Validate semantic error classification
-    assert(last_error == Error::RemoteClosed || last_error == Error::TransportFailure);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -278,12 +302,14 @@ void test_message_delivery_to_ring() {
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
 
-    // Simulate one message
-    ws.test_api().results.push(ERROR_SUCCESS);
-    ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
-    ws.test_api().payloads.push("test_message");
+    // --- Simulate one full message ---
+    auto& backend = ws.test_backend();
 
-    // ws.connect("x", 443, "/", true))
+    backend.payloads.push("test_message");
+    backend.statuses.push(websocket::ReceiveStatus::Ok);
+    backend.message_done_flags.push(true);
+
+    // Start receive loop
     ws.test_start_receive_loop();
 
     // Wait until receive loop is active
@@ -291,8 +317,8 @@ void test_message_delivery_to_ring() {
         std::this_thread::yield();
     }
 
-    // Wait until the first receive() has happened
-    while (ws.test_api().receive_count < 1) {
+    // Wait until backend was actually read
+    while (backend.read_count < 1) {
         std::this_thread::yield();
     }
 
@@ -302,12 +328,13 @@ void test_message_delivery_to_ring() {
         std::this_thread::yield();
         slot = ws.peek_message();
     }
-    
+
     assert(slot != nullptr);
 
     // Assert payload
     const char* expected = "test_message";
     const std::size_t expected_size = std::strlen(expected);
+
     assert(slot->size() == expected_size);
     assert(std::memcmp(slot->data(), expected, expected_size) == 0);
 
@@ -316,8 +343,8 @@ void test_message_delivery_to_ring() {
 
     ws.close();
 
-    // At least one receive must have occurred
-    assert(ws.test_api().receive_count >= 1);
+    // Ensure backend was used
+    assert(backend.read_count >= 1);
 
     std::cout << "[TEST] Done." << std::endl;
 }
@@ -333,18 +360,19 @@ void test_send_success() {
     telemetry::WebSocket telemetry;
     WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
-    // Establish fake connection (sets hWebSocket_)
-    ws.test_start_receive_loop();
+    // Simulate open connection
+    auto& backend = ws.test_backend();
+    backend.open = true;
 
-    // NOTE: send() is synchronous and does not require a running receive loop.
-    // This test validates pure transport behavior without threading.
+    // NOTE: send() is synchronous and independent from receive loop
     bool ok = ws.send("hello");
 
     assert(ok);
-    assert(ws.test_api().send_count == 1);
+    assert(backend.send_count == 1);
 
     std::cout << "[TEST] Done." << std::endl;
 }
+
 
 void test_send_failure() {
     std::cout << "[TEST] Running send failure test..." << std::endl;
@@ -356,20 +384,20 @@ void test_send_failure() {
     telemetry::WebSocket telemetry;
     WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
-    ws.test_api().send_result = ERROR_WINHTTP_CONNECTION_ERROR;
+    // Simulate open connection but failing send
+    auto& backend = ws.test_backend();
+    backend.open = true;
+    backend.send_result = false;
 
-    // Establish fake connection (sets hWebSocket_)
-    ws.test_start_receive_loop();
-
-    // NOTE: send() is synchronous and does not require a running receive loop.
-    // This test validates pure transport behavior without threading.
+    // send() is synchronous and independent from receive loop
     bool ok = ws.send("hello");
 
     assert(!ok);
-    assert(ws.test_api().send_count == 1);
+    assert(backend.send_count == 1);
 
     std::cout << "[TEST] Done." << std::endl;
 }
+
 
 void test_error_then_close_ordering() {
     std::cout << "[TEST] Running error -> close ordering test..." << std::endl;
@@ -384,10 +412,11 @@ void test_error_then_close_ordering() {
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
 
-    ws.test_api().results.push(ERROR_WINHTTP_CONNECTION_ERROR);
-    ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
+    // --- Simulate transport error ---
+    auto& backend = ws.test_backend();
+    backend.statuses.push(websocket::ReceiveStatus::TransportError);
 
-    // ws.connect("x", 443, "/", true))
+    // Start receive loop
     ws.test_start_receive_loop();
 
     // Wait until receive loop has actually started
@@ -395,17 +424,17 @@ void test_error_then_close_ordering() {
         std::this_thread::yield();
     }
 
-    // Give receive loop opportunity to process injected error
-    std::this_thread::yield();
-
-    while (ws.test_api().receive_count == 0) {
+    // Wait until backend was actually read
+    while (backend.read_count == 0) {
         std::this_thread::yield();
     }
+
     ws.close();
 
     // Drain control-plane events
     std::vector<std::string> events;
     Error last_error = Error::None;
+
     websocket::Event ev;
     while (ws.poll_event(ev)) {
         switch (ev.type) {
@@ -427,18 +456,20 @@ void test_error_then_close_ordering() {
     for (const auto& e : events) {
         std::cout << "  " << e << "\n";
     }
+
+    // --- Assertions (strict ordering contract) ---
+
     assert(events.size() == 2);
     assert(events[0] == "error");
     assert(events[1] == "close");
 
-    // Validate semantic error classification
-    assert(last_error == Error::RemoteClosed);
+    // Transport-level mapping (normalized)
+    assert(last_error == Error::TransportFailure);
 
     std::cout << "[TEST] Done." << std::endl;
 }
 
 
-// TODO: review in depth (non deterministic)
 void test_multiple_messages() {
     std::cout << "[TEST] Running multiple message test..." << std::endl;
 
@@ -452,18 +483,20 @@ void test_multiple_messages() {
     std::atomic<bool> receive_started{false};
     ws.set_receive_started_flag(&receive_started);
 
-    ws.test_api().results.push(ERROR_SUCCESS);
-    ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
-    ws.test_api().payloads.push("msg1");
+    // --- Simulate two full messages + close ---
+    auto& backend = ws.test_backend();
 
-    ws.test_api().results.push(ERROR_SUCCESS);
-    ws.test_api().types.push(WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE);
-    ws.test_api().payloads.push("msg2");
+    backend.payloads.push("msg1");
+    backend.statuses.push(websocket::ReceiveStatus::Ok);
+    backend.message_done_flags.push(true);
 
-    ws.test_api().results.push(ERROR_SUCCESS);
-    ws.test_api().types.push(WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE);
+    backend.payloads.push("msg2");
+    backend.statuses.push(websocket::ReceiveStatus::Ok);
+    backend.message_done_flags.push(true);
 
-    // ws.connect("x", 443, "/", true))
+    backend.statuses.push(websocket::ReceiveStatus::Closed);
+
+    // Start receive loop
     ws.test_start_receive_loop();
 
     // Wait until receive loop is active
@@ -472,15 +505,14 @@ void test_multiple_messages() {
     }
 
     // Wait until both messages have been processed
-    while (ws.test_api().receive_count < 2) {
+    while (backend.read_count < 2) {
         std::this_thread::yield();
     }
 
     int count = 0;
     auto* slot = ws.peek_message();
-    while (slot != nullptr) {
-        assert(slot != nullptr);
 
+    while (slot != nullptr) {
         if (count == 0) {
             assert(slot->size() == 4);
             assert(std::memcmp(slot->data(), "msg1", 4) == 0);
@@ -489,21 +521,24 @@ void test_multiple_messages() {
             assert(slot->size() == 4);
             assert(std::memcmp(slot->data(), "msg2", 4) == 0);
         }
-        // Release slot (mandatory)
+
+        std::cout << " -> Message " << count + 1
+                  << ": " << std::string(slot->data(), slot->size()) << "\n";
+
         ws.release_message(slot);
-        std::cout << " -> Message " << count + 1 << ": " << std::string(slot->data(), slot->size()) << "\n";
         count++;
+
         slot = ws.peek_message();
     }
 
     ws.close();
 
     std::cout << "Total messages received: " << count << std::endl;
+
     assert(count == 2);
 
     std::cout << "[TEST] Done." << std::endl;
 }
-
 
 
 // -----------------------------------------------------------------------------
