@@ -190,7 +190,7 @@ private:
 #endif // WK_UNIT_TEST
 
         std::size_t message_count = 0;
-
+        std::uint32_t fragments = 0;
         slot_type* current_slot = nullptr;
 
         while (running_.load(std::memory_order_acquire)) {
@@ -229,46 +229,15 @@ private:
 
             const auto result = backend_.read_some(current_slot->write_ptr(), current_slot->remaining());
 
-            // =========================================================
-            // CLOSE (graceful, NOT an error)
-            // =========================================================
-            if (result.frame == websocket::FrameType::Close) {
-                WK_DEBUG("[WS] Received CLOSE frame");
-
-                running_.store(false, std::memory_order_release);
-
-                // Discard partial message
-                if (current_slot) {
-                    message_ring_.discard_producer_slot(current_slot);
-                    current_slot = nullptr;
-                }
-
-                signal_close_();
-                break;
-            }
-
-            // =========================================================
-            // Contract validation
-            // =========================================================
+            // Backend contract guarantees that on non-Ok status, bytes will be 0 (no partial data)
             LCR_ASSERT_MSG((result.status == websocket::ReceiveStatus::Ok) || (result.bytes == 0), "Backend violation: bytes must be 0 on non-Ok status");
-            if (result.status == websocket::ReceiveStatus::Ok) [[likely]]{
-                switch (result.frame) {
-                    case websocket::FrameType::Fragment:
-                        LCR_ASSERT_MSG(result.bytes > 0, "Backend violation: Fragment frame must have bytes > 0");
-                        break;
-                    case websocket::FrameType::Message:
-                        // bytes >= 0 → always true, nothing to assert
-                        break;
-                    case websocket::FrameType::Close:
-                        LCR_ASSERT_MSG(result.bytes == 0, "Backend violation: Close frame must have bytes == 0");
-                        break;
-                }
-            }
+
             // =========================================================
             // ERRORS (failure-first)
             // =========================================================
-            else {
-
+            
+            if (result.status != websocket::ReceiveStatus::Ok) [[unlikely]] {
+            
                 WK_TL1( telemetry_.rx_errors_total.inc() );
 
                 Error error = Error::TransportFailure;
@@ -297,33 +266,46 @@ private:
                     WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">");
                 }
 
-                // Stop loop
-                running_.store(false, std::memory_order_release);
+                running_.store(false, std::memory_order_release); // Stop loop
+                break; // End of loop -> discard partial message if any -> signal close
+            }
 
-                // Discard partial message if any
-                if (current_slot) {
-                    message_ring_.discard_producer_slot(current_slot);
-                    current_slot = nullptr;
-                }
-
-                signal_close_();
-                break;
+            // =========================================================
+            // CLOSE (graceful, NOT an error)
+            // =========================================================
+            if (result.frame == websocket::FrameType::Close) {
+                LCR_ASSERT_MSG(result.bytes == 0, "Backend violation: Close frame must have bytes == 0");
+                WK_DEBUG("[WS] Received CLOSE frame");
+                running_.store(false, std::memory_order_release);  // Stop loop
+                break; // End of loop -> discard partial message if any -> signal close
             }
 
             WK_TL1( telemetry_.bytes_rx_total.inc(result.bytes) );
 
-            if (result.bytes > 0) { // Commit bytes into slot
-                current_slot->commit(result.bytes);
+            // =========================================================
+            // Message / Fragment (normal data)
+            // =========================================================
+            LCR_ASSERT_MSG(result.bytes > 0, "Backend violation: Message/Fragment frame must have bytes > 0");
+            // Defensive runtime guard (release builds)
+            if (result.bytes == 0) [[unlikely]] {
+                // Protocol violation OR ignore silently -> Emit error (failure-first model)
+                if (!emit_event_(transport::websocket::Event::make_error(Error::ProtocolError))) {
+                    WK_ERROR("[WS] Failed to emit error <" << to_string(Error::ProtocolError) << ">");
+                }
+                running_.store(false, std::memory_order_release); // Stop loop
+                break; // End of loop -> discard partial message if any -> signal close
             }
+            current_slot->commit(result.bytes);
 
             // =========================================================
             // Message boundary
             // =========================================================
             if (result.frame == websocket::FrameType::Message) {
 
-                WK_TL1( telemetry_.messages_rx_total.inc() );
                 WK_TL1( telemetry_.rx_message_bytes.set(current_slot->size()) );
-
+                WK_TL1( telemetry_.messages_rx_total.inc() );
+                WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
+                
                 if (current_slot->is_external()) [[unlikely]] {
                     WK_TL1( telemetry_.external_buffers_total.inc() );
                 }
@@ -338,12 +320,20 @@ private:
                 );
 
                 message_ring_.commit_producer_slot();
-
                 current_slot = nullptr;
                 ++message_count;
+                fragments = 0;
+            }
+            else { // result.frame == websocket::FrameType::Fragment:
+                WK_TL1( telemetry_.rx_fragments_total.inc() );
+                ++fragments;
             }
         }
-
+        // Cleanup partially assembled message
+        if (current_slot) {
+            message_ring_.discard_producer_slot(current_slot);
+            current_slot = nullptr;
+        }
         signal_close_();
     }
 
