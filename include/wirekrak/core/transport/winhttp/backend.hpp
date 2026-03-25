@@ -7,61 +7,117 @@
 // Overview
 // --------
 // This backend provides a WebSocket transport implementation using the
-// Windows WinHTTP API. It is intended primarily for compatibility and ease of
-// deployment on Windows systems where Boost.Asio or lower-level socket access
-// may not be desirable or available.
+// Windows WinHTTP API. It is designed as a compatibility-oriented adapter
+// that conforms to the Wirekrak BackendConcept while normalizing WinHTTP
+// behavior into deterministic transport semantics.
+//
+// This is NOT a thin wrapper over WinHTTP. The backend enforces strict
+// invariants required by the transport layer and hides platform-specific
+// inconsistencies behind a stable contract.
 //
 // Characteristics
 // ---------------
-// - Blocking, synchronous API
+// - Blocking, synchronous API (WinHTTP-based)
 // - Minimal dependencies (Windows-native)
-// - Simple integration with system networking stack
+// - Contract-enforcing adapter (not a direct passthrough)
+// - Zero-copy compatible (caller-owned buffers)
 //
-// Limitations (Important)
+// Semantic Normalization
 // ----------------------
-// This backend does NOT provide deterministic or bounded-latency behavior.
-// In particular:
+// This backend does not expose raw WinHTTP semantics directly. Instead,
+// it normalizes behavior to satisfy the BackendConcept contract:
 //
-// 1. Receive Interruptibility
-//    - `WinHttpWebSocketReceive` is a blocking call.
-//    - Calls to `WinHttpWebSocketClose` or `WinHttpCloseHandle` do NOT guarantee
-//      immediate interruption of a pending receive operation.
-//    - Shutdown latency may vary from microseconds to several seconds depending
-//      on OS, network state, and internal WinHTTP behavior.
+// - All CLOSE conditions (including selected WinHTTP errors such as
+//   connection loss or cancellation) are mapped to:
+//       { status = Ok, frame = Close }
 //
-// 2. Non-Deterministic Shutdown
-//    - The backend does not guarantee bounded-time shutdown.
-//    - Threads blocked in `read_some()` may delay transport termination.
+// - CLOSE frames are guaranteed to have:
+//       bytes == 0
+//   even if WinHTTP provides payload data.
 //
-// 3. Not Suitable for ULL (Ultra-Low Latency)
-//    - Due to the above properties, this backend is NOT suitable for:
-//        * latency-sensitive trading systems
-//        * deterministic protocol execution
-//        * high-frequency data ingestion pipelines
+// - No bytes are ever returned when:
+//       status != Ok
+//
+// - Fragmentation and message boundaries are explicitly mapped to:
+//       FrameType::{Fragment, Message, Close}
+//
+// This ensures consistent behavior across different backend implementations
+// and simplifies transport-layer logic.
+//
+// Determinism Model
+// -----------------
+// - Underlying I/O (WinHTTP) is NOT deterministic:
+//     * WinHttpWebSocketReceive is blocking
+//     * Cancellation is not guaranteed to be immediate
+//
+// - However, this backend provides deterministic *contract behavior*:
+//     * All outputs strictly satisfy BackendConcept invariants
+//     * No undefined or ambiguous states are exposed to the transport layer
+//
+// Shutdown Semantics
+// ------------------
+// - close() is idempotent and thread-safe
+// - A local atomic flag (`closed_`) is used to enforce fast logical shutdown
+//
+// After close():
+//   - read_some() returns immediately with:
+//         { status = Ok, frame = Close, bytes = 0 }
+//   - send() fails fast
+//
+// NOTE:
+// Threads blocked inside WinHttpWebSocketReceive may still experience
+// unbounded latency before returning. This is a WinHTTP limitation and
+// cannot be fully controlled by the backend.
+//
+// Error Model
+// -----------
+// - WinHTTP errors are mapped into BackendConcept semantics
+// - Certain transport-level failures are intentionally normalized:
+//
+//     ERROR_WINHTTP_CONNECTION_ERROR
+//     ERROR_WINHTTP_OPERATION_CANCELLED
+//         → treated as graceful CLOSE
+//
+// - Other errors are mapped to:
+//     * Timeout
+//     * ProtocolError
+//     * TransportError
+//
+// This design favors semantic consistency over strict preservation of
+// underlying OS error meanings. Higher layers (e.g., retry policies)
+// are responsible for recovery decisions.
+//
+// Limitations
+// -----------
+// - Not suitable for Ultra-Low Latency (ULL) systems
+// - Blocking receive cannot be interrupted in bounded time
+// - Shutdown latency depends on WinHTTP internal behavior
 //
 // Design Positioning
 // ------------------
-// This backend is provided as a compatibility layer and reference implementation.
-// It prioritizes portability and simplicity over performance and determinism.
+// This backend is intended as:
+//   ✔ A portable, Windows-native implementation
+//   ✔ A reference backend for BackendConcept compliance
 //
-// For systems requiring strict correctness guarantees, bounded latency, and
-// precise control over I/O behavior, use the Asio-based backend or a custom
-// socket implementation.
+// It is NOT intended for:
+//   ✘ Latency-critical systems
+//   ✘ Deterministic I/O scheduling
+//   ✘ High-frequency trading pipelines
 //
-// Backend Contract Notes
-// ----------------------
-// - `close()` is idempotent and thread-safe (guarded internally).
-// - `read_some()` follows the BackendConcept contract, but may block
-//   uninterruptibly for an unbounded duration.
-// - Error reporting is best-effort and dependent on WinHTTP error codes.
+// For strict latency and control requirements, prefer:
+//   - Asio-based backend
+//   - Custom socket-level implementations
 //
 // Summary
 // -------
-// ✔ Easy to use
-// ✔ Windows-native
-// ❌ Not deterministic
-// ❌ Not interruptible in bounded time
-// ❌ Not suitable for ULL systems
+// ✔ BackendConcept-compliant
+// ✔ Deterministic transport semantics
+// ✔ Normalized cross-platform behavior
+// ✔ Windows-native and dependency-light
+//
+// ❌ Non-deterministic underlying I/O
+// ❌ Unbounded blocking in receive
+// ❌ Not suitable for ULL workloads
 //
 // ============================================================================
 
@@ -73,6 +129,8 @@
 #include <string_view>
 #include <cstdint>
 #include <atomic>
+#include <limits>
+#include <algorithm>
 
 #include "wirekrak/core/transport/websocket/backend_concept.hpp"
 
@@ -106,11 +164,10 @@ inline std::wstring to_wide(std::string_view utf8) {
 // -------------------------------------------------------------
 class Backend {
 public:
-    bool connect(std::string_view host,
-                 std::uint16_t port,
-                 std::string_view path,
-                 bool secure) noexcept
-    {
+    bool connect(std::string_view host, std::uint16_t port, std::string_view path, bool secure) noexcept {
+        
+        closed_.store(false, std::memory_order_release);
+
         host_w_ = to_wide(host);
         path_w_ = to_wide(path);
 
@@ -121,10 +178,16 @@ public:
             WINHTTP_NO_PROXY_BYPASS,
             0);
 
-        if (!hSession_) return false;
+        if (!hSession_) {
+            cleanup_(); // safe, idempotent
+            return false;
+        }
 
         hConnect_ = WinHttpConnect(hSession_, host_w_.c_str(), port, 0);
-        if (!hConnect_) return false;
+        if (!hConnect_) {
+            cleanup_();
+            return false;
+        }
 
         DWORD flags = secure ? WINHTTP_FLAG_SECURE : 0;
 
@@ -137,22 +200,32 @@ public:
             WINHTTP_DEFAULT_ACCEPT_TYPES,
             flags);
 
-        if (!hRequest_) return false;
-
-        if (!WinHttpSetOption(
-                hRequest_,
-                WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET,
-                nullptr,
-                0)) return false;
-
-        if (!WinHttpSendRequest(hRequest_, nullptr, 0, nullptr, 0, 0, 0))
+        if (!hRequest_) {
+            cleanup_();
             return false;
+        }
 
-        if (!WinHttpReceiveResponse(hRequest_, nullptr))
+        if (!WinHttpSetOption(hRequest_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) {
+            cleanup_();
             return false;
+        }
+
+        if (!WinHttpSendRequest(hRequest_, nullptr, 0, nullptr, 0, 0, 0)) {
+            cleanup_();
+            return false;
+        }
+
+        if (!WinHttpReceiveResponse(hRequest_, nullptr)) {
+            cleanup_();
+            return false;
+        }
 
         hWebSocket_ = WinHttpWebSocketCompleteUpgrade(hRequest_, 0);
-        return hWebSocket_ != nullptr;
+        if (!hWebSocket_) {
+            cleanup_();
+            return false;
+        }
+        return true;
     }
 
     void close() noexcept {
@@ -171,18 +244,24 @@ public:
         }
 
         // Then close handles
-        if (hWebSocket_) { WinHttpCloseHandle(hWebSocket_); hWebSocket_ = nullptr; }
-        if (hRequest_)   { WinHttpCloseHandle(hRequest_);   hRequest_ = nullptr; }
-        if (hConnect_)   { WinHttpCloseHandle(hConnect_);   hConnect_ = nullptr; }
-        if (hSession_)   { WinHttpCloseHandle(hSession_);   hSession_ = nullptr; }
+        cleanup_();
     }
 
     bool is_open() const noexcept {
-        return hWebSocket_ != nullptr;
+        return !closed_.load(std::memory_order_acquire) && hWebSocket_ != nullptr;
     }
 
     bool send(std::string_view msg) noexcept {
-        if (!hWebSocket_) return false;
+        // =========================================================
+        // Preconditions
+        // =========================================================
+        if (closed_.load(std::memory_order_acquire)) [[unlikely]] {
+            return false;
+        };
+
+        if (!hWebSocket_) {
+            return false;
+        }
 
         DWORD result = WinHttpWebSocketSend(
             hWebSocket_,
@@ -193,59 +272,141 @@ public:
         return result == ERROR_SUCCESS;
     }
 
-    websocket::ReceiveStatus read_some(
-        void* buffer,
-        std::size_t size,
-        std::size_t& bytes) noexcept
-    {
+    websocket::ReadResult read_some(void* buffer, std::size_t size) noexcept {
+
+        // =========================================================
+        // Preconditions
+        // =========================================================
+        if (closed_.load(std::memory_order_acquire)) [[unlikely]] {
+            return websocket::ReadResult{
+                .status = websocket::ReceiveStatus::Ok,
+                .bytes = 0,
+                .frame = websocket::FrameType::Close
+            };
+        };
+
+        if (!hWebSocket_) [[unlikely]] { // If the socket is gone -> this is effectively a CLOSE:
+            return websocket::ReadResult{
+                .status = websocket::ReceiveStatus::Ok,
+                .bytes = 0,
+                .frame = websocket::FrameType::Close
+            };
+        }
+
+        // =========================================================
+        // Perform receive
+        // =========================================================
         DWORD read = 0;
         WINHTTP_WEB_SOCKET_BUFFER_TYPE type{};
 
+        DWORD win_size = static_cast<DWORD>(std::min<std::size_t>(size, std::numeric_limits<DWORD>::max()));
         DWORD result = WinHttpWebSocketReceive(
             hWebSocket_,
             buffer,
-            static_cast<DWORD>(size),
+            win_size,
             &read,
-            &type);
+            &type
+        );
 
-        bytes = read;
-
-        if (result != ERROR_SUCCESS) {
-            return map_error_(result);
+        // =========================================================
+        // Error path
+        // =========================================================
+        if (result != ERROR_SUCCESS) [[unlikely]] {
+            return map_result_on_error_(result);
         }
 
-        last_type_ = type;
+        // =========================================================
+        // Map frame type
+        // =========================================================
+        using FT = websocket::FrameType;
 
-        if (type == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
-            return websocket::ReceiveStatus::Closed;
+        FT frame;
+
+        switch (type) {
+            case WINHTTP_WEB_SOCKET_BINARY_FRAGMENT_BUFFER_TYPE:
+            case WINHTTP_WEB_SOCKET_UTF8_FRAGMENT_BUFFER_TYPE:
+                frame = FT::Fragment;
+                break;
+
+            case WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE:
+            case WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE:
+                frame = FT::Message;
+                break;
+
+            case WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE:
+                frame = FT::Close;
+                break;
+
+            default:
+                // Should never happen, but be defensive
+                return websocket::ReadResult{
+                    .status = websocket::ReceiveStatus::ProtocolError,
+                    .bytes = 0,
+                    .frame = FT::Fragment
+                };
         }
 
-        return websocket::ReceiveStatus::Ok;
-    }
+        // =========================================================
+        // Enforce contract invariants
+        // =========================================================
 
-    bool message_done() const noexcept {
-        return last_type_ == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE ||
-               last_type_ == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE;
+        // Close frame MUST have 0 bytes
+        // WinHTTP may return payload for CLOSE frames but we discard it to enforce transport invariant (bytes == 0).
+        if (frame == FT::Close) {
+            read = 0;
+        }
+
+        return websocket::ReadResult{
+            .status = websocket::ReceiveStatus::Ok,
+            .bytes = static_cast<std::size_t>(read),
+            .frame = frame
+        };
     }
 
 private:
-    websocket::ReceiveStatus map_error_(DWORD err) noexcept {
+    websocket::ReadResult map_result_on_error_(DWORD err) noexcept {
         switch (err) {
-            case ERROR_WINHTTP_OPERATION_CANCELLED:
-                return websocket::ReceiveStatus::Closed;
-
-            case ERROR_WINHTTP_CONNECTION_ERROR:
-                return websocket::ReceiveStatus::Closed;
-
             case ERROR_WINHTTP_TIMEOUT:
-                return websocket::ReceiveStatus::Timeout;
+                return websocket::ReadResult{
+                .status = websocket::ReceiveStatus::Timeout,
+                .bytes = 0,
+                .frame = websocket::FrameType::Fragment // dummy, ignored
+            };
 
             case ERROR_WINHTTP_INVALID_SERVER_RESPONSE:
-                return websocket::ReceiveStatus::ProtocolError;
+                return websocket::ReadResult{
+                .status = websocket::ReceiveStatus::ProtocolError,
+                .bytes = 0,
+                .frame = websocket::FrameType::Fragment // dummy, ignored
+            };
+
+            case ERROR_WINHTTP_CONNECTION_ERROR: // -> Close
+                // This is correct in practice, but it's not strictly guaranteed by WinHTTP and could also mean abrupt disconnect (current approach = correct trade-off)
+                // NOTE:
+                // ERROR_WINHTTP_CONNECTION_ERROR may represent abrupt disconnect.
+                // We normalize it to CLOSE to keep transport semantics simple.
+                // Higher layers (retry policy) are responsible for recovery.
+            case ERROR_WINHTTP_OPERATION_CANCELLED: // -> Close
+                return websocket::ReadResult{ // Already decided -> close is not an error (enforce graceful close semantics)
+                    .status = websocket::ReceiveStatus::Ok,
+                    .bytes = 0,
+                    .frame = websocket::FrameType::Close // Treat as graceful close equivalent but signaling Close frame instead
+                };
 
             default:
-                return websocket::ReceiveStatus::TransportError;
+                return websocket::ReadResult{
+                    .status = websocket::ReceiveStatus::TransportError,
+                    .bytes = 0,
+                    .frame = websocket::FrameType::Fragment // dummy, ignored
+                };
         }
+    }
+
+    void cleanup_() noexcept {
+        if (hWebSocket_) { WinHttpCloseHandle(hWebSocket_); hWebSocket_ = nullptr; }
+        if (hRequest_)   { WinHttpCloseHandle(hRequest_);   hRequest_ = nullptr; }
+        if (hConnect_)   { WinHttpCloseHandle(hConnect_);   hConnect_ = nullptr; }
+        if (hSession_)   { WinHttpCloseHandle(hSession_);   hSession_ = nullptr; }
     }
 
 private:
@@ -256,8 +417,6 @@ private:
     HINTERNET hConnect_   = nullptr;
     HINTERNET hRequest_   = nullptr;
     HINTERNET hWebSocket_ = nullptr;
-
-    WINHTTP_WEB_SOCKET_BUFFER_TYPE last_type_{};
 
     std::atomic<bool> closed_{false};
 };

@@ -37,10 +37,20 @@ read_some():
   - Returns a ReceiveStatus describing the outcome
   - May return partial frames (streaming)
   - MUST satisfy:
-        • If status == Ok:
-              bytes ∈ [0, size]
-        • If status != Ok:
-              bytes MUST be 0
+
+    If result.status != ReceiveStatus::Ok:
+        result.bytes MUST be 0
+
+    If result.status == ReceiveStatus::Ok:
+
+        If result.frame == FrameType::Fragment:
+            result.bytes MUST be > 0
+
+        If result.frame == FrameType::Message:
+            result.bytes MAY be >= 0
+
+        If result.frame == FrameType::Close:
+            result.bytes MUST be 0
 
 message_done():
   - Returns true when a full WebSocket message has been received
@@ -79,12 +89,22 @@ namespace wirekrak::core::transport::websocket {
 // -----------------------------------------------------------------------------
 enum class ReceiveStatus {
     Ok,             // Data read successfully (bytes > 0 or 0 for control frames)
-    Closed,         // Graceful close (WebSocket CLOSE frame or equivalent)
     Timeout,        // Read timed out (if supported by backend)
     ProtocolError,  // WebSocket protocol violation
     TransportError  // Underlying transport/socket error
 };
 
+enum class FrameType {
+    Fragment,   // partial frame
+    Message,    // final frame
+    Close       // close frame
+};
+
+struct ReadResult {
+    ReceiveStatus status;
+    std::size_t bytes;
+    FrameType frame;
+};
 // -----------------------------------------------------------------------------
 // WebSocket Backend Concept
 // -----------------------------------------------------------------------------
@@ -119,12 +139,7 @@ concept BackendConcept = requires(
     // -------------------------------------------------------------------------
     // Receive (streaming, zero-copy)
     // -------------------------------------------------------------------------
-    { backend.read_some(buffer, size, bytes) } -> std::same_as<ReceiveStatus>;
-
-    // -------------------------------------------------------------------------
-    // Message boundary (must be const-correct)
-    // -------------------------------------------------------------------------
-    { std::as_const(backend).message_done() } -> std::same_as<bool>;
+    { backend.read_some(buffer, size) } -> std::same_as<ReadResult>;
 };
 
 } // namespace wirekrak::core::transport::websocket

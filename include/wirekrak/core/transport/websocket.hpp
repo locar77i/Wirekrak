@@ -227,38 +227,53 @@ private:
 
             WK_TL1( telemetry_.receive_calls_total.inc() );
 
-            std::size_t bytes = 0;
-            const auto status = backend_.read_some(current_slot->write_ptr(), current_slot->remaining(), bytes);
-            if (status != websocket::ReceiveStatus::Ok) [[unlikely]] {
+            const auto result = backend_.read_some(current_slot->write_ptr(), current_slot->remaining());
 
-                LCR_ASSERT_MSG(bytes == 0, "On receive error, backend should not have written any bytes into the buffer (zero-copy contract)");
+            // =========================================================
+            // CLOSE (graceful, NOT an error)
+            // =========================================================
+            if (result.frame == websocket::FrameType::Close) {
+                WK_DEBUG("[WS] Received CLOSE frame");
 
-                // =========================================================
-                // CLOSE (graceful, NOT an error)
-                // =========================================================
-                if (status == websocket::ReceiveStatus::Closed) {
-                    WK_DEBUG("[WS] Received CLOSE frame");
+                running_.store(false, std::memory_order_release);
 
-                    running_.store(false, std::memory_order_release);
-
-                    // Discard partial message
-                    if (current_slot) {
-                        message_ring_.discard_producer_slot(current_slot);
-                        current_slot = nullptr;
-                    }
-
-                    signal_close_();
-                    break;
+                // Discard partial message
+                if (current_slot) {
+                    message_ring_.discard_producer_slot(current_slot);
+                    current_slot = nullptr;
                 }
 
-                // =========================================================
-                // ERRORS (failure-first)
-                // =========================================================
+                signal_close_();
+                break;
+            }
+
+            // =========================================================
+            // Contract validation
+            // =========================================================
+            LCR_ASSERT_MSG((result.status == websocket::ReceiveStatus::Ok) || (result.bytes == 0), "Backend violation: bytes must be 0 on non-Ok status");
+            if (result.status == websocket::ReceiveStatus::Ok) [[likely]]{
+                switch (result.frame) {
+                    case websocket::FrameType::Fragment:
+                        LCR_ASSERT_MSG(result.bytes > 0, "Backend violation: Fragment frame must have bytes > 0");
+                        break;
+                    case websocket::FrameType::Message:
+                        // bytes >= 0 → always true, nothing to assert
+                        break;
+                    case websocket::FrameType::Close:
+                        LCR_ASSERT_MSG(result.bytes == 0, "Backend violation: Close frame must have bytes == 0");
+                        break;
+                }
+            }
+            // =========================================================
+            // ERRORS (failure-first)
+            // =========================================================
+            else {
+
                 WK_TL1( telemetry_.rx_errors_total.inc() );
 
                 Error error = Error::TransportFailure;
 
-                switch (status) {
+                switch (result.status) {
 
                     case websocket::ReceiveStatus::Timeout:
                         WK_WARN("[WS] Receive timeout");
@@ -295,18 +310,19 @@ private:
                 break;
             }
 
-            WK_TL1( telemetry_.bytes_rx_total.inc(bytes) );
+            WK_TL1( telemetry_.bytes_rx_total.inc(result.bytes) );
 
-            // Commit bytes into slot
-            auto total = current_slot->commit(bytes);
+            if (result.bytes > 0) { // Commit bytes into slot
+                current_slot->commit(result.bytes);
+            }
 
             // =========================================================
             // Message boundary
             // =========================================================
-            if (backend_.message_done()) [[likely]] {
+            if (result.frame == websocket::FrameType::Message) {
 
                 WK_TL1( telemetry_.messages_rx_total.inc() );
-                WK_TL1( telemetry_.rx_message_bytes.set(total) );
+                WK_TL1( telemetry_.rx_message_bytes.set(current_slot->size()) );
 
                 if (current_slot->is_external()) [[unlikely]] {
                     WK_TL1( telemetry_.external_buffers_total.inc() );
@@ -600,6 +616,7 @@ private:
 
 #if defined(WK_BACKEND_WINHTTP)
     #include "wirekrak/core/transport/winhttp/backend.hpp"
+    //#include "wirekrak/core/transport/asio/backend.hpp"
 #elif defined(WK_BACKEND_ASIO)
     #include "wirekrak/core/transport/asio/backend.hpp"
 #endif
@@ -612,6 +629,7 @@ namespace wirekrak::core::transport {
 
 #if defined(WK_BACKEND_WINHTTP)
     using DefaultBackend = winhttp::Backend;
+    //using DefaultBackend = asio::Backend;
 #elif defined(WK_BACKEND_ASIO)
     using DefaultBackend = asio::Backend;
 #endif

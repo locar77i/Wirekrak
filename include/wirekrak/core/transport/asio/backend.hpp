@@ -6,36 +6,95 @@
 //
 // Overview
 // --------
-// This backend provides a synchronous, blocking WebSocket transport built on
-// Boost.Asio and Boost.Beast, with TLS support via OpenSSL.
+// This backend provides a WebSocket transport implementation using
+// Boost.Asio and Boost.Beast with TLS (OpenSSL).
 //
-// It is designed for high-performance, low-latency systems where deterministic
-// behavior, explicit lifecycle control, and zero-copy integration are required.
+// It is designed as a high-performance, low-latency backend that conforms
+// to the Wirekrak BackendConcept and provides deterministic, normalized
+// transport semantics on top of interruptible socket I/O.
+//
+// This is NOT a raw Beast wrapper. The backend enforces strict invariants
+// and maps Boost/OS behavior into a stable, backend-agnostic contract.
 //
 // Characteristics
 // ---------------
 // - Blocking, synchronous API (no async state machines)
 // - Zero-copy receive path (caller-provided buffers)
-// - Explicit thread ownership model (no hidden threads)
+// - Interruptible blocking operations (via socket cancellation)
 // - TLS-enabled (OpenSSL)
-// - Backend interchangeable via compile-time abstraction
+// - Contract-enforcing adapter (not a passthrough)
 //
-// Determinism & Interruptibility
-// ------------------------------
-// This backend is designed to provide bounded-latency interruption of blocking
-// receive operations:
+// Semantic Normalization
+// ----------------------
+// This backend normalizes Boost.Beast behavior to satisfy BackendConcept:
 //
-// - `read_some()` may block while waiting for network data.
-// - `close()` actively interrupts pending operations via:
-//      * socket cancellation (`cancel()`)
-//      * TCP shutdown (`shutdown()`)
-//      * socket close (`close()`)
-// - Blocking reads are guaranteed to exit via a well-defined error path
-//   (e.g. `operation_aborted`), enabling deterministic shutdown.
+// - All CLOSE conditions (including:
+//       * websocket::error::closed
+//       * operation_aborted from cancellation
+//   ) are mapped to:
+//       { status = Ok, frame = Close }
 //
-// As a result, this backend satisfies the transport requirement of:
+// - No bytes are returned when:
+//       status != Ok
+//
+// - Frame boundaries are explicitly reported via:
+//       FrameType::{Fragment, Message, Close}
+//
+// - Message completion is derived from Beast's frame state and surfaced
+//   directly via ReadResult (no external message_done dependency required)
+//
+// This ensures consistent behavior across all backends.
+//
+// Determinism Model
+// -----------------
+// This backend provides deterministic *execution semantics*:
+//
+// - Blocking reads are interruptible via:
+//       socket.cancel()
+//       socket.shutdown()
+//       socket.close()
+//
+// - read_some() exits in bounded time after close()
+//
+// - No undefined states are exposed to the transport layer
+//
+// Therefore, this backend satisfies:
 //
 //      "bounded-time shutdown and interruptible receive"
+//
+// NOTE:
+// TLS (OpenSSL) may introduce small, bounded delays during shutdown,
+// but these are controlled and do not violate contract guarantees.
+//
+// Shutdown Semantics
+// ------------------
+// - close() is idempotent and thread-safe
+// - A local atomic flag (`closed_`) enforces fast logical shutdown
+//
+// After close():
+//   - read_some() returns immediately with:
+//         { status = Ok, frame = Close, bytes = 0 }
+//   - send() fails fast
+//
+// Additionally:
+//   - In-flight reads are interrupted via socket cancellation
+//
+// Error Model
+// -----------
+// Boost/Asio errors are mapped into BackendConcept semantics:
+//
+// - websocket::error::closed
+// - operation_aborted
+//     → treated as graceful CLOSE
+//
+// - timed_out / timeout
+//     → Timeout
+//
+// - all other errors
+//     → TransportError
+//
+// This prioritizes semantic consistency over preserving raw error meaning.
+// Higher layers (retry policy, session logic) handle recovery.
 //
 // Suitability
 // -----------
@@ -43,47 +102,37 @@
 //
 // ✔ Ultra-low latency (ULL) systems
 // ✔ Deterministic protocol engines
-// ✔ High-frequency data ingestion (market data, trading)
-// ✔ Systems requiring explicit control over memory and threading
+// ✔ High-frequency data ingestion
+// ✔ Systems requiring explicit I/O control
 //
-// and is the recommended backend for production use.
+// Design Positioning
+// ------------------
+// This backend is the reference implementation for:
 //
-// Design Notes
-// ------------
-// - Uses Boost.Beast for WebSocket framing (RFC 6455 compliant)
-// - TLS handled via OpenSSL (`ssl::stream`)
-// - Configured for performance:
-//      * auto_fragment(false)
-//      * unbounded message size
-//      * binary mode enabled
+//   ✔ Deterministic behavior
+//   ✔ Interruptible I/O
+//   ✔ BackendConcept compliance
 //
-// - The design favors:
-//      * straight-line execution
-//      * minimal branching
-//      * predictable control flow
+// Compared to WinHTTP backend:
 //
-// Limitations
-// -----------
-// - Still subject to TLS-layer behavior (OpenSSL):
-//      * small, bounded delays may occur during shutdown
-// - Exception-based error handling is used in the receive path
-//      (cost is negligible outside hot loops but may be optimized further)
+//   Asio:
+//     ✔ Interruptible
+//     ✔ Bounded shutdown
+//     ✔ ULL-suitable
 //
-// Backend Contract Notes
-// ----------------------
-// - `close()` is idempotent and thread-safe (internally guarded)
-// - `read_some()` guarantees:
-//      * zero-copy writes into caller buffer
-//      * no partial writes on error
-// - `message_done()` reflects Beast frame/message boundaries
+//   WinHTTP:
+//     ✘ Non-interruptible
+//     ✘ Unbounded blocking
 //
 // Summary
 // -------
-// ✔ Deterministic
-// ✔ Interruptible in bounded time
-// ✔ ULL-suitable
+// ✔ BackendConcept-compliant
+// ✔ Deterministic transport semantics
+// ✔ Interruptible receive (bounded shutdown)
 // ✔ Zero-copy friendly
-// ❌ Slight TLS-induced variability (bounded)
+// ✔ ULL-suitable
+//
+// ❌ Minor TLS-induced variability (bounded)
 //
 // ============================================================================
 
@@ -127,11 +176,10 @@ public:
         ssl_ctx_.set_verify_mode(ssl::verify_none);
     }
 
-    bool connect(std::string_view host,
-                 std::uint16_t port,
-                 std::string_view target,
-                 bool secure = true)
-    {
+    bool connect(std::string_view host, std::uint16_t port, std::string_view target, bool secure = true) {
+
+        closed_.store(false, std::memory_order_release);
+
         try {
             host_ = std::string(host);
 
@@ -163,12 +211,26 @@ public:
             return true;
         }
         catch (const std::exception& e) {
-            std::cerr << "[ASIO] connect exception: " << e.what() << std::endl;
+            //std::cerr << "[ASIO] connect exception: " << e.what() << std::endl;
+            cleanup_();
             return false;
         }
     }
 
     bool send(std::string_view msg) {
+        // =========================================================
+        // Preconditions
+        // =========================================================
+        if (closed_.load(std::memory_order_acquire)) [[unlikely]] {
+            return false;
+        }
+        if (!ws_.is_open()) [[unlikely]] {
+            return false;
+        }
+
+        // =========================================================
+        // Perform send
+        // =========================================================
         try {
             ws_.write(net::buffer(msg));
             return true;
@@ -179,34 +241,105 @@ public:
     }
 
     // ZERO-COPY RECEIVE
-    websocket::ReceiveStatus read_some(void* buffer, std::size_t size, std::size_t& bytes) noexcept {
+    websocket::ReadResult read_some(void* buffer, std::size_t size) noexcept {
+        using RS = websocket::ReceiveStatus;
+        using FT = websocket::FrameType;
+
+        // =========================================================
+        // Preconditions
+        // =========================================================
+        if (closed_.load(std::memory_order_acquire)) [[unlikely]] {
+            return websocket::ReadResult{
+                .status = RS::Ok,
+                .bytes  = 0,
+                .frame  = FT::Close
+            };
+        }
+
+        if (!ws_.is_open()) [[unlikely]] {
+            return websocket::ReadResult{
+                .status = RS::Ok,
+                .bytes  = 0,
+                .frame  = FT::Close
+            };
+        }
+
         try {
-            bytes = ws_.read_some(net::buffer(buffer, size));
-            return websocket::ReceiveStatus::Ok;
+            // =====================================================
+            // Perform read (ZERO-COPY)
+            // =====================================================
+            std::size_t bytes = ws_.read_some(net::buffer(buffer, size));
+
+            // =====================================================
+            // Map frame boundary
+            // =====================================================
+            const bool done = ws_.is_message_done();
+            if (!done) {
+                // Fragment MUST have bytes > 0
+                if (bytes == 0) [[unlikely]] {
+                    return websocket::ReadResult{
+                        .status = RS::ProtocolError,
+                        .bytes  = 0,
+                        .frame  = FT::Fragment
+                    };
+                }
+            }
+
+            return websocket::ReadResult{
+                .status = RS::Ok,
+                .bytes  = bytes,
+                .frame  = done ? FT::Message : FT::Fragment
+            };
         }
         catch (const beast::system_error& e) {
             const auto& ec = e.code();
 
-            // Closed (normal / expected)
-            if (ec == beast::websocket::error::closed || ec == net::error::operation_aborted) {
-                return websocket::ReceiveStatus::Closed;
+            // =====================================================
+            // CLOSE normalization
+            // =====================================================
+            // All terminal conditions -> Close (not error)
+            if (ec == beast::websocket::error::closed ||
+                ec == net::error::operation_aborted ||
+                ec == net::error::eof ||
+                ec == net::error::connection_reset ||
+                ec == ssl::error::stream_truncated)
+            {
+                return websocket::ReadResult{
+                    .status = RS::Ok,
+                    .bytes  = 0,
+                    .frame  = FT::Close
+                };
             }
 
-            // Timeout (rare unless configured)
-            if (ec == net::error::timed_out || ec == beast::error::timeout) {
-                return websocket::ReceiveStatus::Timeout;
+            // =====================================================
+            // TIMEOUT
+            // =====================================================
+            if (ec == net::error::timed_out ||
+                ec == beast::error::timeout)
+            {
+                return websocket::ReadResult{
+                    .status = RS::Timeout,
+                    .bytes  = 0,
+                    .frame  = FT::Fragment // ignored
+                };
             }
 
-            // Everything else = transport failure
-            return websocket::ReceiveStatus::TransportError;
+            // =====================================================
+            // TRANSPORT ERROR
+            // =====================================================
+            return websocket::ReadResult{
+                .status = RS::TransportError,
+                .bytes  = 0,
+                .frame  = FT::Fragment // ignored
+            };
         }
         catch (...) {
-            return websocket::ReceiveStatus::TransportError;
+            return websocket::ReadResult{
+                .status = RS::TransportError,
+                .bytes  = 0,
+                .frame  = FT::Fragment // ignored
+            };
         }
-    }
-
-    bool message_done() const noexcept {
-        return ws_.is_message_done();
     }
 
     void close() {
@@ -234,7 +367,7 @@ public:
     }
 
     bool is_open() const noexcept {
-        return ws_.is_open();
+        return !closed_.load(std::memory_order_acquire) && ws_.is_open();
     }
 
 private:
@@ -247,6 +380,18 @@ private:
     std::string host_;
 
     std::atomic<bool> closed_{false};
+
+private:
+    void cleanup_() noexcept {
+        boost::system::error_code ec;
+
+        auto& ssl  = ws_.next_layer();
+        auto& sock = ssl.next_layer();
+
+        sock.cancel(ec);
+        ssl.shutdown(ec);   // best effort
+        sock.close(ec);
+    }
 };
 
 } // namespace asio

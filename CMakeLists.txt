@@ -26,6 +26,9 @@ find_package(CLI11 REQUIRED)
 # Platform-specific dependencies
 if (WIN32)
     message(STATUS "Configuring for Windows (WinHTTP transport)")
+    #message(STATUS "Configuring for Windows (Boost.Beast transport)")
+    #find_package(Boost REQUIRED COMPONENTS system)
+    #find_package(OpenSSL REQUIRED)
 elseif (UNIX)
     message(STATUS "Configuring for Linux (Boost.Beast transport)")
     find_package(Boost REQUIRED COMPONENTS system)
@@ -51,23 +54,18 @@ if (WIN32)
     # -------------------------------------------------------------
     # Windows (WinHTTP)
     # -------------------------------------------------------------
-    target_compile_definitions(wirekrak INTERFACE
-        WIREKRAK_TRANSPORT_WINHTTP
-    )
-
     target_link_libraries(wirekrak INTERFACE
         winhttp
         crypt32
         secur32
+        #Boost::system
+        #OpenSSL::SSL
+        #OpenSSL::Crypto
     )
 elseif (UNIX)
     # -------------------------------------------------------------
     # Linux (Boost.Asio / Beast)
     # -------------------------------------------------------------
-    target_compile_definitions(wirekrak INTERFACE
-        WIREKRAK_TRANSPORT_ASIO
-    )
-
     target_link_libraries(wirekrak INTERFACE
         Boost::system
         OpenSSL::SSL

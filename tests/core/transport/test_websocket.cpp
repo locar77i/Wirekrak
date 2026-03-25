@@ -49,8 +49,7 @@ namespace test {
 using transport::websocket::ReceiveStatus;
 
 struct TestBackend {
-    std::queue<ReceiveStatus> statuses;
-    mutable std::queue<bool> message_done_flags;
+    std::queue<websocket::ReadResult> results;
     std::queue<std::string> payloads;
 
     int read_count = 0;
@@ -81,41 +80,44 @@ struct TestBackend {
         return send_result;
     }
 
-    // --- Receive ---
-    ReceiveStatus read_some(void* buffer, std::size_t size, std::size_t& bytes) noexcept {
+    // --- Receive (NEW CONTRACT) ---
+    websocket::ReadResult read_some(void* buffer, std::size_t size) noexcept {
         ++read_count;
 
-        if (statuses.empty()) {
+        if (results.empty()) {
             std::this_thread::yield();
-            return ReceiveStatus::Closed;
+            return {
+                .status = websocket::ReceiveStatus::Ok,
+                .bytes  = 0,
+                .frame  = websocket::FrameType::Close
+            };
         }
 
-        auto status = statuses.front();
-        statuses.pop();
+        auto result = results.front();
+        results.pop();
 
-        bytes = 0;
-
-        if (status != ReceiveStatus::Ok) {
-            return status;
+        // Enforce contract in test backend
+        if (result.status != websocket::ReceiveStatus::Ok) {
+            return result; // bytes must already be 0
         }
 
-        if (!payloads.empty()) {
+        // Write payload if present
+        if (result.status == websocket::ReceiveStatus::Ok && result.bytes > 0) {
+            if (payloads.empty()) [[unlikely]] {
+                // Test bug → fail hard
+                std::abort(); // or assert(false)
+            }
+
             const auto& p = payloads.front();
             auto n = std::min(p.size(), size);
+
             std::memcpy(buffer, p.data(), n);
-            bytes = n;
+            result.bytes = n;
+
             payloads.pop();
         }
 
-        return ReceiveStatus::Ok;
-    }
-
-    bool message_done() const noexcept {
-        if (message_done_flags.empty()) return true;
-
-        bool done = message_done_flags.front();
-        message_done_flags.pop();
-        return done;
+        return result;
     }
 };
 
@@ -185,7 +187,11 @@ void test_close_called_once() {
 
     // --- Simulate CLOSE from backend ---
     auto& backend = ws.test_backend();
-    backend.statuses.push(websocket::ReceiveStatus::Closed);
+    backend.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 0,
+        .frame  = websocket::FrameType::Close
+    });
 
     // Start receive loop (no real connect needed) - ws.connect("x", 443, "/", true))
     ws.test_start_receive_loop();
@@ -233,7 +239,11 @@ void test_error_triggers_close() {
 
     // --- Simulate transport error ---
     auto& backend = ws.test_backend();
-    backend.statuses.push(websocket::ReceiveStatus::TransportError);
+    backend.results.push({
+        .status = websocket::ReceiveStatus::TransportError,
+        .bytes  = 0,
+        .frame  = websocket::FrameType::Fragment // ignored
+    });
 
     // Start receive loop
     ws.test_start_receive_loop();
@@ -306,8 +316,11 @@ void test_message_delivery_to_ring() {
     auto& backend = ws.test_backend();
 
     backend.payloads.push("test_message");
-    backend.statuses.push(websocket::ReceiveStatus::Ok);
-    backend.message_done_flags.push(true);
+    backend.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 12, // or any >0 (will be adjusted)
+        .frame  = websocket::FrameType::Message
+    });
 
     // Start receive loop
     ws.test_start_receive_loop();
@@ -414,7 +427,11 @@ void test_error_then_close_ordering() {
 
     // --- Simulate transport error ---
     auto& backend = ws.test_backend();
-    backend.statuses.push(websocket::ReceiveStatus::TransportError);
+    backend.results.push({
+        .status = websocket::ReceiveStatus::TransportError,
+        .bytes  = 0,
+        .frame  = websocket::FrameType::Fragment // ignored
+    });
 
     // Start receive loop
     ws.test_start_receive_loop();
@@ -487,14 +504,24 @@ void test_multiple_messages() {
     auto& backend = ws.test_backend();
 
     backend.payloads.push("msg1");
-    backend.statuses.push(websocket::ReceiveStatus::Ok);
-    backend.message_done_flags.push(true);
+    backend.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 4,
+        .frame  = websocket::FrameType::Message
+    });
 
     backend.payloads.push("msg2");
-    backend.statuses.push(websocket::ReceiveStatus::Ok);
-    backend.message_done_flags.push(true);
+    backend.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 4,
+        .frame  = websocket::FrameType::Message
+    });
 
-    backend.statuses.push(websocket::ReceiveStatus::Closed);
+    backend.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 0,
+        .frame  = websocket::FrameType::Close
+    });
 
     // Start receive loop
     ws.test_start_receive_loop();
@@ -541,6 +568,79 @@ void test_multiple_messages() {
 }
 
 
+void test_fragment_assembly() {
+    std::cout << "[TEST] Running fragment assembly test..." << std::endl;
+
+    control_ring.clear();
+    message_ring.clear();
+
+    telemetry::WebSocket telemetry;
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
+
+    std::atomic<bool> receive_started{false};
+    ws.set_receive_started_flag(&receive_started);
+
+    auto& backend = ws.test_backend();
+
+    backend.payloads.push("hello ");
+    backend.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 6,
+        .frame  = websocket::FrameType::Fragment
+    });
+
+    backend.payloads.push("world");
+    backend.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 5,
+        .frame  = websocket::FrameType::Message
+    });
+
+    ws.test_start_receive_loop();
+
+    while (!receive_started.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    auto* slot = ws.peek_message();
+    while (!slot) {
+        std::this_thread::yield();
+        slot = ws.peek_message();
+    }
+
+    assert(slot->size() == 11);
+    assert(std::memcmp(slot->data(), "hello world", 11) == 0);
+
+    ws.release_message(slot);
+    ws.close();
+
+    std::cout << "[TEST] Done." << std::endl;
+}
+
+
+void test_invalid_fragment_zero_bytes() {
+    std::cout << "[TEST] Running invalid fragment test..." << std::endl;
+
+    control_ring.clear();
+    message_ring.clear();
+
+    telemetry::WebSocket telemetry;
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
+
+    auto& backend = ws.test_backend();
+
+    backend.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 0, // INVALID
+        .frame  = websocket::FrameType::Fragment
+    });
+
+    ws.test_start_receive_loop();
+
+    // Expect assert / crash in debug
+}
+
+
 // -----------------------------------------------------------------------------
 // Entry point
 // -----------------------------------------------------------------------------
@@ -558,6 +658,8 @@ int main() {
     test_send_failure();
     test_error_then_close_ordering();
     test_multiple_messages();
+    test_fragment_assembly();
+    test_invalid_fragment_zero_bytes();
 
     std::cout << "[TEST] ALL TRANSPORT TESTS PASSED!" << std::endl;
     return 0;
