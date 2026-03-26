@@ -110,6 +110,7 @@
       "cacheVariables": {
         "WIREKRAK_BUILD_LITE": "OFF",
         "WIREKRAK_BUILD_BENCHMARKS": "ON",
+        "WIREKRAK_ENABLE_ULL": "ON",
         "WIREKRAK_ENABLE_TELEMETRY_L3": "ON"
       }
     },
@@ -121,7 +122,7 @@
       "cacheVariables": {
         "WIREKRAK_BUILD_LITE": "OFF",
         "WIREKRAK_BUILD_BENCHMARKS": "ON",
-        "WIREKRAK_ENABLE_TELEMETRY_L1": "ON"
+        "WIREKRAK_ENABLE_ULL": "ON"
       }
     }
   ],

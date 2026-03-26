@@ -29,7 +29,7 @@
 
 
 
-namespace wirekrak::core::transport {
+namespace wirekrak::core::transport::websocket {
 
 template<
     typename ControlRing,
@@ -37,15 +37,15 @@ template<
     policy::transport::WebSocketBundleConcept PolicyBundle,
     websocket::BackendConcept Backend
 >
-class WebSocketImpl {
+class Engine {
 public:
-    explicit WebSocketImpl(ControlRing& ctrl_ring, MessageRing& msg_ring, telemetry::WebSocket& telemetry) noexcept
+    explicit Engine(ControlRing& ctrl_ring, MessageRing& msg_ring, telemetry::WebSocket& telemetry) noexcept
         : control_ring_(ctrl_ring)
         , message_ring_(msg_ring)
         , telemetry_(telemetry) {
     }
 
-    ~WebSocketImpl() {
+    ~Engine() {
         close();
     }
 
@@ -60,7 +60,7 @@ public:
 
         running_.store(true, std::memory_order_release);
 
-        recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
+        recv_thread_ = std::thread(&Engine::receive_loop_, this);
 
         WK_TL1( telemetry_.connect_events_total.inc() );
 
@@ -550,7 +550,7 @@ public:
         test_receive_loop_started_ = true;
         // Fake non-null WebSocket handle
         running_.store(true, std::memory_order_release);
-        recv_thread_ = std::thread(&WebSocketImpl::receive_loop_, this);
+        recv_thread_ = std::thread(&Engine::receive_loop_, this);
     }
 
 private:
@@ -572,70 +572,4 @@ private:
 
 };
 
-} // namespace wirekrak::core::transport
-
-
-
-// ============================================================================================
-// Public alias with backend selection
-// ============================================================================================
-
-
-
-// -----------------------------------------------------------------------------
-// Backend selection
-// -----------------------------------------------------------------------------
-
-#if defined(WIREKRAK_FORCE_ASIO)
-    #define WK_BACKEND_ASIO
-#elif defined(WIREKRAK_FORCE_WINHTTP)
-    #define WK_BACKEND_WINHTTP
-#else
-    #if defined(_WIN32)
-        #define WK_BACKEND_WINHTTP
-    #elif defined(__linux__)
-        #define WK_BACKEND_ASIO
-    #else
-        #error "Unsupported platform"
-    #endif
-#endif
-
-// -----------------------------------------------------------------------------
-// Includes
-// -----------------------------------------------------------------------------
-
-#if defined(WK_BACKEND_WINHTTP)
-    #include "wirekrak/core/transport/winhttp/backend.hpp"
-    //#include "wirekrak/core/transport/asio/backend.hpp"
-#elif defined(WK_BACKEND_ASIO)
-    #include "wirekrak/core/transport/asio/backend.hpp"
-#endif
-
-namespace wirekrak::core::transport {
-
-// -----------------------------------------------------------------------------
-// Public WebSocket alias
-// -----------------------------------------------------------------------------
-
-#if defined(WK_BACKEND_WINHTTP)
-    using DefaultBackend = winhttp::Backend;
-    //using DefaultBackend = asio::Backend;
-#elif defined(WK_BACKEND_ASIO)
-    using DefaultBackend = asio::Backend;
-#endif
-
-
-template<
-        typename ControlRing,
-        typename MessageRing,
-        typename PolicyBundle = policy::transport::DefaultWebsocket,
-        typename Backend = DefaultBackend
-    >
-    using WebSocket = WebSocketImpl<
-        ControlRing,
-        MessageRing,
-        PolicyBundle,
-        Backend
-    >;
-
-} // namespace wirekrak::core::transport
+} // namespace wirekrak::core::transport::websocket

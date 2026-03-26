@@ -9,7 +9,7 @@ namespace wirekrak::core::preset {
 
     using DefaultControlRing =
         lcr::lockfree::spsc_queue<
-        transport::websocket::Event,
+        core::transport::websocket::Event,
         config::transport::CONTROL_RING_CAPACITY
     >;
 

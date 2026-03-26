@@ -29,7 +29,7 @@ Contract Invariants Tested
 --------------------------
 1. status != Ok  → bytes MUST be 0
 2. Fragment      → bytes MUST be > 0
-3. Message       → bytes MAY be >= 0
+3. Message       → bytes MUST be > 0
 4. Close         → bytes MUST be 0
 
 ================================================================================
@@ -42,8 +42,8 @@ Contract Invariants Tested
 #include <atomic>
 #include <thread>
 
-#include "wirekrak/core/transport/websocket.hpp"
 #include "wirekrak/core/transport/websocket_concept.hpp"
+#include "wirekrak/core/transport/websocket/engine.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
 #include "wirekrak/core/policy/transport/websocket_bundle.hpp"
@@ -110,12 +110,15 @@ using namespace wirekrak::core::transport;
 using ControlRing = preset::DefaultControlRing;
 using MessageRing = preset::DefaultMessageRing;
 
-using WS = WebSocketImpl<
+using WebSocketUnderTest = websocket::Engine<
     ControlRing,
     MessageRing,
     policy::transport::DefaultWebsocket,
     test::TestBackend
 >;
+
+// Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept
+static_assert(WebSocketConcept<WebSocketUnderTest>);
 
 static ControlRing control_ring;
 static lcr::memory::block_pool memory_pool(128 * 1024, 8);
@@ -125,7 +128,7 @@ static MessageRing message_ring(memory_pool);
 // Helpers
 // -----------------------------------------------------------------------------
 
-void wait_for_loop_start(WS& ws, std::atomic<bool>& flag) {
+void wait_for_loop_start(WebSocketUnderTest& ws, std::atomic<bool>& flag) {
     ws.set_receive_started_flag(&flag);
     ws.test_start_receive_loop();
 
@@ -145,7 +148,7 @@ void test_valid_fragment() {
     message_ring.clear();
 
     telemetry::WebSocket telemetry;
-    WS ws(control_ring, message_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     std::atomic<bool> started{false};
 
@@ -163,30 +166,6 @@ void test_valid_fragment() {
     ws.close();
 }
 
-void test_invalid_message_zero_bytes() {
-    std::cout << "[TEST] invalid empty message..." << std::endl;
-
-    control_ring.clear();
-    message_ring.clear();
-
-    telemetry::WebSocket telemetry;
-    WS ws(control_ring, message_ring, telemetry);
-
-    std::atomic<bool> started{false};
-
-    auto& b = ws.test_backend();
-
-    b.results.push({
-        .status = websocket::ReceiveStatus::Ok,
-        .bytes  = 0,
-        .frame  = websocket::FrameType::Message
-    });
-
-    wait_for_loop_start(ws, started);
-
-    ws.close();
-}
-
 void test_valid_close() {
     std::cout << "[TEST] valid close..." << std::endl;
 
@@ -194,7 +173,7 @@ void test_valid_close() {
     message_ring.clear();
 
     telemetry::WebSocket telemetry;
-    WS ws(control_ring, message_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     std::atomic<bool> started{false};
 
@@ -213,6 +192,30 @@ void test_valid_close() {
 // INVALID CASES (must assert / fail-fast in debug)
 // -----------------------------------------------------------------------------
 
+void test_invalid_message_zero_bytes() {
+    std::cout << "[TEST] invalid empty message..." << std::endl;
+
+    control_ring.clear();
+    message_ring.clear();
+
+    telemetry::WebSocket telemetry;
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
+
+    std::atomic<bool> started{false};
+
+    auto& b = ws.test_backend();
+
+    b.results.push({
+        .status = websocket::ReceiveStatus::Ok,
+        .bytes  = 0,
+        .frame  = websocket::FrameType::Message
+    });
+
+    wait_for_loop_start(ws, started);
+
+    ws.close();
+}
+
 void test_invalid_fragment_zero_bytes() {
     std::cout << "[TEST] INVALID: fragment with 0 bytes (should assert)" << std::endl;
 
@@ -220,7 +223,7 @@ void test_invalid_fragment_zero_bytes() {
     message_ring.clear();
 
     telemetry::WebSocket telemetry;
-    WS ws(control_ring, message_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     auto& b = ws.test_backend();
 
@@ -240,7 +243,7 @@ void test_invalid_close_with_bytes() {
     message_ring.clear();
 
     telemetry::WebSocket telemetry;
-    WS ws(control_ring, message_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     auto& b = ws.test_backend();
 
@@ -262,7 +265,7 @@ void test_invalid_error_with_bytes() {
     message_ring.clear();
 
     telemetry::WebSocket telemetry;
-    WS ws(control_ring, message_ring, telemetry);
+    WebSocketUnderTest ws(control_ring, message_ring, telemetry);
 
     auto& b = ws.test_backend();
 
@@ -284,12 +287,12 @@ int main() {
 
     // Valid cases (must pass)
     test_valid_fragment();
-    test_invalid_message_zero_bytes();
     test_valid_close();
 
     std::cout << "\n--- The following tests are expected to ASSERT in Debug ---\n";
 
     // Uncomment one at a time in debug builds
+    // test_invalid_message_zero_bytes();
     // test_invalid_fragment_zero_bytes();
     // test_invalid_close_with_bytes();
     // test_invalid_error_with_bytes();

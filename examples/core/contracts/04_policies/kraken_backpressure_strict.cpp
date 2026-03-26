@@ -60,6 +60,9 @@
 //
 // ============================================================================
 
+#include "wirekrak/core/transport/websocket/engine.hpp"
+#include "wirekrak/core/transport/websocket_concept.hpp"
+#include "wirekrak/core/preset/transport/backend_default.hpp"
 #include "wirekrak/core/preset/protocol/kraken_default.hpp"
 
 #include "common/run_multi_subscription_example.hpp"
@@ -84,11 +87,14 @@ using MySessionPolicies =
     >;
 
 using MyWebSocket =
-    transport::WebSocket<
+    transport::websocket::Engine<
         preset::DefaultControlRing,
         preset::DefaultMessageRing,
-        MyWebSocketPolicies
+        MyWebSocketPolicies,
+        preset::transport::DefaultBackend
     >;
+// Assert that MyWebSocket conforms to transport::WebSocketConcept concept
+static_assert(transport::WebSocketConcept<MyWebSocket>);
 
 using MySession =
     protocol::kraken::Session<

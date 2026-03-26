@@ -12,6 +12,11 @@ target_include_directories(wirekrak-lite
         ${PROJECT_SOURCE_DIR}/include
 )
 
+target_compile_features(wirekrak-lite PUBLIC cxx_std_20)
+
+# -------------------------------------------------------------
+# Core deps
+# -------------------------------------------------------------
 target_link_libraries(wirekrak-lite
     PUBLIC
         wirekrak            # Core (INTERFACE)
@@ -19,13 +24,11 @@ target_link_libraries(wirekrak-lite
         spdlog::spdlog
 )
 
-target_compile_features(wirekrak-lite PUBLIC cxx_std_20)
-
-if (WIN32)
-    target_link_libraries(wirekrak-lite
-        PUBLIC
-            winhttp
-            crypt32
-            secur32
-    )
-endif()
+# -------------------------------------------------------------
+# Backend selection
+# -------------------------------------------------------------
+target_link_libraries(wirekrak-lite
+    PUBLIC
+        #wirekrak_backend_winhttp
+        wirekrak_backend_asio
+)

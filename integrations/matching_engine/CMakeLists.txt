@@ -33,8 +33,8 @@ add_executable(flashstrike_matching_gateway
 )
 target_link_libraries(flashstrike_matching_gateway
     PRIVATE
-        wirekrak
         wirekrak-lite
+        wirekrak_backend_asio
         CLI11::CLI11
 )
 target_include_directories(flashstrike_matching_gateway

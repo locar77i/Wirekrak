@@ -69,6 +69,7 @@ Important notes (ULL context):
 #include <thread>
 
 #ifdef _WIN32
+    #include <winsock2.h> // Must be included before ASIO on Windows
     #include <windows.h>
 #else
     #include <pthread.h>

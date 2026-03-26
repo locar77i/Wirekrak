@@ -7,5 +7,5 @@ include(${PROJECT_SOURCE_DIR}/cmake/WirekrakExamples.cmake)
 # Examples
 # -------------------------------------------------------------
 
-wirekrak_add_lite_example(wkl_00_quickstart_trade trade.cpp)
-wirekrak_add_lite_example(wkl_00_quickstart_book book.cpp)
+wirekrak_add_lite_example(wkl_00_quickstart_trade trade.cpp wirekrak_backend_asio)
+wirekrak_add_lite_example(wkl_00_quickstart_book book.cpp wirekrak_backend_asio)

@@ -15,7 +15,7 @@ function(wirekrak_add_core_example target source)
 
     target_link_libraries(${target}
         PRIVATE
-            wirekrak
+            wirekrak_backend_asio
             ${ARGN}
     )
 endfunction()

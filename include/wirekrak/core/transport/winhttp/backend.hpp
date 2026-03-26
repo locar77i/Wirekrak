@@ -121,6 +121,7 @@
 //
 // ============================================================================
 
+#include <winsock2.h> // Must be included before ASIO on Windows
 #include <windows.h>
 #include <winhttp.h>
 #include <winerror.h>

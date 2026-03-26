@@ -22,18 +22,8 @@ message(STATUS "Using vcpkg toolchain: ${CMAKE_TOOLCHAIN_FILE}")
 find_package(simdjson REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(CLI11 REQUIRED)
-
-# Platform-specific dependencies
-if (WIN32)
-    message(STATUS "Configuring for Windows (WinHTTP transport)")
-    #message(STATUS "Configuring for Windows (Boost.Beast transport)")
-    #find_package(Boost REQUIRED COMPONENTS system)
-    #find_package(OpenSSL REQUIRED)
-elseif (UNIX)
-    message(STATUS "Configuring for Linux (Boost.Beast transport)")
-    find_package(Boost REQUIRED COMPONENTS system)
-    find_package(OpenSSL REQUIRED)
-endif()
+find_package(Boost REQUIRED COMPONENTS system)
+find_package(OpenSSL REQUIRED)
 
 # -------------------------------------------------------------
 # Create Wirekrak Library
@@ -49,30 +39,66 @@ target_link_libraries(wirekrak INTERFACE
     spdlog::spdlog
 )
 
+target_compile_definitions(wirekrak INTERFACE
+    SPDLOG_NO_EXCEPTIONS
+)
 
-if (WIN32)
-    # -------------------------------------------------------------
-    # Windows (WinHTTP)
-    # -------------------------------------------------------------
-    target_link_libraries(wirekrak INTERFACE
-        winhttp
-        crypt32
-        secur32
-        #Boost::system
-        #OpenSSL::SSL
-        #OpenSSL::Crypto
-    )
-elseif (UNIX)
-    # -------------------------------------------------------------
-    # Linux (Boost.Asio / Beast)
-    # -------------------------------------------------------------
-    target_link_libraries(wirekrak INTERFACE
-        Boost::system
-        OpenSSL::SSL
-        OpenSSL::Crypto
-    )
+# -------------------------------------------------------------
+# (Windows + GCC only) - Fix MinGW/COFF section limit (~32k) -> raises limit to ~4 billion sections
+# -------------------------------------------------------------
+if (MINGW)
+    add_compile_options(-Wa,-mbig-obj)
 endif()
 
+# -------------------------------------------------------------
+# Create Backend WinHTTP
+# -------------------------------------------------------------
+add_library(wirekrak_backend_winhttp INTERFACE)
+
+target_link_libraries(wirekrak_backend_winhttp INTERFACE
+    wirekrak
+    winhttp
+    crypt32
+    secur32
+)
+
+target_compile_definitions(wirekrak_backend_winhttp INTERFACE
+    WIREKRAK_FORCE_WINHTTP
+)
+
+# -------------------------------------------------------------
+# Create Backend Boost.Asio / Beast
+# -------------------------------------------------------------
+add_library(wirekrak_backend_asio INTERFACE)
+
+target_link_libraries(wirekrak_backend_asio INTERFACE
+    wirekrak
+    Boost::system
+    OpenSSL::SSL
+    OpenSSL::Crypto
+)
+
+target_compile_definitions(wirekrak_backend_asio INTERFACE
+    WIREKRAK_FORCE_ASIO
+    BOOST_ASIO_NO_DEPRECATED
+)
+
+# -----------------------
+# ULL configuration
+# -----------------------
+option(WIREKRAK_ENABLE_ULL "Enable ultra-low-latency optimizations" OFF)
+
+if (WIREKRAK_ENABLE_ULL)
+    message(STATUS "Building with ULL optimizations")
+    target_compile_options(wirekrak INTERFACE
+        -O3
+        -march=native
+        -mtune=native
+        -ffast-math
+        #-fno-exceptions
+        #-fno-rtti
+    )
+endif()
 
 # -----------------------
 # Telemetry configuration

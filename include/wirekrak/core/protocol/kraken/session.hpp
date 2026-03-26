@@ -63,7 +63,6 @@ Data-plane model:
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/transport/websocket.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/request/scheduler.hpp"

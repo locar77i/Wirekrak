@@ -147,11 +147,12 @@ Further performance work should focus on:
 #include <csignal>
 #include <immintrin.h>
 
+#include "wirekrak/core/transport/websocket/engine.hpp"
 #include "wirekrak/core/transport/websocket_concept.hpp"
-#include "wirekrak/core/transport/websocket.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
+#include "wirekrak/core/preset/transport/backend_default.hpp"
 #include "lcr/memory/block_pool.hpp"
 #include "lcr/metrics/snapshot/manager.hpp"
 #include "lcr/format.hpp"
@@ -204,10 +205,11 @@ using MessageRingUnderTest = preset::DefaultMessageRing; // Golbal message ring 
 
 
 using WebSocketUnderTest =
-    WebSocket<
+    transport::websocket::Engine<
         ControlRingUnderTest,
         MessageRingUnderTest,
-        policy::transport::DefaultWebsocket
+        policy::transport::DefaultWebsocket,
+        preset::transport::DefaultBackend
     >;
 
 // Assert that WebSocketUnderTest conforms to transport::WebSocketConcept concept

@@ -1,53 +1,3 @@
-// ============================================================================
-// Core Contracts Example - Immediate Request Policy
-// ============================================================================
-//
-// POLICY CONFIGURATION
-// --------------------
-// Request Batching Policy : Immediate
-//
-// EXPECTED BEHAVIOR
-// -----------------
-// - Subscription requests are sent exactly as issued by the user.
-// - No automatic splitting or batching of symbol lists occurs.
-//
-// Example:
-//
-//       subscribe(symbols = 25)
-//
-// results in:
-//
-//       subscribe(symbols = 25)
-//
-// The request is transmitted as a single protocol message regardless
-// of symbol count.
-//
-// OBSERVATION GUIDE
-// -----------------
-// During execution you should observe:
-//
-// - Exactly one "Sending subscribe message" log per subscription call
-// - The message contains the full symbol list
-// - No intermediate batching logs appear
-//
-// DESIGN PURPOSE
-// --------------
-// This example demonstrates the default behavior of the protocol session.
-//
-// The Immediate policy:
-//
-//   * preserves the user's request exactly
-//   * introduces no additional scheduling or batching logic
-//   * minimizes latency between API call and network transmission
-//
-// This policy is appropriate when:
-//
-//   - Requests are already within exchange limits
-//   - Maximum immediacy is desired
-//   - The client application performs its own batching logic
-//
-// ============================================================================
-
 #include "wirekrak/core/transport/websocket/engine.hpp"
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/protocol/kraken/session.hpp"
@@ -56,13 +6,14 @@
 #include "lcr/buffer/managed_slot.hpp"
 #include "lcr/buffer/managed_spsc_ring.hpp"
 #include "lcr/memory/block_pool.hpp"
+#include "lcr/log/logger.hpp"
 
-#include "common/run_multi_subscription_example.hpp"
+#include "common/run_single_book_subscription.hpp"
 
 
 constexpr static std::size_t BLOCK_SIZE =      128 * 1024;  // 128 KiB
-constexpr static std::size_t BLOCK_COUNT =             16;  // Number of blocks in the pool
-constexpr static std::size_t MESSAGE_RING_CAPACITY = 1024;  // Number of messages the ring can hold
+constexpr static std::size_t BLOCK_COUNT =              4;  // Number of blocks in the pool
+constexpr static std::size_t MESSAGE_RING_CAPACITY =  256;  // Number of messages the ring can hold
 
 // -------------------------------------------------------------------------
 // Session setup
@@ -114,11 +65,14 @@ static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 // -----------------------------------------------------------------------------
 
 int main(int argc, char** argv) {
-    return run_multi_subscription_example<MySession, MyMessageRing>(
+    using namespace lcr::log;
+    Logger::instance().set_level(Level::Debug);
+
+    return run_single_book_subscription<MySession, MyMessageRing>(
         argc,
         argv,
-        "Wirekrak Core - Custom Backpressure Policy Example\n"
-        "Demonstrates customizable backpressure handling with user-defined thresholds.\n",
+        "Wirekrak Core - Single Book Subscription Benchmark\n"
+        "Test the system's ability to handle a single high-throughput data stream with maximum depth.\n",
         memory_pool
     );
 }

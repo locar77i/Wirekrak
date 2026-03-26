@@ -35,7 +35,7 @@ avoiding timing assumptions and relying only on observable transport invariants.
 #include <algorithm>
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
-#include "wirekrak/core/transport/websocket.hpp"
+#include "wirekrak/core/transport/websocket/engine.hpp"
 #include "wirekrak/core/policy/transport/websocket_bundle.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
@@ -139,7 +139,7 @@ using MessageRingUnderTest = preset::DefaultMessageRing; // Golbal message ring 
 
 
 using WebSocketUnderTest =
-    WebSocketImpl<
+    websocket::Engine<
         ControlRingUnderTest,
         MessageRingUnderTest,
         policy::transport::DefaultWebsocket,

@@ -4,9 +4,6 @@
 #include "wirekrak/lite/channel/dispatcher.hpp"
 
 // ---- Core includes (PRIVATE) ----
-#include "wirekrak/core/transport/websocket_concept.hpp"
-#include "wirekrak/core/transport/websocket.hpp"
-#include "wirekrak/core/protocol/kraken/session.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/response_view.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/unsubscribe.hpp"
