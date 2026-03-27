@@ -111,7 +111,7 @@ public:
         , ctx_view_(*ctx_)
         , parser_(ctx_view_)
     {
-        lcr::system::pin_thread(1); // Pin session thread to core 1 for deterministic performance  
+        lcr::system::pin_thread(4); // Pin session thread to core 1 for deterministic performance  
     }
 
     // open connection
@@ -394,6 +394,12 @@ public:
         while (messages_processed < config::protocol::MAX_MESSAGES_PER_POLL) {
             auto* slot = connection_.peek_message();
             if (!slot) [[unlikely]] { // No more messages to process
+/*
+                const unsigned int spin_until = (config::protocol::MAX_MESSAGES_PER_POLL - messages_processed) * 3;
+                for (int i = 0; i < spin_until; ++i) {
+                    _mm_pause(); // Short pause to avoid busy spin
+                }
+*/
                 break;
             }
             const bool samples_now = slot->timestamp(); // For telemetry sampling (every 1024 messages)

@@ -180,7 +180,7 @@ private:
     void receive_loop_() noexcept {
         auto& clock = lcr::system::monotonic_clock::instance();
 
-        lcr::system::pin_thread(0);
+        lcr::system::pin_thread(3);
 
 #ifdef WK_UNIT_TEST
     // Signal test that receive loop has started (for better synchronization in tests)
@@ -240,26 +240,8 @@ private:
             
                 WK_TL1( telemetry_.rx_errors_total.inc() );
 
-                Error error = Error::TransportFailure;
-
-                switch (result.status) {
-
-                    case websocket::ReceiveStatus::Timeout:
-                        WK_WARN("[WS] Receive timeout");
-                        error = Error::Timeout;
-                        break;
-
-                    case websocket::ReceiveStatus::ProtocolError:
-                        WK_ERROR("[WS] Protocol error");
-                        error = Error::ProtocolError;
-                        break;
-
-                    case websocket::ReceiveStatus::TransportError:
-                    default:
-                        WK_ERROR("[WS] Transport error");
-                        error = Error::TransportFailure;
-                        break;
-                }
+                Error error = map_backend_error_(result);
+                log_backend_error_(result, error);
 
                 // Emit error (failure-first model)
                 if (!emit_event_(transport::websocket::Event::make_error(error))) {
@@ -276,6 +258,13 @@ private:
             if (result.frame == websocket::FrameType::Close) {
                 LCR_ASSERT_MSG(result.bytes == 0, "Backend violation: Close frame must have bytes == 0");
                 WK_DEBUG("[WS] Received CLOSE frame");
+                // Distinguish cause
+                if (result.error != websocket::BackendError::None && result.error != websocket::BackendError::LocalShutdown) {
+                    Error error = map_backend_error_(result);
+                    if (!emit_event_(Event::make_error(error))) {
+                        WK_ERROR("[WS] Failed to emit error <" << to_string(error) << ">");
+                    }
+                }
                 running_.store(false, std::memory_order_release);  // Stop loop
                 break; // End of loop -> discard partial message if any -> signal close
             }
@@ -449,6 +438,77 @@ private:
             }
         }
         return true;
+    }
+
+    [[nodiscard]]
+    static Error map_backend_error_(const ReadResult& result) noexcept {
+        using BE = websocket::BackendError;
+
+        switch (result.error) {
+
+            case BE::None:
+                // Fallback if backend didn't populate it
+                switch (result.status) {
+                    case websocket::ReceiveStatus::Timeout:
+                        return Error::Timeout;
+                    case websocket::ReceiveStatus::ProtocolError:
+                        return Error::ProtocolError;
+                    default:
+                        return Error::TransportFailure;
+                }
+
+            case BE::LocalShutdown:
+                return Error::LocalShutdown;
+
+            case BE::RemoteClosed:
+                return Error::RemoteClosed;
+
+            case BE::Timeout:
+                return Error::Timeout;
+
+            case BE::ConnectionFailed:
+                return Error::ConnectionFailed;
+
+            case BE::ProtocolError:
+                return Error::ProtocolError;
+
+            case BE::TransportFailure:
+            default:
+                return Error::TransportFailure;
+        }
+    }
+
+    static void log_backend_error_(const ReadResult& result, Error error) noexcept {
+        using BE = websocket::BackendError;
+
+        switch (result.error) {
+
+            case BE::LocalShutdown:
+                WK_TRACE("[WS] Receive cancelled (local shutdown)");
+                break;
+
+            case BE::RemoteClosed:
+                WK_DEBUG("[WS] Connection closed by peer");
+                break;
+
+            case BE::Timeout:
+                WK_WARN("[WS] Receive timeout");
+                break;
+
+            case BE::ConnectionFailed:
+                WK_ERROR("[WS] Cannot connect to remote host");
+                break;
+
+            case BE::ProtocolError:
+                WK_ERROR("[WS] Protocol error");
+                break;
+
+            case BE::TransportFailure:
+            default:
+                WK_ERROR("[WS] Transport error"
+                    << (result.native_error ? " (code=" + std::to_string(result.native_error) + ")" : ""));
+                break;
+        }
     }
 
     bool emit_event_(transport::websocket::Event event) noexcept {

@@ -167,6 +167,8 @@ class Backend {
 public:
     bool connect(std::string_view host, std::uint16_t port, std::string_view path, bool secure) noexcept {
         
+        cleanup_();
+        closing_.store(false, std::memory_order_release);
         closed_.store(false, std::memory_order_release);
 
         host_w_ = to_wide(host);
@@ -230,6 +232,9 @@ public:
     }
 
     void close() noexcept {
+        // Set closing flag to indicate shutdown is in progress
+        closing_.store(true, std::memory_order_release);
+
         // Fast path: ensure only one thread executes shutdown
         if (closed_.exchange(true, std::memory_order_acq_rel)) [[unlikely]] {
             return;
@@ -274,23 +279,30 @@ public:
     }
 
     websocket::ReadResult read_some(void* buffer, std::size_t size) noexcept {
-
+        using RS = websocket::ReceiveStatus;
+        using BE = websocket::BackendError;
+        using FT = websocket::FrameType;
+    
         // =========================================================
         // Preconditions
         // =========================================================
         if (closed_.load(std::memory_order_acquire)) [[unlikely]] {
             return websocket::ReadResult{
-                .status = websocket::ReceiveStatus::Ok,
+                .status = RS::Ok,
                 .bytes = 0,
-                .frame = websocket::FrameType::Close
+                .frame = FT::Close,
+                .error  = BE::LocalShutdown,
+                .native_error = 0
             };
         };
 
         if (!hWebSocket_) [[unlikely]] { // If the socket is gone -> this is effectively a CLOSE:
             return websocket::ReadResult{
-                .status = websocket::ReceiveStatus::Ok,
+                .status = RS::Ok,
                 .bytes = 0,
-                .frame = websocket::FrameType::Close
+                .frame = FT::Close,
+                .error = closed_.load(std::memory_order_acquire) ? BE::LocalShutdown : (closing_.load(std::memory_order_acquire) ? BE::LocalShutdown : BE::TransportFailure),
+                .native_error = 0
             };
         }
 
@@ -319,8 +331,6 @@ public:
         // =========================================================
         // Map frame type
         // =========================================================
-        using FT = websocket::FrameType;
-
         FT frame;
 
         switch (type) {
@@ -341,9 +351,11 @@ public:
             default:
                 // Should never happen, but be defensive
                 return websocket::ReadResult{
-                    .status = websocket::ReceiveStatus::ProtocolError,
+                    .status = RS::ProtocolError,
                     .bytes = 0,
-                    .frame = FT::Fragment
+                    .frame = FT::Fragment,
+                    .error  = BE::ProtocolError,
+                    .native_error = 0
                 };
         }
 
@@ -358,47 +370,98 @@ public:
         }
 
         return websocket::ReadResult{
-            .status = websocket::ReceiveStatus::Ok,
+            .status = RS::Ok,
             .bytes = static_cast<std::size_t>(read),
-            .frame = frame
+            .frame = frame,
+            .error  = BE::None,
+            .native_error = 0
         };
     }
 
 private:
+
     websocket::ReadResult map_result_on_error_(DWORD err) noexcept {
+        using RS = websocket::ReceiveStatus;
+        using BE = websocket::BackendError;
+        using FT = websocket::FrameType;
+
         switch (err) {
+
+            // =========================================================
+            // TIMEOUT
+            // =========================================================
             case ERROR_WINHTTP_TIMEOUT:
-                return websocket::ReadResult{
-                .status = websocket::ReceiveStatus::Timeout,
-                .bytes = 0,
-                .frame = websocket::FrameType::Fragment // dummy, ignored
-            };
+                return {
+                    .status = RS::Timeout,
+                    .bytes = 0,
+                    .frame = FT::Fragment,  // dummy, ignored,
+                    .error  = BE::Timeout,
+                    .native_error = static_cast<int>(err)
+                };
 
+            // =========================================================
+            // PROTOCOL ERROR
+            // =========================================================
             case ERROR_WINHTTP_INVALID_SERVER_RESPONSE:
-                return websocket::ReadResult{
-                .status = websocket::ReceiveStatus::ProtocolError,
-                .bytes = 0,
-                .frame = websocket::FrameType::Fragment // dummy, ignored
-            };
+                return {
+                    .status = RS::ProtocolError,
+                    .bytes = 0,
+                    .frame = FT::Fragment,  // dummy, ignored,
+                    .error  = BE::ProtocolError,
+                    .native_error = static_cast<int>(err)
+                };
 
+            // =========================================================
+            // LOCAL SHUTDOWN
+            // =========================================================
+            case ERROR_WINHTTP_OPERATION_CANCELLED:
+                return {
+                    .status = RS::Ok,
+                    .bytes = 0,
+                    .frame = FT::Close,
+                    .error  = closing_.load(std::memory_order_acquire) ? BE::LocalShutdown : BE::RemoteClosed,
+                    .native_error = static_cast<int>(err)
+                };
+
+            // =========================================================
+            // REMOTE CLOSED (best-effort classification)
+            // =========================================================
             case ERROR_WINHTTP_CONNECTION_ERROR: // -> Close
                 // This is correct in practice, but it's not strictly guaranteed by WinHTTP and could also mean abrupt disconnect (current approach = correct trade-off)
                 // NOTE:
                 // ERROR_WINHTTP_CONNECTION_ERROR may represent abrupt disconnect.
                 // We normalize it to CLOSE to keep transport semantics simple.
                 // Higher layers (retry policy) are responsible for recovery.
-            case ERROR_WINHTTP_OPERATION_CANCELLED: // -> Close
-                return websocket::ReadResult{ // Already decided -> close is not an error (enforce graceful close semantics)
-                    .status = websocket::ReceiveStatus::Ok,
+                return {
+                    .status = RS::Ok,
                     .bytes = 0,
-                    .frame = websocket::FrameType::Close // Treat as graceful close equivalent but signaling Close frame instead
+                    .frame = FT::Close,
+                    .error  = BE::RemoteClosed,
+                    .native_error = static_cast<int>(err)
+                };
+            
+            // =========================================================
+            // CONNECT FAIL (rare in receive, but possible)
+            // =========================================================
+            case ERROR_WINHTTP_CANNOT_CONNECT:
+                return {
+                    .status = RS::TransportError,
+                    .bytes = 0,
+                    .frame = FT::Fragment,  // dummy, ignored,
+                    .error  = BE::ConnectionFailed,
+                    .native_error = static_cast<int>(err)
                 };
 
+            // =========================================================
+            // DEFAULT
+            // =========================================================
             default:
-                return websocket::ReadResult{
-                    .status = websocket::ReceiveStatus::TransportError,
+                return {
+                    .status = RS::TransportError,
                     .bytes = 0,
-                    .frame = websocket::FrameType::Fragment // dummy, ignored
+                    .frame = FT::Fragment,  // dummy, ignored,
+                    .error  = BE::TransportFailure,
+                    .native_error = static_cast<int>(err)
                 };
         }
     }
@@ -419,7 +482,8 @@ private:
     HINTERNET hRequest_   = nullptr;
     HINTERNET hWebSocket_ = nullptr;
 
-    std::atomic<bool> closed_{false};
+    std::atomic<bool> closing_{false};  // intent (we initiated shutdown)
+    std::atomic<bool> closed_{false};   // state (backend is shut down)
 };
 
 } // namespace winhttp

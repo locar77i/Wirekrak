@@ -173,11 +173,14 @@ public:
         , ssl_ctx_(ssl::context::tls_client)
         , ws_(ioc_, ssl_ctx_)
     {
-        ssl_ctx_.set_verify_mode(ssl::verify_none);
+        ssl_ctx_.set_default_verify_paths();
+        ssl_ctx_.set_verify_mode(ssl::verify_peer);
     }
 
     bool connect(std::string_view host, std::uint16_t port, std::string_view target, bool secure = true) {
 
+        cleanup_();
+        closing_.store(false, std::memory_order_release);
         closed_.store(false, std::memory_order_release);
 
         try {
@@ -193,9 +196,8 @@ public:
                         host_.c_str()))
                 {
                     throw beast::system_error(
-                        beast::error_code(
-                            static_cast<int>(::ERR_get_error()),
-                            net::error::get_ssl_category()));
+                        beast::error_code(static_cast<int>(::ERR_get_error()), net::error::get_ssl_category())
+                    );
                 }
 
                 ws_.next_layer().handshake(ssl::stream_base::client);
@@ -243,6 +245,7 @@ public:
     // ZERO-COPY RECEIVE
     websocket::ReadResult read_some(void* buffer, std::size_t size) noexcept {
         using RS = websocket::ReceiveStatus;
+        using BE = websocket::BackendError;
         using FT = websocket::FrameType;
 
         // =========================================================
@@ -252,7 +255,9 @@ public:
             return websocket::ReadResult{
                 .status = RS::Ok,
                 .bytes  = 0,
-                .frame  = FT::Close
+                .frame  = FT::Close,
+                .error  = BE::LocalShutdown,
+                .native_error = 0
             };
         }
 
@@ -260,7 +265,9 @@ public:
             return websocket::ReadResult{
                 .status = RS::Ok,
                 .bytes  = 0,
-                .frame  = FT::Close
+                .frame  = FT::Close,
+                .error = closing_.load(std::memory_order_acquire) ? BE::LocalShutdown : BE::RemoteClosed,  // RemoteClosed because in practice the socket not open anymore -> overwhelmingly remote closur
+                .native_error = 0
             };
         }
 
@@ -268,81 +275,57 @@ public:
             // =====================================================
             // Perform read (ZERO-COPY)
             // =====================================================
-            std::size_t bytes = ws_.read_some(net::buffer(buffer, size));
+            auto buf = net::buffer(buffer, size);
+            std::size_t bytes = ws_.read_some(buf);
 
             // =====================================================
             // Map frame boundary
             // =====================================================
             const bool done = ws_.is_message_done();
+
+/* 
+            // Note:
+            // Beast can legally return bytes == 0 and done == false in some edge cases (control frames, TLS behavior)
+            // So this check is too strict -> Commented out, but leaving here for reference
             if (!done) {
                 // Fragment MUST have bytes > 0
                 if (bytes == 0) [[unlikely]] {
                     return websocket::ReadResult{
                         .status = RS::ProtocolError,
                         .bytes  = 0,
-                        .frame  = FT::Fragment
+                        .frame  = FT::Fragment,
+                        .error = BE::None,
+                        .native_error = 0
                     };
                 }
             }
+*/
 
             return websocket::ReadResult{
                 .status = RS::Ok,
                 .bytes  = bytes,
-                .frame  = done ? FT::Message : FT::Fragment
+                .frame  = done ? FT::Message : FT::Fragment,
+                .error = BE::None,
+                .native_error = 0
             };
         }
         catch (const beast::system_error& e) {
             const auto& ec = e.code();
-
-            // =====================================================
-            // CLOSE normalization
-            // =====================================================
-            // All terminal conditions -> Close (not error)
-            if (ec == beast::websocket::error::closed ||
-                ec == net::error::operation_aborted ||
-                ec == net::error::eof ||
-                ec == net::error::connection_reset ||
-                ec == ssl::error::stream_truncated)
-            {
-                return websocket::ReadResult{
-                    .status = RS::Ok,
-                    .bytes  = 0,
-                    .frame  = FT::Close
-                };
-            }
-
-            // =====================================================
-            // TIMEOUT
-            // =====================================================
-            if (ec == net::error::timed_out ||
-                ec == beast::error::timeout)
-            {
-                return websocket::ReadResult{
-                    .status = RS::Timeout,
-                    .bytes  = 0,
-                    .frame  = FT::Fragment // ignored
-                };
-            }
-
-            // =====================================================
-            // TRANSPORT ERROR
-            // =====================================================
-            return websocket::ReadResult{
-                .status = RS::TransportError,
-                .bytes  = 0,
-                .frame  = FT::Fragment // ignored
-            };
+            return map_result_on_error_(ec);
         }
         catch (...) {
             return websocket::ReadResult{
                 .status = RS::TransportError,
                 .bytes  = 0,
-                .frame  = FT::Fragment // ignored
+                .frame  = FT::Fragment, // ignored
+                .error = BE::TransportFailure,
+                .native_error = -1
             };
         }
     }
 
     void close() {
+        closing_.store(true, std::memory_order_release);
         // Fast path: ensure only one thread executes shutdown
         if (closed_.exchange(true, std::memory_order_acq_rel)) [[unlikely]] {
             return;
@@ -379,7 +362,8 @@ private:
 
     std::string host_;
 
-    std::atomic<bool> closed_{false};
+    std::atomic<bool> closing_{false};  // intent (we initiated shutdown)
+    std::atomic<bool> closed_{false};   // state (backend is shut down)
 
 private:
     void cleanup_() noexcept {
@@ -390,8 +374,92 @@ private:
 
         sock.cancel(ec);
         ssl.shutdown(ec);   // best effort
+        sock.shutdown(tcp::socket::shutdown_both, ec);
         sock.close(ec);
     }
+
+    websocket::ReadResult map_result_on_error_(const boost::system::error_code& ec) noexcept {
+        using RS = websocket::ReceiveStatus;
+        using BE = websocket::BackendError;
+        using FT = websocket::FrameType;
+
+        LCR_ASSERT_MSG(ec, "map_result_on_error_ called with success code");
+        // Defensive check for release builds
+        if (!ec) {
+            return {
+                .status = RS::TransportError,
+                .bytes = 0,
+                .frame = FT::Fragment,
+                .error = BE::TransportFailure,
+                .native_error = 0
+            };
+        }
+
+        // =========================================
+        // Graceful close (WebSocket-level)
+        // =========================================
+        if (ec == boost::beast::websocket::error::closed) {
+            return websocket::ReadResult{
+                .status = RS::Ok,
+                .bytes = 0,
+                .frame = FT::Close,
+                .error = BE::RemoteClosed,
+                .native_error = ws_.reason().code  // WS close code in this context
+            };
+        }
+
+        // =========================================
+        // Local shutdown
+        // =========================================
+        if (ec == boost::asio::error::operation_aborted) {
+            return websocket::ReadResult{
+                .status = RS::Ok,
+                .bytes = 0,
+                .frame = FT::Close,
+                .error = closing_.load(std::memory_order_acquire) ? BE::LocalShutdown : BE::RemoteClosed, // RemoteClosed -> pragmatic trading system
+                .native_error = ec.value()
+            };
+        }
+
+        // =========================================
+        // Remote closed (TCP-level)
+        // =========================================
+        if (ec == boost::asio::error::eof ||
+            ec == boost::asio::error::connection_reset) {
+            return websocket::ReadResult{
+                .status = RS::Ok,
+                .bytes = 0,
+                .frame = FT::Close,
+                .error = BE::RemoteClosed,
+                .native_error = ec.value()
+            };
+        }
+
+        // =========================================
+        // Timeout
+        // =========================================
+        if (ec == boost::asio::error::timed_out) {
+            return websocket::ReadResult{
+                .status = RS::Timeout,
+                .bytes = 0,
+                .frame = FT::Fragment,
+                .error = BE::Timeout,
+                .native_error = ec.value()
+            };
+        }
+
+        // =========================================
+        // Fallback
+        // =========================================
+        return websocket::ReadResult{
+            .status = RS::TransportError,
+            .bytes = 0,
+            .frame = FT::Fragment,
+            .error = BE::TransportFailure,
+            .native_error = ec.value()
+        };
+    }
+
 };
 
 } // namespace asio

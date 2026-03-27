@@ -14,18 +14,19 @@ Design goals:
   • Streaming-oriented — supports partial reads and message fragmentation
   • Deterministic semantics — transport drives the loop, backend reports state
   • Testability — enables fake backends for unit testing without network/OS
+  • Error fidelity — preserves semantic error information without leaking backend details
 
-The transport (WebSocketImpl) owns:
+The transport (WebSocket Engine) owns:
   • Receive loop
   • Backpressure handling
   • Message assembly
   • Telemetry
-  • Error propagation
+  • Error propagation (policy-level)
 
 The backend (adapter) owns:
   • Socket / OS interaction
   • Protocol framing (WebSocket)
-  • Mapping native errors → ReceiveStatus
+  • Mapping native errors → semantic BackendError
 
 --------------------------------------------------------------------------------
 Contract
@@ -34,9 +35,10 @@ Contract
 read_some():
   - Writes up to `size` bytes into `buffer`
   - Sets `bytes` to number of bytes written
-  - Returns a ReceiveStatus describing the outcome
+  - Returns a ReadResult describing the outcome
   - May return partial frames (streaming)
-  - MUST satisfy:
+
+  MUST satisfy:
 
     If result.status != ReceiveStatus::Ok:
         result.bytes MUST be 0
@@ -60,9 +62,13 @@ message_done():
 Error Model
 --------------------------------------------------------------------------------
 
-The backend MUST map all backend-specific errors into ReceiveStatus.
+The backend MUST translate all native/OS/library-specific errors into a
+portable BackendError.
 
-The transport layer does NOT interpret OS-specific errors.
+The transport layer MUST NOT depend on backend-specific error codes.
+
+Optionally, backends MAY expose native error codes for diagnostics, but these
+MUST NOT be used by the transport for logic decisions.
 
 --------------------------------------------------------------------------------
 Threading
@@ -87,11 +93,12 @@ namespace wirekrak::core::transport::websocket {
 // -----------------------------------------------------------------------------
 // Normalized receive result (backend → transport)
 // -----------------------------------------------------------------------------
+
 enum class ReceiveStatus {
     Ok,             // Data read successfully (bytes > 0 or 0 for control frames)
-    Timeout,        // Read timed out (if supported by backend)
+    Timeout,        // Read timed out (fast-path semantic)
     ProtocolError,  // WebSocket protocol violation
-    TransportError  // Underlying transport/socket error
+    TransportError  // Underlying transport/socket error (see BackendError)
 };
 
 enum class FrameType {
@@ -100,11 +107,43 @@ enum class FrameType {
     Close       // close frame
 };
 
+// -----------------------------------------------------------------------------
+// Semantic backend error classification (portable)
+// -----------------------------------------------------------------------------
+enum class BackendError : std::uint8_t {
+    None = 0,
+
+    // Connection lifecycle
+    LocalShutdown,     // Local close / cancellation
+    RemoteClosed,      // Peer closed connection
+
+    // Network / transport
+    Timeout,           // Timeout (if not already mapped to ReceiveStatus)
+    ConnectionFailed,  // Connect / DNS / handshake failure
+
+    // Protocol / data
+    ProtocolError,     // Invalid WebSocket / server response
+
+    // Generic fallback
+    TransportFailure   // Unknown / unmapped error
+};
+
+// -----------------------------------------------------------------------------
+// Read result
+// -----------------------------------------------------------------------------
 struct ReadResult {
     ReceiveStatus status;
     std::size_t bytes;
     FrameType frame;
+
+    // Semantic error (valid when status != Ok)
+    BackendError error = BackendError::None;
+
+    // Optional native error (debug/telemetry only, never for logic)
+    // native_error = OS error OR WS close code depending on context
+    int native_error = 0;
 };
+
 // -----------------------------------------------------------------------------
 // WebSocket Backend Concept
 // -----------------------------------------------------------------------------
@@ -117,8 +156,7 @@ concept BackendConcept = requires(
     bool secure,
     std::string_view msg,
     void* buffer,
-    std::size_t size,
-    std::size_t& bytes
+    std::size_t size
 ) {
     // -------------------------------------------------------------------------
     // Lifecycle
