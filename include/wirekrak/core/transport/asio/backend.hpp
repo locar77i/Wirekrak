@@ -395,6 +395,19 @@ private:
             };
         }
 
+        // =========================================================
+        // INTERRUPTED SYSTEM CALL (CTRL+C / signal / forced cancel)
+        // =========================================================
+        if (ec.value() == WSAEINTR) {
+            return websocket::ReadResult{
+                .status = RS::Ok,
+                .bytes = 0,
+                .frame = FT::Close,
+                .error = closing_.load(std::memory_order_acquire) ? BE::LocalShutdown : BE::RemoteClosed,
+                .native_error = ec.value()
+            };
+        }
+
         // =========================================
         // Graceful close (WebSocket-level)
         // =========================================
@@ -424,8 +437,7 @@ private:
         // =========================================
         // Remote closed (TCP-level)
         // =========================================
-        if (ec == boost::asio::error::eof ||
-            ec == boost::asio::error::connection_reset) {
+        if (ec == boost::asio::error::eof || ec == boost::asio::error::connection_reset) {
             return websocket::ReadResult{
                 .status = RS::Ok,
                 .bytes = 0,
