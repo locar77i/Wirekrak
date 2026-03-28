@@ -107,7 +107,7 @@ struct alignas(64) WebSocket final {
     // Timing
     // ---------------------------------------------------------------------
 
-    lcr::metrics::atomic::stats::duration64 ws_message_assembly_duration; // Measures the processing duration of every message (including network + fragmentation)
+    lcr::metrics::atomic::stats::duration64 ws_message_ingress_duration; // Measures the processing duration of every message (including network + fragmentation)
     
     // ---------------------------------------------------------------------
     // Snapshot support
@@ -158,7 +158,7 @@ struct alignas(64) WebSocket final {
         events_emitted_total.copy_to(other.events_emitted_total);
 
         // Timing
-        ws_message_assembly_duration.copy_to(other.ws_message_assembly_duration);
+        ws_message_ingress_duration.copy_to(other.ws_message_ingress_duration);
     }
 
 
@@ -223,7 +223,7 @@ struct alignas(64) WebSocket final {
 
         // Timing
         os << "\nTiming\n";
-        os << "  Message assembly : "; ws_message_assembly_duration.dump(os); os << '\n';
+        os << "  Message ingress  : "; ws_message_ingress_duration.dump(os); os << '\n';
     }
 };
 

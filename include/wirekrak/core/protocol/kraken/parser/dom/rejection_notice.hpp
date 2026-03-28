@@ -19,7 +19,7 @@ struct rejection_notice {
         // Root must be object
         auto r = helper::require_object(root);
         if (r != Result::Parsed) {
-            WK_DEBUG("[PARSER] Root not an object in rejection notice -> ignore message.");
+            WK_TRACE("[PARSER] Root not an object in rejection notice -> ignore message.");
             return r;
         }
 
@@ -27,7 +27,7 @@ struct rejection_notice {
         std::string_view sv;
         r = helper::parse_string_required(root, "error", sv);
         if (r != Result::Parsed) {
-            WK_DEBUG("[PARSER] Field 'error' missing in failed rejection notice -> ignore message.");
+            WK_TRACE("[PARSER] Field 'error' missing in failed rejection notice -> ignore message.");
             return r;
         }
         out.error = std::string(sv);
@@ -35,27 +35,27 @@ struct rejection_notice {
         // req_id (optional, strict)
         r = helper::parse_uint64_optional(root, "req_id", out.req_id);
         if (r != Result::Parsed) {
-            WK_DEBUG("[PARSER] Field 'req_id' invalid in rejection notice -> ignore message.");
+            WK_TRACE("[PARSER] Field 'req_id' invalid in rejection notice -> ignore message.");
             return r;
         }
 
         // symbol (optional)
         r = adapter::parse_symbol_optional(root, "symbol", out.symbol);
         if (r != Result::Parsed) {
-            WK_DEBUG("[PARSER] Field 'symbol' invalid in rejection notice -> ignore message.");
+            WK_TRACE("[PARSER] Field 'symbol' invalid in rejection notice -> ignore message.");
             return r;
         }
 
         // timestamps (optional)
         r = adapter::parse_timestamp_optional(root, "time_in", out.time_in);
         if (r != Result::Parsed) {
-            WK_DEBUG("[PARSER] Field 'time_in' invalid in rejection notice -> ignore message.");
+            WK_TRACE("[PARSER] Field 'time_in' invalid in rejection notice -> ignore message.");
             return r;
         }
 
         r = adapter::parse_timestamp_optional(root, "time_out", out.time_out);
         if (r != Result::Parsed) {
-            WK_DEBUG("[PARSER] Field 'time_out' invalid in rejection notice -> ignore message.");
+            WK_TRACE("[PARSER] Field 'time_out' invalid in rejection notice -> ignore message.");
             return r;
         }
 

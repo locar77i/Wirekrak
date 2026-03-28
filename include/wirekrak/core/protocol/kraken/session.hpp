@@ -854,7 +854,7 @@ private:
     inline void handle_parser_result_(parser::Result result, std::string_view raw_message) noexcept {
         switch (result) {
         case parser::Result::Ignored:
-            WK_DEBUG("[SESSION] Message ignored by parser: " << raw_message);
+            WK_TRACE("[SESSION] Message ignored by parser: " << raw_message);
             WK_TL1( telemetry_.parse_ignored_total.inc() );
             break;
         case parser::Result::InvalidJson:

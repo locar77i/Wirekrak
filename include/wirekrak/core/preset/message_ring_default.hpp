@@ -1,5 +1,6 @@
 #pragma once
 
+#include "wirekrak/core/config/transport/websocket.hpp"
 #include "lcr/buffer/managed_spsc_ring.hpp"
 #include "lcr/buffer/managed_slot.hpp"
 #include "lcr/buffer/concepts.hpp"

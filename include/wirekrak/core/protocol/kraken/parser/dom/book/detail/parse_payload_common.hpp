@@ -22,7 +22,7 @@ inline Result parse_payload_common(const simdjson::dom::element& root, std::stri
     // Root
     auto r = helper::require_object(root);
     if (r != Result::Parsed) {
-        WK_DEBUG("[PARSER] Root not an object in book message -> ignore message.");
+        WK_TRACE("[PARSER] Root not an object in book message -> ignore message.");
         return r;
     }
 
@@ -30,7 +30,7 @@ inline Result parse_payload_common(const simdjson::dom::element& root, std::stri
     kraken::PayloadType type;
     r = adapter::parse_payload_type_required(root, "type", type);
     if (r != Result::Parsed) {
-        WK_DEBUG("[PARSER] Field 'type' invalid or missing in trade response -> ignore message.");
+        WK_TRACE("[PARSER] Field 'type' invalid or missing in trade response -> ignore message.");
         return r;
     }
 
@@ -38,26 +38,26 @@ inline Result parse_payload_common(const simdjson::dom::element& root, std::stri
     simdjson::dom::array data;
     r = helper::parse_array_required(root, "data", data);
     if (r != Result::Parsed) {
-        WK_DEBUG("[PARSER] Field 'data' missing or invalid in book message -> ignore message.");
+        WK_TRACE("[PARSER] Field 'data' missing or invalid in book message -> ignore message.");
         return r;
     }
 
     // enforce array size (exactly one element)
     if (data.size() != 1) {
-        WK_DEBUG("[PARSER] Field 'data' does not contain exactly one element in book message -> ignore message.");
+        WK_TRACE("[PARSER] Field 'data' does not contain exactly one element in book message -> ignore message.");
         return Result::InvalidSchema;
     }
 
     simdjson::dom::object book;
     if (data.at(0).get(book)) {
-        WK_DEBUG("[PARSER] Field 'data[0]' invalid in book message -> ignore message.");
+        WK_TRACE("[PARSER] Field 'data[0]' invalid in book message -> ignore message.");
         return Result::InvalidSchema;
     }
 
     // symbol (required)
     r = adapter::parse_symbol_required(book, "symbol", out.symbol);
     if (r != Result::Parsed) {
-        WK_DEBUG("[PARSER] Field 'symbol' missing in book message -> ignore message.");
+        WK_TRACE("[PARSER] Field 'symbol' missing in book message -> ignore message.");
         return r;
     }
 
@@ -76,7 +76,7 @@ inline Result parse_payload_common(const simdjson::dom::element& root, std::stri
 
     // Kraken invariant: at least one side present
     if (!has_asks && !has_bids) {
-        WK_DEBUG("[PARSER] Both sides 'asks' and 'bids' missing in book message -> ignore message.");
+        WK_TRACE("[PARSER] Both sides 'asks' and 'bids' missing in book message -> ignore message.");
         return Result::InvalidSchema;
     }
 
@@ -84,7 +84,7 @@ inline Result parse_payload_common(const simdjson::dom::element& root, std::stri
     std::uint64_t checksum = 0;
     r = helper::parse_uint64_required(book, "checksum", checksum);
     if (r != Result::Parsed) {
-        WK_DEBUG("[PARSER] Field 'checksum' missing or invalid in book message -> ignore message.");
+        WK_TRACE("[PARSER] Field 'checksum' missing or invalid in book message -> ignore message.");
         return r;
     }
     out.checksum = static_cast<std::uint32_t>(checksum);
@@ -93,7 +93,7 @@ inline Result parse_payload_common(const simdjson::dom::element& root, std::stri
     if constexpr (requires { out.timestamp; }) {
         r = adapter::parse_timestamp_required(book, "timestamp", out.timestamp);
         if (r != Result::Parsed) {
-            WK_DEBUG("[PARSER] Field 'timestamp' missing or invalid in book message -> ignore message.");
+            WK_TRACE("[PARSER] Field 'timestamp' missing or invalid in book message -> ignore message.");
             return r;
         }
     }

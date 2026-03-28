@@ -25,8 +25,8 @@ void on_signal(int) {
 // -----------------------------------------------------------------------------
 // Generic runner
 // -----------------------------------------------------------------------------
-template<typename Session, typename MessageRing>
-int run_multi_subscription(int argc, char** argv, const char* title, lcr::memory::block_pool& memory_pool) {
+template<typename Session, typename MessageRing, typename SymbolList>
+int run_multi_subscription(int argc, char** argv, const char* title, lcr::memory::block_pool& memory_pool, SymbolList symbols) {
     using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
@@ -39,9 +39,6 @@ int run_multi_subscription(int argc, char** argv, const char* title, lcr::memory
                             "Let's enjoy trading with Wirekrak!";
 
     const char* url = "wss://ws.kraken.com/v2"; // Kraken WebSocket API V2 endpoint
-    
-    // List of high-volume symbols to stress the system.
-    const auto& symbols = wirekrak::symbols::kraken::top200;
 
     // -----------------------------------------------------------------------------
     // Golbal SPSC ring buffer (transport → session)

@@ -8,12 +8,12 @@
 #include "lcr/memory/block_pool.hpp"
 #include "lcr/log/logger.hpp"
 
-#include "common/run_single_book_subscription.hpp"
+#include "common/run_multi_subscription.hpp"
 
 
 constexpr static std::size_t BLOCK_SIZE =      128 * 1024;  // 128 KiB
-constexpr static std::size_t BLOCK_COUNT =              4;  // Number of blocks in the pool
-constexpr static std::size_t MESSAGE_RING_CAPACITY =  256;  // Number of messages the ring can hold
+constexpr static std::size_t BLOCK_COUNT =             32;  // Number of blocks in the pool
+constexpr static std::size_t MESSAGE_RING_CAPACITY = 4096;  // Number of messages the ring can hold
 
 // -------------------------------------------------------------------------
 // Session setup
@@ -24,9 +24,16 @@ using MyWebSocketPolicies =
         policy::transport::backpressure::Custom<32, 1, 16>  // <Spins, ActivationThreshold, DeactivationThreshold>
     >;
 
-using MySessionPolicies =
+using MySessionPolicies = 
     policy::protocol::session_bundle<
-        policy::protocol::backpressure::Custom<(1 << 24)>  // <EscalationThreshold>
+        policy::protocol::backpressure::Custom<(1 << 24)>,  // <EscalationThreshold>,
+        policy::protocol::DefaultLiveness,
+        policy::protocol::DefaultSymbolLimit,
+        policy::protocol::DefaultReplay,
+        policy::protocol::BatchingPolicy<
+            policy::protocol::BatchingMode::Batch,   // Batch mode
+            100       // batch size
+        >
     >;
 
 using MyMessageRing =
@@ -68,11 +75,15 @@ int main(int argc, char** argv) {
     using namespace lcr::log;
     Logger::instance().set_level(Level::Debug);
 
-    return run_single_book_subscription<MySession, MyMessageRing>(
+    
+    const auto& symbols = wirekrak::symbols::kraken::all_pairs;
+
+    return run_multi_subscription<MySession, MyMessageRing, RequestSymbols>(
         argc,
         argv,
-        "Wirekrak Core - Single Book Subscription Benchmark\n"
-        "Test the system's ability to handle a single high-throughput data stream with maximum depth.\n",
-        memory_pool
+        "Wirekrak Core - Multi Book/Trade Subscription Benchmark\n"
+        "Test the system's ability to handle multiple high-throughput data streams with maximum depth.\n",
+        memory_pool,
+        wirekrak::symbols::kraken::all_pairs // Complete list of Kraken symbols to stress the system.
     );
 }

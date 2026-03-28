@@ -25,7 +25,7 @@ void on_signal(int) {
 // Generic runner
 // -----------------------------------------------------------------------------
 template<typename Session, typename MessageRing>
-int run_single_book_subscription(int argc, char** argv, const char* title, lcr::memory::block_pool& memory_pool) {
+int run_single_book_subscription(int argc, char** argv, const char* title, lcr::memory::block_pool& memory_pool, const Symbol& symbol) {
     using namespace protocol::kraken::schema;
 
     // -------------------------------------------------------------------------
@@ -40,7 +40,7 @@ int run_single_book_subscription(int argc, char** argv, const char* title, lcr::
     const char* url = "wss://ws.kraken.com/v2"; // Kraken WebSocket API V2 endpoint
     
     // One single high volume symbol for this example (max depth)
-    static const RequestSymbols symbols = {"BTC/USD"};
+    static const RequestSymbols symbols = {symbol};
 
     // -----------------------------------------------------------------------------
     // Golbal SPSC ring buffer (transport → session)

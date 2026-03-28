@@ -303,7 +303,7 @@ private:
                     if (samples_now) [[unlikely]] {
                         auto start_ns = current_slot->timestamp();
                         auto now = clock.now_ns();
-                        telemetry_.ws_message_assembly_duration.record(start_ns, now);
+                        telemetry_.ws_message_ingress_duration.record(start_ns, now);
                         current_slot->set_timestamp(now);
                     }
                 );
