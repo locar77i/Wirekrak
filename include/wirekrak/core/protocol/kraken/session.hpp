@@ -294,8 +294,8 @@ public:
             replay_db_.add(req);
         }
         // 6) Emit the request according to the configured batching policy
-        WK_DEBUG("[SESSION] Emitting subscribe message: " << req.symbols.size() << " symbol/s");
-        if (!emit_subscription_(req)) {
+        WK_DEBUG("[SESSION] Emitting subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
+        if (!emit_request_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
         WK_TL1(telemetry_.subscriptions_requested_total.inc());
@@ -316,8 +316,8 @@ public:
         // 2) Send JSON BEFORE moving req.symbols
         // TODO: Maybe we can add a policy to control whether JSON is generated before or after manager registration (which modifies the symbol list)?
         // For now, we send the user's original intent even if some symbols are filtered by the manager.
-        WK_DEBUG("[SESSION] Sending unsubscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
-        if (!send_request_(req)) {
+        WK_DEBUG("[SESSION] Emitting unsubscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
+        if (!emit_request_(req)) {
             return ctrl::INVALID_REQ_ID;
         }
         WK_TL1(telemetry_.unsubscriptions_requested_total.inc());
@@ -837,7 +837,7 @@ private:
         }
         WK_DEBUG("[SESSION] Emitting re-subscribe message: " << req.symbols.size() << " symbol/s");
         // 4) Emit the request according to the configured batching policy
-        if (emit_subscription_(req)) {
+        if (emit_request_(req)) {
             WK_TL1(telemetry_.replay_requests_total.inc());
             WK_TL1(telemetry_.replay_symbols_total.inc(req.symbols.size()) );
         }
@@ -984,15 +984,15 @@ private:
     // ------------------------------------------------------------
     // Batching policy enforcement
     // ------------------------------------------------------------
-    template <request::Subscription RequestT>
+    template <typename RequestT>
     [[nodiscard]]
-    bool emit_subscription_(RequestT req) noexcept {
+    bool emit_request_(RequestT req) noexcept {
         if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Immediate) {
-            WK_TRACE("[SESSION] Sending immediate subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
+            WK_TRACE("[SESSION] Sending immediate request: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
             return send_request_(req);
         }
         else {
-            // Batch the subscription request into multiple messages if it exceeds the batch size limit.
+            // Batch the request into multiple messages if it exceeds the batch size limit.
             const auto& symbols = req.symbols;
             RequestT batch = req;
             std::size_t total = symbols.size();
@@ -1005,13 +1005,13 @@ private:
                 }
                 offset += n;
                 if constexpr (BatchingPolicy::mode == policy::protocol::BatchingMode::Batch) {
-                    WK_TRACE("[SESSION] Sending batched subscribe message: " << batch.symbols.size() << " symbol/s (req_id=" << batch.req_id.value() << ")");
+                    WK_TRACE("[SESSION] Sending batched request: " << batch.symbols.size() << " symbol/s (req_id=" << batch.req_id.value() << ")");
                     if (!send_request_(batch)) {
                         return false;
                     }
                 }
                 else {  
-                    WK_TRACE("[SESSION] Sending paced subscribe message: " << batch.symbols.size() << " symbol/s (req_id=" << batch.req_id.value() << ")");
+                    WK_TRACE("[SESSION] Sending paced request: " << batch.symbols.size() << " symbol/s (req_id=" << batch.req_id.value() << ")");
                     if (!request_scheduler_.enqueue(batch)) {
                         WK_TL1( telemetry_.request_batching_failures_total.inc() );
                         return false;
