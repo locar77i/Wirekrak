@@ -39,95 +39,87 @@ namespace wirekrak::core::protocol::telemetry {
 struct alignas(64) Session final {
 
     // ---------------------------------------------------------------------
+    // Session requests
+    // ---------------------------------------------------------------------
+    lcr::metrics::counter64 requests_emitted_total;           // Session requests emitted (subscribe, unsubscribe, ping, etc.)
+    lcr::metrics::counter64 subscriptions_requested_total;    // Subscribe requests issued
+    lcr::metrics::counter64 unsubscriptions_requested_total;  // Unsubscribe requests issued
+
+    // ---------------------------------------------------------------------
+    // Replay activity
+    // ---------------------------------------------------------------------
+    lcr::metrics::counter64 replay_requests_total;  // Number of replay operations triggered after reconnect
+    lcr::metrics::counter64 replay_symbols_total;   // Total symbols replayed during reconnect recovery
+
+    // ---------------------------------------------------------------------
     // Message processing
     // ---------------------------------------------------------------------
-
-    lcr::metrics::counter64 messages_processed_total;  // Total protocol messages processed
     lcr::metrics::stats::size32 messages_per_poll;     // Number of messages handled per poll() cycle
 
     // ---------------------------------------------------------------------
     // Parser outcomes
     // ---------------------------------------------------------------------
-
     lcr::metrics::counter64 parse_success_total;       // Successfully parsed and routed messages
     lcr::metrics::counter64 parse_ignored_total;       // Messages ignored by the parser (empty data, irrelevant channels, etc.)
     lcr::metrics::counter64 parse_failure_total;       // Parser failures (invalid JSON, schema mismatch, etc.)
     lcr::metrics::counter64 parse_backpressure_total;  // Parser rejected message due to backpressure
 
     // ---------------------------------------------------------------------
-    // Session requests
-    // ---------------------------------------------------------------------
-
-    lcr::metrics::counter64 requests_emitted_total;           // Session requests emitted (subscribe, unsubscribe, ping, etc.)
-    lcr::metrics::counter64 subscriptions_requested_total;    // Subscribe requests issued
-    lcr::metrics::counter64 unsubscriptions_requested_total;  // Unsubscribe requests issued
-
-    // ---------------------------------------------------------------------
     // Rejection notices
     // ---------------------------------------------------------------------
-
     lcr::metrics::counter64 rejection_notices_total;  // Rejection notices received from exchange
-
-    // ---------------------------------------------------------------------
-    // Replay activity
-    // ---------------------------------------------------------------------
-    
-    lcr::metrics::counter64 replay_requests_total;  // Number of replay operations triggered after reconnect
-    lcr::metrics::counter64 replay_symbols_total;   // Total symbols replayed during reconnect recovery
 
     // --------------------------------------------------------
     // Delivery failures
     // --------------------------------------------------------
-
     lcr::metrics::counter64 request_batching_failures_total;
     lcr::metrics::counter64 user_delivery_failures_total;  // Session backpressure caused by user not draining messages fast enough
 
     // ---------------------------------------------------------------------
-    // Control-plane pressure
+    // Timing
     // ---------------------------------------------------------------------
+    lcr::metrics::stats::duration64 poll_duration;            // Measures the duration of each poll() cycle 
+    lcr::metrics::stats::duration64 message_process_duration; // Measures the duration of every message processing (time spent inside the protocol layer to process one message)
+    lcr::metrics::latency_histogram handoff_latency;          // Latency from message ingress at transport to protocol delivery (measures the handoff efficiency between transport and protocol)
+    lcr::metrics::latency_histogram end_to_end_latency;       // Latency from message ingress at transport to final user delivery (includes handoff + protocol processing + user delivery)
 
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+    lcr::metrics::counter64 healthy_time_ns;
+    lcr::metrics::counter64 backpressure_time_ns;
+
+    // ---------------------------------------------------------------------
+    // Pipelines pressure
+    // ---------------------------------------------------------------------
     lcr::metrics::stats::size16 control_ring_depth;  // Measures the actual load level of the control processing ring
-
-    // ---------------------------------------------------------------------
-    // Data-plane pressure
-    // ---------------------------------------------------------------------
-
     lcr::metrics::stats::size16 message_ring_depth;  // Measures the actual load level of the message processing ring
 
     // ---------------------------------------------------------------------
     // Transport backpressure
     // ---------------------------------------------------------------------
-
-    lcr::metrics::stats::sampler32 transport_overload_streak;     // Allows to measure how severe is the transport backpressure escalation
+    lcr::metrics::stats::sampler32 transport_overload_streak;  // Allows to measure how severe is the transport backpressure escalation
     
-    // ---------------------------------------------------------------------
-    // User backpressure
-    // ---------------------------------------------------------------------
-    
-    lcr::metrics::stats::sampler32 user_overload_streak;     // Allows to measure how severe is the user backpressure escalation
-
-    // ---------------------------------------------------------------------
-    // Timing
-    // ---------------------------------------------------------------------
-
-    lcr::metrics::stats::duration64 poll_duration;            // Measures the duration of each poll() cycle 
-    lcr::metrics::latency_histogram handoff_latency;          // Latency of message handoff between transport and protocol layers
-    lcr::metrics::stats::duration64 message_process_duration; // Measures the duration of every message processing (time spent inside the protocol layer to process one message)
-
     // ---------------------------------------------------------------------
     // Sub-telemetry
     // ---------------------------------------------------------------------
-
     transport::telemetry::Connection connection;
 
     // ---------------------------------------------------------------------
     // Snapshot support
     // ---------------------------------------------------------------------
-
     inline void copy_to(Session& other) const noexcept {
 
+        // Session requests
+        requests_emitted_total.copy_to(other.requests_emitted_total);
+        subscriptions_requested_total.copy_to(other.subscriptions_requested_total);
+        unsubscriptions_requested_total.copy_to(other.unsubscriptions_requested_total);
+
+        // Replay activity
+        replay_requests_total.copy_to(other.replay_requests_total);
+        replay_symbols_total.copy_to(other.replay_symbols_total);
+
         // Message processing
-        messages_processed_total.copy_to(other.messages_processed_total);
         messages_per_poll.copy_to(other.messages_per_poll);
 
         // Parser outcomes
@@ -136,38 +128,29 @@ struct alignas(64) Session final {
         parse_failure_total.copy_to(other.parse_failure_total);
         parse_backpressure_total.copy_to(other.parse_backpressure_total);
 
-        // Session requests
-        requests_emitted_total.copy_to(other.requests_emitted_total);
-        subscriptions_requested_total.copy_to(other.subscriptions_requested_total);
-        unsubscriptions_requested_total.copy_to(other.unsubscriptions_requested_total);
-
         // Rejection notices
         rejection_notices_total.copy_to(other.rejection_notices_total);
-
-        // Replay activity
-        replay_requests_total.copy_to(other.replay_requests_total);
-        replay_symbols_total.copy_to(other.replay_symbols_total);
 
         // Delivery failures
         request_batching_failures_total.copy_to(other.request_batching_failures_total);
         user_delivery_failures_total.copy_to(other.user_delivery_failures_total);
 
-        // Control-plane pressure
-        control_ring_depth.copy_to(other.control_ring_depth);
+        // Timing
+        poll_duration.copy_to(other.poll_duration);
+        message_process_duration.copy_to(other.message_process_duration);
+        handoff_latency.copy_to(other.handoff_latency);
+        end_to_end_latency.copy_to(other.end_to_end_latency);
 
-        // Data-plane pressure
+        // Lifecycle
+        healthy_time_ns.copy_to(other.healthy_time_ns);
+        backpressure_time_ns.copy_to(other.backpressure_time_ns);
+
+        // Pipelines pressure
+        control_ring_depth.copy_to(other.control_ring_depth);
         message_ring_depth.copy_to(other.message_ring_depth);
 
         // Transport backpressure
         transport_overload_streak.copy_to(other.transport_overload_streak);
-
-        // User backpressure
-        user_overload_streak.copy_to(other.user_overload_streak);
-
-        // Timing
-        poll_duration.copy_to(other.poll_duration);
-        handoff_latency.copy_to(other.handoff_latency);
-        message_process_duration.copy_to(other.message_process_duration);
 
         // ---------------------------------------------------------------------
         // Sub-telemetry
@@ -183,9 +166,19 @@ struct alignas(64) Session final {
 
         os << "\n=== Session Telemetry ===\n";
 
+        // Session requests
+        os << "Requests\n";
+        os << "  Requests emitted   : " << lcr::format_number_exact(requests_emitted_total.load()) << '\n';
+        os << "  Subscriptions      : " << lcr::format_number_exact(subscriptions_requested_total.load()) << '\n';
+        os << "  Unsubscriptions    : " << lcr::format_number_exact(unsubscriptions_requested_total.load()) << '\n';
+
+        // Replay
+        os << "\nReplay\n";
+        os << "  Replay requests    : "  << lcr::format_number_exact(replay_requests_total.load()) << '\n';
+        os << "  Replay symbols     : " << lcr::format_number_exact(replay_symbols_total.load()) << '\n';
+
         // Message processing
-        os << "Message processing\n";
-        os << "  Messages total     : " << lcr::format_number_exact(messages_processed_total.load()) << '\n';
+        os << "\nMessage processing\n";
         os << "  Messages per poll  : "; messages_per_poll.dump(os); os << '\n';
 
         // Parser outcomes
@@ -195,46 +188,55 @@ struct alignas(64) Session final {
         os << "  Parse failure      : " << lcr::format_number_exact(parse_failure_total.load()) << '\n';
         os << "  Parse backpressure : " << lcr::format_number_exact(parse_backpressure_total.load()) << '\n';
 
-        // Session requests
-        os << "\nRequests\n";
-        os << "  Requests emitted   : " << lcr::format_number_exact(requests_emitted_total.load()) << '\n';
-        os << "  Subscriptions      : " << lcr::format_number_exact(subscriptions_requested_total.load()) << '\n';
-        os << "  Unsubscriptions    : " << lcr::format_number_exact(unsubscriptions_requested_total.load()) << '\n';
-
-        // Rejections
+        // Rejection notices
         os << "\nRejections\n";
         os << "  Notices received   : " << lcr::format_number_exact(rejection_notices_total.load()) << '\n';
-
-        // Replay
-        os << "\nReplay\n";
-        os << "  Replay requests    : "  << lcr::format_number_exact(replay_requests_total.load()) << '\n';
-        os << "  Replay symbols     : " << lcr::format_number_exact(replay_symbols_total.load()) << '\n';
 
         // Delivery failures
         os << "\nDelivery failures\n";
         os << "  Request batching   : " << lcr::format_number_exact(request_batching_failures_total.load()) << '\n';
         os << "  User delivery      : " << lcr::format_number_exact(user_delivery_failures_total.load()) << '\n';
 
-        // Control-plane pressure
-        os << "\nControl-plane pressure\n";
-        os << "  Control ring depth : "; control_ring_depth.dump(os); os << '\n';
+        // Timing
+        os << "\nTiming\n";
+        os << "  Poll duration      : "; poll_duration.dump(os); os << '\n';
+        os << "  Process message    : "; message_process_duration.dump(os); os << '\n';
+        os << "  Message handoff    : "; handoff_latency.dump(os); os << '\n';
+        os << "  End-to-end latency : "; end_to_end_latency.dump(os); os << '\n';
 
-        // Data-plane pressure
-        os << "\nData-plane pressure\n";
+        // Lifecycle
+        os << "\nLifecycle\n";
+        const auto healthy_ns      = healthy_time_ns.load();
+        const auto backpressure_ns = backpressure_time_ns.load();
+        const auto total_ns        = healthy_ns + backpressure_ns;
+
+        double efficiency = total_ns > 0 ? (double)healthy_ns / (double)total_ns : 1.0;
+
+        auto get_efficiency_label = [&]() -> const char* {
+            if (efficiency >= 0.999999) return "Perfect";
+            if (efficiency >= 0.99999)  return "Excellent";
+            if (efficiency >= 0.9999)   return "Optimal";
+            if (efficiency >= 0.999)    return "Very Good";
+            if (efficiency >= 0.99)     return "Good";
+            if (efficiency >= 0.95)     return "Suboptimal";
+            if (efficiency >= 0.80)     return "Degraded";
+            return "Critical";
+        };
+
+        os << "  Efficiency         : " << std::fixed << std::setprecision(6) << (efficiency * 100.0) << " % (" << get_efficiency_label() << ")\n";
+        os << "  Degradation        : " << std::fixed << std::setprecision(6) << (100.0 - efficiency * 100.0) << " %\n";
+        os << "  Total time         : " << lcr::format_duration(total_ns) << '\n';
+        os << "  Healthy time       : " << lcr::format_duration(healthy_ns) << '\n';
+        os << "  Backpressure time  : " << lcr::format_duration(backpressure_ns) << '\n';
+
+        // Pipelines pressure
+        os << "\nPipelines pressure\n";
+        os << "  Control ring depth : "; control_ring_depth.dump(os); os << '\n';
         os << "  Message ring depth : "; message_ring_depth.dump(os); os << '\n';
 
         // Transport backpressure
         os << "\nTransport backpressure\n";
         os << "  Overload streak    : "; transport_overload_streak.dump(os); os << '\n';
-
-        // User backpressure
-        os << "\nUser backpressure\n";
-        os << "  Overload streak    : "; user_overload_streak.dump(os); os << '\n';
-
-        os << "\nTiming\n";
-        os << "  Poll duration      : "; poll_duration.dump(os); os << '\n';
-        os << "  Message handoff    : "; handoff_latency.dump(os); os << '\n';
-        os << "  Process message    : "; message_process_duration.dump(os); os << '\n';
 
         // ---------------------------------------------------------------------
         // Sub-telemetry

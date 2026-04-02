@@ -62,6 +62,23 @@ struct alignas(64) sampler {
         if (value > max_.load()) max_.store(value);
     }
 
+    // Accessors
+    inline std::uint64_t samples() const noexcept {
+        return samples_.load();
+    }
+
+    inline std::uint64_t total() const noexcept {
+        return total_.load();
+    }
+
+    inline T min() const noexcept {
+        return min_.load();
+    }
+
+    inline T max() const noexcept {
+        return max_.load();
+    }
+
     // Derived metrics
     inline double avg() const noexcept {
         const auto n = samples_.load();
@@ -77,7 +94,7 @@ struct alignas(64) sampler {
         max_.reset();
     }
 
-    inline void dump(std::ostream& os) const noexcept {
+    inline void dump_all(std::ostream& os) const noexcept {
         T samples = samples_.load();
         os << "samples=" << lcr::format_number_exact(samples);
         if (samples >= 1) {
@@ -90,9 +107,24 @@ struct alignas(64) sampler {
         }
     }
 
+    inline void dump(std::ostream& os) const noexcept {
+        T samples = samples_.load();
+        if (samples == 0) {
+            os << "no samples";
+        }
+        else if (samples == 1) {
+            os << "last=" << lcr::format_number_exact(total_.load());
+        }
+        else {
+            os << "avg=" << std::setprecision(2) << avg()
+                << "   min=" << lcr::format_number_exact(min_.load())
+                << "   max=" << lcr::format_number_exact(max_.load());
+        }
+    }
+
     inline std::string str() const noexcept {
         std::ostringstream os;
-        dump(os);
+        dump_all(os);
         return os.str();
     }
 

@@ -71,7 +71,10 @@ struct alignas(64) latency_histogram {
     }
 
     inline void record(uint64_t start_ns, uint64_t end_ns) noexcept {
-        uint64_t delta = end_ns - start_ns;
+        record_duration(end_ns - start_ns);
+    }
+
+    inline void record_duration(uint64_t delta) noexcept {
         int bucket = delta ? std::min<int>(63, 63 - __builtin_clzll(delta)) : 0;
         buckets_[bucket].fetch_add(1, std::memory_order_relaxed);
     }

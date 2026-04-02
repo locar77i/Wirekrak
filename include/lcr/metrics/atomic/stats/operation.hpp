@@ -72,12 +72,21 @@ struct alignas(64) operation {
             lcr::system::cpu_relax();
     }
 
-    // Accessors for raw counts
-    inline T samples() const noexcept {
+    // Accessors
+    inline std::uint64_t samples() const noexcept {
         return samples_.load();
     }
-    inline T total_ns() const noexcept {
+
+    inline std::uint64_t total_ns() const noexcept {
         return total_ns_.load();
+    }
+
+    inline T min_ns() const noexcept {
+        return min_ns_.load();
+    }
+
+    inline T max_ns() const noexcept {
+        return max_ns_.load();
     }
 
     // Derived metrics

@@ -111,7 +111,7 @@ public:
         , ctx_view_(*ctx_)
         , parser_(ctx_view_)
     {
-        lcr::system::pin_thread(4); // Pin session thread to core 1 for deterministic performance  
+        lcr::system::pin_thread(4); // Pin session thread to core 1 for deterministic performance
     }
 
     // open connection
@@ -364,6 +364,19 @@ public:
         WK_TL3(
             lcr::metrics::util::scope_timer timer{telemetry_.poll_duration}
         );
+        WK_TL3(
+            auto now = clock.now_ns();
+            if (last_poll_ns_ != 0) {
+                const auto delta = now - last_poll_ns_;
+                if (!overload_state_.transport.is_active()) [[likely]] {
+                    telemetry_.healthy_time_ns.inc(delta);
+                }
+                else {
+                    telemetry_.backpressure_time_ns.inc(delta);
+                }
+            }
+            last_poll_ns_ = now;
+        );
 
         // === Advance transport state - Heartbeat liveness & reconnection logic ===
         connection_.poll();
@@ -402,7 +415,8 @@ public:
 */
                 break;
             }
-            const bool samples_now = slot->timestamp(); // For telemetry sampling (every 1024 messages)
+            const auto slot_timestamp = slot->timestamp(); // Capture timestamp before processing for accurate latency measurement
+            const bool samples_now = slot_timestamp; // For telemetry sampling (every 1024 messages)
             // The message slot remains valid until release_message() is called
             std::string_view sv{ slot->data(), slot->size() };
             // Observability: measure handoff duration (time from transport processing start to protocol consumption)
@@ -410,8 +424,7 @@ public:
                 std::uint64_t delivery_ns = 0;
                 if (samples_now) [[unlikely]] {
                     delivery_ns = clock.now_ns();
-                    telemetry_.handoff_latency.record(slot->timestamp(), delivery_ns);
-                    slot->reset_timestamp(); // Clear timestamp after recording to prevent stale data in future measurements
+                    telemetry_.handoff_latency.record(slot_timestamp, delivery_ns);
                 }
             );
             // Handle the message (parsing & routing)
@@ -430,13 +443,18 @@ public:
                 WK_WARN("[SESSION] Failed to deliver " << to_string(channel) << " message (backpressure)"
                     " - protocol correctness compromised (user is not draining fast enough)");
                 connection_.release_message(slot);
-                overload_state_.user.mark_active();
+                //overload_state_.user.mark_active(); <-- TODO: Fast fail here
                 WK_TL1( telemetry_.user_delivery_failures_total.inc() );
                 break; // Stop processing more messages to prevent further damage
             }
             // Release the message slot back to the transport regardless of parsing outcome to maintain flow.
             connection_.release_message(slot);
-            WK_TL1( telemetry_.messages_processed_total.inc() );
+            // Observability: measure end to end latency up to final user delivery (including protocol processing)
+            WK_TL3(
+                if (samples_now) [[unlikely]] {
+                    telemetry_.end_to_end_latency.record(slot_timestamp, clock.now_ns());
+                }
+            );
             ++messages_processed;
         }
 
@@ -465,7 +483,7 @@ public:
             // 2) Forward to user-visible rejection buffer (lossless)
             if (!user_rejection_buffer_.push(notice)) [[unlikely]] { // This is a hard failure: we cannot report semantic errors reliably
                 WK_WARN("[SESSION] Failed to deliver rejection notice (backpressure) - protocol correctness compromised (user is not draining fast enough)");
-                overload_state_.user.mark_active();
+                //overload_state_.user.mark_active(); <-- TODO: Fast fail here
                 WK_TL1( telemetry_.user_delivery_failures_total.inc() );
                 break; // Stop processing more messages to prevent further damage
             }
@@ -725,6 +743,9 @@ private:
     // Telemetry for the session
     telemetry::Session telemetry_;
 
+    // Timestamps for observability
+    std::uint64_t last_poll_ns_;
+
     // Underlying connection
     ConnectionT connection_;
 
@@ -763,16 +784,13 @@ private:
     // Overall overload state tracking for transport, protocol, and user domains
     struct OverloadState {
         lcr::control::ConsecutiveStateCounter transport;
-        lcr::control::FrameConsecutiveStateCounter user;
 
         inline void next_frame() noexcept {
             transport.next_frame();
-            user.next_frame();
         }
 
         inline void reset() noexcept {
             transport.reset();
-            user.reset();
         }
     };
     OverloadState overload_state_;
@@ -928,9 +946,6 @@ private:
         if (overload_state_.transport.is_active() && enforce_transport_backpressure_policy_()) [[unlikely]] {
             return; // If transport policy enforcement resulted in connection close, skip user policy to avoid redundant actions
         }
-        if (overload_state_.user.is_active() && enforce_user_backpressure_policy_()) [[unlikely]] {
-            return; // If user policy enforcement resulted in connection close, skip further actions
-        }
     }
 
     [[nodiscard]]
@@ -946,32 +961,6 @@ private:
 
         if (overload_state_.transport.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
             WK_WARN("[SESSION] Transport backpressure has been active for " << overload_state_.transport.count() << " consecutive polls ("
-                << BackpressurePolicy::mode_name() << " backpressure policy)");
-            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees");
-            connection_.close();
-            overload_state_.reset();
-            return true;
-        }
-        return false;
-    }
-
-    [[nodiscard]]
-    inline bool enforce_user_backpressure_policy_() noexcept {
-        using core::policy::BackpressureMode;
-
-        WK_TL1( telemetry_.user_overload_streak.record(overload_state_.user.count()) );
-
-        if constexpr (BackpressurePolicy::mode == BackpressureMode::ZeroTolerance) {
-            WK_WARN("[SESSION] User backpressure has been active for " << overload_state_.user.count() << " consecutive polls ("
-                << BackpressurePolicy::mode_name() << " backpressure policy)");
-            WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees");
-            connection_.close();
-            overload_state_.reset();
-            return true;
-        }
-
-        if (overload_state_.user.count() >= BackpressurePolicy::escalation_threshold) [[unlikely]] {
-            WK_WARN("[SESSION] User backpressure has been active for " << overload_state_.user.count() << " consecutive polls ("
                 << BackpressurePolicy::mode_name() << " backpressure policy)");
             WK_FATAL("[SESSION] Forcing connection close to preserve correctness guarantees");
             connection_.close();

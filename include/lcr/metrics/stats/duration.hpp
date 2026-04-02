@@ -59,6 +59,22 @@ struct alignas(64) duration {
         if (delta > max_ns_.load()) max_ns_.store(delta);
     }
 
+    // Accessors for raw counts
+    inline std::uint64_t samples() const noexcept {
+        return samples_.load();
+    }
+    inline std::uint64_t total_ns() const noexcept {
+        return total_ns_.load();
+    }
+
+    inline T min_ns() const noexcept {
+        return min_ns_.load();
+    }
+
+    inline T max_ns() const noexcept {
+        return max_ns_.load();
+    }
+
     // Derived metrics
     inline uint64_t avg_ns() const noexcept {
         const auto n = samples_.load();
@@ -87,7 +103,7 @@ struct alignas(64) duration {
         max_ns_.reset();
     }
 
-    inline void dump(std::ostream& os) const noexcept {
+    inline void dump_all(std::ostream& os) const noexcept {
         T samples = samples_.load();
         os << "samples=" << samples;
         if (samples >= 1) {
@@ -101,10 +117,25 @@ struct alignas(64) duration {
         }
     }
 
+    inline void dump(std::ostream& os) const noexcept {
+        T samples = samples_.load();
+        if (samples == 0) {
+            os << "no samples";
+        }
+        else if (samples == 1) {
+            os << "last=" << lcr::format_duration(total_ns_.load());
+        }
+        else {
+            os << "avg=" << lcr::format_duration(avg_ns())
+                << "   min=" << lcr::format_duration(min_ns_.load())
+                << "   max=" << lcr::format_duration(max_ns_.load());
+        }
+    }
+
     // Optional string formatter (for debug or Prometheus output)
     inline std::string str() const noexcept {
         std::ostringstream os;
-        dump(os);
+        dump_all(os);
         return os.str();
     }
 

@@ -296,15 +296,12 @@ private:
                 WK_TL1( telemetry_.fragments_per_message.record(fragments + 1) );
                 
                 if (current_slot->is_external()) [[unlikely]] {
-                    WK_TL1( telemetry_.external_buffers_total.inc() );
+                    WK_TL1( telemetry_.promoted_message_bytes.set(current_slot->size()) );
                 }
 
                 WK_TL3(
                     if (samples_now) [[unlikely]] {
-                        auto start_ns = current_slot->timestamp();
-                        auto now = clock.now_ns();
-                        telemetry_.ws_message_ingress_duration.record(start_ns, now);
-                        current_slot->set_timestamp(now);
+                        telemetry_.ws_message_ingress_duration.record_duration(clock.now_ns() - current_slot->timestamp());
                     }
                 );
 

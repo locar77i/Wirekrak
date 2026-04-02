@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "wirekrak/core.hpp"
+#include "wirekrak/core/perf/report.hpp"
 #include "lcr/memory/block_pool.hpp"
 #include "common/loop/helpers.hpp"
 
@@ -131,10 +132,11 @@ int run_single_book_subscription(int argc, char** argv, const char* title, lcr::
     session.close();
 
     // -------------------------------------------------------------------------
-    // Dump telemetry
+    // Performance Report
     // -------------------------------------------------------------------------
-    std::cout << "\n[6] Session Telemetry >>\n";
-    session.telemetry().debug_dump(std::cout);
+    std::cout << "\n[6] Performance Report >>\n";
+    perf::Report report(session.telemetry());
+    report.dump(std::cout);
 
     std::cout << "\n[SUCCESS] Clean shutdown completed.\n";
     return 0;

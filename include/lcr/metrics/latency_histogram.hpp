@@ -67,7 +67,10 @@ struct alignas(64) latency_histogram {
 
     // record() – main hot-path method (extremely fast)
     inline void record(uint64_t start_ns, uint64_t end_ns) noexcept {
-        uint64_t delta = end_ns - start_ns;
+        record_duration(end_ns - start_ns);
+    }
+
+    inline void record_duration(uint64_t delta) noexcept {
         // bucket = floor(log2(delta))
         int bucket = (delta == 0) ? 0 : (63 - __builtin_clzll(delta));
         buckets_[bucket] += 1;

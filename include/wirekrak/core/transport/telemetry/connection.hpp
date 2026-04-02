@@ -22,7 +22,6 @@ struct alignas(64) Connection final {
     // ---------------------------------------------------------------------
     // Lifecycle & state transitions
     // ---------------------------------------------------------------------
-
     lcr::metrics::counter32 open_calls_total;         // open() invoked by user
     lcr::metrics::counter32 connect_success_total;    // Successfully reached State::Connected
     lcr::metrics::counter32 connect_failure_total;    // Failed initial connection attempt
@@ -33,13 +32,11 @@ struct alignas(64) Connection final {
     // ---------------------------------------------------------------------
     // Liveness decisions
     // ---------------------------------------------------------------------
-
     lcr::metrics::counter32 liveness_timeouts_total;  // Forced disconnect due to liveness timeout
 
     // ---------------------------------------------------------------------
     // Retry mechanics (decisions, not timing)
     // ---------------------------------------------------------------------
-    
     lcr::metrics::counter32 retry_cycles_started_total;  // Entered State::WaitingReconnect
     lcr::metrics::counter32 retry_attempts_total;        // Reconnect attempt initiated
     lcr::metrics::counter32 retry_success_total;         // Reconnect succeeded
@@ -48,20 +45,17 @@ struct alignas(64) Connection final {
     // ---------------------------------------------------------------------
     // Message handoff (WS → user boundary)
     // ---------------------------------------------------------------------
-
     lcr::metrics::counter64 messages_forwarded_total;  // Messages forwarded to user callback
 
     // ---------------------------------------------------------------------
     // Send gating
     // ---------------------------------------------------------------------
-
     lcr::metrics::counter64 send_calls_total;     // send() called by user
     lcr::metrics::counter64 send_rejected_total;  // send() rejected due to non-connected state
 
     // --------------------------------------------------------
     // Access failures
     // --------------------------------------------------------
-
     lcr::metrics::counter64 control_ring_failures_total;
 
     // ---------------------------------------------------------------------
@@ -80,7 +74,6 @@ struct alignas(64) Connection final {
     // ---------------------------------------------------------------------
     // Sub-telemetry
     // ---------------------------------------------------------------------
-
     transport::telemetry::WebSocket websocket;
 
     // ---------------------------------------------------------------------
