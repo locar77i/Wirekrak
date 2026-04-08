@@ -624,7 +624,7 @@ static const core::RequestSymbols all_pairs = {
     "BOND/USD",
     "BONK/EUR",
     "BONK/USD",
-    "BONZO/EUR",
+//    "BONZO/EUR",
     "BONZO/USD",
     "BOS/EUR",
     "BOS/USD",
