@@ -65,21 +65,19 @@ public:
         }
         out.api_version.assign(api_sv);
 
-        // connection_id (required)
-        r = helper::parse_uint64_required(obj, "connection_id", out.connection_id);
+        // connection_id (optional)
+        r = helper::parse_uint64_optional(obj, "connection_id", out.connection_id);
         if (r != Result::Parsed) {
             WK_TRACE("[PARSER] Field 'connection_id' missing or invalid in status update -> ignore message.");
             return r;
         }
 
-        // version (required)
-        std::string_view sv;
-        r = helper::parse_string_required(obj, "version", sv);
+        // version (optional)
+        r = helper::parse_string_optional(obj, "version", out.version);
         if (r != Result::Parsed) {
             WK_TRACE("[PARSER] Field 'version' missing in status update -> ignore message.");
             return r;
         }
-        out.version.assign(sv);
 
         return Result::Parsed;
     }

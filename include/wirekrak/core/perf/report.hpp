@@ -195,7 +195,7 @@ private:
         os << "\nBackpressure\n";
         os << "  Events detected   : " << lcr::format_number_exact( t_.connection.websocket.backpressure_detected_total.load() ) << '\n';
         os << "  Events cleared    : " << lcr::format_number_exact( t_.connection.websocket.backpressure_cleared_total.load() ) << '\n';
-        os << "  Overload streak   : " << lcr::format_number_exact( t_.transport_overload_streak.total() ) << '\n';
+        os << "  Overload streak   : "; t_.transport_overload_streak.dump(os); os << '\n';
 
         os << "\nQueue Pressure\n";
         os << "  Message ring depth: "; t_.message_ring_depth.dump(os); os << '\n';

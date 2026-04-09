@@ -270,6 +270,27 @@ inline parser::Result parse_string_optional(const simdjson::dom::element& obj, c
 }
 
 [[nodiscard]]
+inline parser::Result parse_string_optional(const simdjson::dom::object& obj, const char* key, lcr::optional<std::string>& out) noexcept {
+    // Always reset output (streaming safety)
+    out.reset();
+    // Parse optional string field
+    bool presence = false;
+    std::string_view sv;
+    auto r = parse_string_optional(obj, key, sv, presence);
+    if (r != parser::Result::Parsed) {
+        return r; // InvalidSchema bubbles up
+    }
+    // Field not present → OK (optional)
+    if (!presence) {
+        return parser::Result::Parsed;
+    }
+    // Convert to string
+    out = std::string(sv);
+
+    return parser::Result::Parsed;
+}
+
+[[nodiscard]]
 inline parser::Result parse_bool_optional(const simdjson::dom::element& obj, const char* key, lcr::optional<bool>& out) noexcept {
     // Always reset output (streaming safety)
     out.reset();

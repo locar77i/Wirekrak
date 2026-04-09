@@ -59,8 +59,8 @@ void test_status_update_success_online() {
 
     assert(upd.system == SystemState::Online);
     assert(upd.api_version == "v2");
-    assert(upd.connection_id == 12345);
-    assert(upd.version == "1.0.0");
+    assert(upd.connection_id.value() == 12345);
+    assert(upd.version.value() == "1.0.0");
 
     std::cout << "[TEST] OK\n";
 }
@@ -85,6 +85,48 @@ void test_status_update_success_maintenance() {
     assert(parse(json, upd));
 
     assert(upd.system == SystemState::Maintenance);
+
+    std::cout << "[TEST] OK\n";
+}
+
+void test_status_update_missing_connection_id() {
+    std::cout << "[TEST] Status update (missing connection_id)..." << std::endl;
+
+    constexpr std::string_view json = R"json(
+    {
+        "channel": "status",
+        "type": "update",
+        "data": [{
+            "system": "online",
+            "api_version": "v2",
+            "version": "1.0"
+        }]
+    }
+    )json";
+
+    schema::status::Update upd{};
+    assert(parse(json, upd));
+
+    std::cout << "[TEST] OK\n";
+}
+
+void test_status_update_missing_version() {
+    std::cout << "[TEST] Status update (missing version)..." << std::endl;
+
+    constexpr std::string_view json = R"json(
+    {
+        "channel": "status",
+        "type": "update",
+        "data": [{
+            "system": "online",
+            "api_version": "v2",
+            "connection_id": 1
+        }]
+    }
+    )json";
+
+    schema::status::Update upd{};
+    assert(parse(json, upd));
 
     std::cout << "[TEST] OK\n";
 }
@@ -168,48 +210,6 @@ void test_status_update_missing_api_version() {
     std::cout << "[TEST] OK\n";
 }
 
-void test_status_update_missing_connection_id() {
-    std::cout << "[TEST] Status update (missing connection_id)..." << std::endl;
-
-    constexpr std::string_view json = R"json(
-    {
-        "channel": "status",
-        "type": "update",
-        "data": [{
-            "system": "online",
-            "api_version": "v2",
-            "version": "1.0"
-        }]
-    }
-    )json";
-
-    schema::status::Update upd{};
-    assert(!parse(json, upd));
-
-    std::cout << "[TEST] OK\n";
-}
-
-void test_status_update_missing_version() {
-    std::cout << "[TEST] Status update (missing version)..." << std::endl;
-
-    constexpr std::string_view json = R"json(
-    {
-        "channel": "status",
-        "type": "update",
-        "data": [{
-            "system": "online",
-            "api_version": "v2",
-            "connection_id": 1
-        }]
-    }
-    )json";
-
-    schema::status::Update upd{};
-    assert(!parse(json, upd));
-
-    std::cout << "[TEST] OK\n";
-}
-
 void test_status_update_wrong_channel() {
     std::cout << "[TEST] Status update (wrong channel)..." << std::endl;
 
@@ -234,13 +234,13 @@ void test_status_update_wrong_channel() {
 int main() {
     test_status_update_success_online();
     test_status_update_success_maintenance();
+    test_status_update_missing_connection_id();
+    test_status_update_missing_version();
 
     test_status_update_missing_data();
     test_status_update_empty_data_array();
     test_status_update_missing_system();
     test_status_update_missing_api_version();
-    test_status_update_missing_connection_id();
-    test_status_update_missing_version();
     test_status_update_wrong_channel();
 
     std::cout << "[TEST] ALL STATUS UPDATE PARSER TESTS PASSED!\n";

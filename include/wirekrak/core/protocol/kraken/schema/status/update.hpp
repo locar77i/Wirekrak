@@ -40,10 +40,10 @@ The status object is always the first and only element in `data`.
 
 
 struct Update {
-    SystemState system;             // Trading engine state
-    std::string api_version;        // WebSocket API version (e.g. "v2")
-    std::uint64_t connection_id;    // Unique connection identifier
-    std::string version;            // WebSocket service version
+    SystemState system;                          // Trading engine state
+    std::string api_version;                     // WebSocket API version (e.g. "v2")
+    lcr::optional<std::uint64_t> connection_id;  // Unique connection identifier
+    lcr::optional<std::string> version;          // WebSocket service version
 
     // ------------------------------------------------------------
     // Debug / diagnostic dump
@@ -51,10 +51,14 @@ struct Update {
     inline void dump(std::ostream& os) const noexcept {
         os << "[STATUS] { "
            << "system=" << to_string(system) << ", "
-           << "api_version=" << api_version << ", "
-           << "connection_id=" << connection_id << ", "
-           << "version=" << version
-           << " }";
+           << "api_version=" << api_version << ", ";
+        if (connection_id.has()) {
+            os << "connection_id=" << connection_id.value() << ", ";
+        }
+        if (version.has()) {
+            os << "version=" << version.value();
+        }
+        os << " }";
     }
 
 #ifndef NDEBUG

@@ -84,8 +84,8 @@ private:
     inline void process_(const BookLevel& lvl, fs::Trades& trade_count, fs::Price& last_price, fs::OrderIdx& order_idx) {
         fme::Order order{};
         generate_order_<S>(order,
-            engine_.normalize_price(lvl.price),
-            engine_.normalize_quantity(lvl.quantity)
+            engine_.instrument().normalize_price(lvl.price),
+            engine_.instrument().normalize_quantity(lvl.quantity)
         );
 
         (void)engine_.process_order<S>(order, trade_count, last_price, order_idx);
