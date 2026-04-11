@@ -20,20 +20,23 @@ class Report {
 public:
     explicit Report(const core::protocol::telemetry::Session& t) noexcept
         : t_(t)
-        , total_bytes_     ( t.connection.websocket.bytes_rx_total.load() )
-        , total_msgs_      ( t.messages_per_poll.total() )
-        , ingress_rate_    ( t.connection.websocket.ws_message_ingress_duration.rate_per_sec() )
-        , process_rate_    ( t.message_process_duration.rate_per_sec() )
-        , poll_rate_       ( t.poll_duration.rate_per_sec() )
-        , headroom_        ( ingress_rate_ > 0 ? process_rate_ / ingress_rate_ : 0.0 )
-        , latency_         ( t.end_to_end_latency.compute_percentiles() )
-        , healthy_ns_      ( t.healthy_time_ns.load() )
-        , backpressure_ns_ ( t.backpressure_time_ns.load() )
-        , total_ns_        ( healthy_ns_ + backpressure_ns_ )
-        , efficiency_      ( total_ns_ > 0 ? (double)healthy_ns_ / (double)total_ns_ : 1.0 )
-        , avg_queue_depth_ ( t.message_ring_depth.avg() )
-        , avg_latency_     ( ingress_rate_ > 0 ? avg_queue_depth_ / ingress_rate_ * 1'000'000'000 : 0.0 )
-        , utilization_     ( process_rate_ > 0 ? ingress_rate_ / process_rate_ : 0.0 )
+        , total_bytes_        ( t.connection.websocket.bytes_rx_total.load() )
+        , total_msgs_         ( t.messages_per_poll.total() )
+        , ingress_rate_       ( t.connection.websocket.message_ingress_duration.rate_per_sec() )
+        , process_rate_       ( t.message_process_duration.rate_per_sec() )
+        , poll_rate_          ( t.poll_duration.rate_per_sec() )
+        , headroom_           ( ingress_rate_ > 0 ? process_rate_ / ingress_rate_ : 0.0 )
+        , end_to_end_latency_ ( t.end_to_end_latency.compute_percentiles() )
+        , process_latency_    ( t.process_latency.compute_percentiles() )
+        , handoff_latency_    ( t.handoff_latency.compute_percentiles() )
+        , ingress_latency_    ( t.connection.websocket.ingress_latency.compute_percentiles() )
+        , healthy_ns_         ( t.healthy_time_ns.load() )
+        , backpressure_ns_    ( t.backpressure_time_ns.load() )
+        , total_ns_           ( healthy_ns_ + backpressure_ns_ )
+        , efficiency_         ( total_ns_ > 0 ? (double)healthy_ns_ / (double)total_ns_ : 1.0 )
+        , avg_queue_depth_    ( t.message_ring_depth.avg() )
+        , avg_latency_        ( ingress_rate_ > 0 ? avg_queue_depth_ / ingress_rate_ * 1'000'000'000 : 0.0 )
+        , utilization_        ( process_rate_ > 0 ? ingress_rate_ / process_rate_ : 0.0 )
         {}
 
     inline void dump(std::ostream& os) const noexcept {
@@ -59,7 +62,10 @@ private:
     const double poll_rate_;
     const double headroom_;
 
-    const lcr::metrics::latency_percentiles latency_;
+    const lcr::metrics::latency_percentiles end_to_end_latency_;
+    const lcr::metrics::latency_percentiles process_latency_;
+    const lcr::metrics::latency_percentiles handoff_latency_;
+    const lcr::metrics::latency_percentiles ingress_latency_;
 
     const std::uint64_t healthy_ns_;
     const std::uint64_t backpressure_ns_;
@@ -109,7 +115,9 @@ private:
         os << "  Process rate     : " << lcr::format_throughput(process_rate_, "msg/s") << " (x" << lcr::format_number_exact(headroom_) << " headroom)\n";
         os << "  Poll rate        : " << lcr::format_throughput(poll_rate_, "polls/s") << '\n';
 
-        print_latency_block_(os, "Latency (end-to-end)", latency_);
+        print_latency_block_(os, "Latency (end-to-end)", end_to_end_latency_, false);
+
+        latency_attribution_(os);
 
         os << "\nStability\n";
         os << "  Efficiency       : " << std::fixed << std::setprecision(6) << (efficiency_ * 100.0 - 0.000001) << " % (" << efficiency_label_(efficiency_) << ")\n";
@@ -142,12 +150,37 @@ private:
         os << "\n\n[2] LATENCY ANALYSIS\n";
         os << "--------------------------------------------------------------------------------\n";
 
-        print_latency_block_(os, "Latency (end-to-end)", latency_, false);
+        print_latency_block_(os, "Latency (end-to-end)", end_to_end_latency_);
+
+        print_latency_block_(os, "Latency (process)", process_latency_);
+
+        print_latency_block_(os, "Latency (handoff)", handoff_latency_);
+
+        print_latency_block_(os, "Latency (ingress)", ingress_latency_);
+
+        os << "\nBurst profiling (Ingress)\n";
+        os << "  Ingress burst    : "; t_.connection.websocket.ingress_burst.dump(os); os << '\n';
+
+        os << "\nBurst impact\n";
+        const double burst_rate = t_.connection.websocket.ingress_burst.peak_rate_per_sec();
+        const double burst_amplification = ingress_rate_ > 0 ? burst_rate / ingress_rate_ : 0.0;
+        const double burst_vs_capacity = process_rate_ > 0 ? burst_rate / process_rate_ : 0.0;
+        os << "  Burst amplification : x" << std::fixed << std::setprecision(2) << burst_amplification << '\n';
+        os << "  Burst vs capacity   : " << std::fixed << std::setprecision(2) << (burst_vs_capacity * 100.0) << " %\n";
+        if (burst_vs_capacity >= 1.0) {
+            os << "  - Bursts exceed processing capacity (queue growth inevitable)\n";
+        }
+        else if (burst_amplification > 1.0) {
+            os << "  - Bursty ingress (amplification over steady-state)\n";
+        }
+        else {
+            os << "  - Flow is smooth relative to system capacity\n";
+        }
 
         os << "\nIngress (transport -> ring)\n";
-        os << "  Avg             : " << lcr::format_duration(t_.connection.websocket.ws_message_ingress_duration.avg_ns()) << '\n';
-        os << "  Min             : " << lcr::format_duration(t_.connection.websocket.ws_message_ingress_duration.min_ns()) << '\n';
-        os << "  Max             : " << lcr::format_duration(t_.connection.websocket.ws_message_ingress_duration.max_ns()) << '\n';
+        os << "  Avg             : " << lcr::format_duration(t_.connection.websocket.message_ingress_duration.avg_ns()) << '\n';
+        os << "  Min             : " << lcr::format_duration(t_.connection.websocket.message_ingress_duration.min_ns()) << '\n';
+        os << "  Max             : " << lcr::format_duration(t_.connection.websocket.message_ingress_duration.max_ns()) << '\n';
 
         os << "\nProcessing (protocol layer)\n";
         os << "  Avg             : " << lcr::format_duration(t_.message_process_duration.avg_ns()) << '\n';
@@ -351,6 +384,59 @@ private:
             os << "    p99.99 / p50   : x" << std::fixed << std::setprecision(2) << amp_9999 << '\n';
             os << "    p99.9999 / p50 : x" << std::fixed << std::setprecision(2) << amp_999999 << '\n';
         }
+    }
+
+
+    inline void latency_attribution_(std::ostream& os) const noexcept {
+
+        const double total   = end_to_end_latency_.p999999;
+        const double ingress = ingress_latency_.p999999;
+        const double queue   = handoff_latency_.p999999;
+        const double proc    = process_latency_.p999999;
+
+        // Normalize contributions (important: avoid misleading percentages)
+        const double sum = ingress + queue + proc;
+
+        auto pct = [](double part, double total) {
+            return total > 0 ? (part / total) * 100.0 : 0.0;
+        };
+
+        const double ingress_pct = pct(ingress, sum);
+        const double queue_pct   = pct(queue, sum);
+        const double proc_pct    = pct(proc, sum);
+
+        os << "\n  Breakdown (p99.9999 normalized contribution)\n";
+        os << "    Ingress        : " << lcr::format_duration(ingress) << " (" << std::fixed << std::setprecision(2) << ingress_pct << "%)\n";
+        os << "    Queue (handoff): " << lcr::format_duration(queue) << " (" << std::fixed << std::setprecision(2) << queue_pct << "%)\n";
+        os << "    Processing     : " << lcr::format_duration(proc) << " (" << std::fixed << std::setprecision(2) << proc_pct << "%)\n";
+
+        os << "\n  Dominant factor\n";
+
+        if (ingress_pct > 95.0) {
+            os << "    - Tail latency fully dominated by upstream (network / exchange behavior)\n";
+        } else if (ingress_pct > 80.0) {
+            os << "    - Tail latency is dominated by INGRESS (network / exchange behavior)\n";
+        } else if (queue_pct > 50.0) {
+            os << "    - Tail latency is dominated by QUEUEING (burst / backpressure)\n";
+        } else {
+            os << "    - Tail latency is dominated by PROCESSING\n";
+        }
+
+        os << "\n  Jitter analysis\n";
+        const double jitter = (double)ingress_latency_.p999999 / (double)ingress_latency_.p50;
+        if (jitter > 100000.0) {
+            os << "    - Extreme jitter (exchange/network instability)\n";
+        } else if (jitter > 10000.0) {
+            os << "    - High jitter (bursty upstream)\n";
+        } else if (jitter > 1000.0) {
+            os << "    - Moderate jitter\n";
+        } else {
+            os << "    - Stable latency distribution\n";
+        }
+
+        // High-impact insight: extreme upstream delay
+        os << "\n  Extreme events\n";
+        os << "    - Max ingress delay is " << lcr::format_duration(t_.connection.websocket.message_ingress_duration.max_ns()) << "\n";
     }
 };
 

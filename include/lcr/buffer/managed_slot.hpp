@@ -176,21 +176,27 @@ public:
     // Timestamp
     // -------------------------------------------------------------------------
 
-    inline void set_timestamp(std::uint64_t ts) noexcept {
-        timestamp_ns_ = ts;
-    }
-
-    inline void inc_timestamp(std::uint64_t delta) noexcept {
-        timestamp_ns_ += delta;
+    inline void set_create_ts(std::uint64_t ts) noexcept {
+        create_ts_ns_ = ts;
     }
 
     [[nodiscard]]
-    inline std::uint64_t timestamp() const noexcept {
-        return timestamp_ns_;
+    inline std::uint64_t create_ts() const noexcept {
+        return create_ts_ns_;
     }
 
-    void reset_timestamp() noexcept {
-        timestamp_ns_ = 0;
+    inline void set_delivery_ts(std::uint64_t ts) noexcept {
+        delivery_ts_ns_ = ts;
+    }
+
+    [[nodiscard]]
+    inline std::uint64_t delivery_ts() const noexcept {
+        return delivery_ts_ns_;
+    }
+
+    void reset_timestamps() noexcept {
+        create_ts_ns_ = 0;
+        delivery_ts_ns_ = 0;
     }
 
     // -------------------------------------------------------------------------
@@ -209,14 +215,16 @@ public:
         }
 
         size_ = 0;
-        timestamp_ns_ = 0;
+        create_ts_ns_ = 0;
+        delivery_ts_ns_ = 0;
     }
 
 private:
 
     memory::block_t* external_{nullptr};
     std::size_t size_{0};
-    std::uint64_t timestamp_ns_{0};
+    std::uint64_t create_ts_ns_{0};
+    std::uint64_t delivery_ts_ns_{0};
 
     char inline_buffer_[InlineSize];
 

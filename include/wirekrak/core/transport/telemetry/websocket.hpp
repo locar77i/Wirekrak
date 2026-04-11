@@ -7,6 +7,7 @@
 #include "lcr/metrics/atomic/stats/sampler.hpp"
 #include "lcr/metrics/atomic/stats/duration.hpp"
 #include "lcr/metrics/latency_histogram.hpp"
+#include "lcr/metrics/burst_profiler.hpp"
 #include "lcr/format.hpp"
 
 namespace wirekrak::core::transport::telemetry {
@@ -96,8 +97,14 @@ struct alignas(64) WebSocket final {
     // ---------------------------------------------------------------------
     // Timing
     // ---------------------------------------------------------------------
-    lcr::metrics::atomic::stats::duration64 ws_message_ingress_duration; // Measures the processing duration of every message (including network + assembly)
-    
+    lcr::metrics::atomic::stats::duration64 message_ingress_duration;   // Measures the processing duration of every message (including network + assembly)
+    lcr::metrics::latency_histogram ingress_latency;                    // Measures the message process efficiency (time spent inside the transport layer to deliver one message)
+
+    // ---------------------------------------------------------------------
+    // Burst profiling (for latency analysis)
+    // ---------------------------------------------------------------------
+    lcr::metrics::burst_profiler ingress_burst;
+
     // ---------------------------------------------------------------------
     // Snapshot support
     // ---------------------------------------------------------------------
@@ -147,7 +154,11 @@ struct alignas(64) WebSocket final {
         events_emitted_total.copy_to(other.events_emitted_total);
 
         // Timing
-        ws_message_ingress_duration.copy_to(other.ws_message_ingress_duration);
+        message_ingress_duration.copy_to(other.message_ingress_duration);
+        ingress_latency.copy_to(other.ingress_latency);
+
+        // Burst profiling
+        ingress_burst.copy_to(other.ingress_burst);
     }
 
 
@@ -211,7 +222,12 @@ struct alignas(64) WebSocket final {
 
         // Timing
         os << "\nTiming\n";
-        os << "  Message ingress  : "; ws_message_ingress_duration.dump(os); os << '\n';
+        os << "  Message ingress  : "; message_ingress_duration.dump(os); os << '\n';
+        os << "  Ingress latency  : "; ingress_latency.dump(os); os << '\n';
+
+        // Burst profiling
+        os << "\nBurst profiling (message ingress)\n";
+        os << "  Ingress burst    : "; ingress_burst.dump(os); os << '\n';
     }
 };
 

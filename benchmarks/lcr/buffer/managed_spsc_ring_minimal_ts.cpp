@@ -84,7 +84,7 @@ int main() {
 
             // Minimal write with dependency (and sampled timestamp)
             if ((counter & 0x3FF) == 0) [[unlikely]] {
-                slot->set_timestamp(clock.now_ns());
+                slot->set_create_ts(clock.now_ns());
                 slot->write_ptr()[0] = 1; // mark sampled
             } else {
                 slot->write_ptr()[0] = 0;
@@ -115,7 +115,7 @@ int main() {
 
             data = slot->data()[0];
             if (data == 1) [[unlikely]] {
-                handoff_latency.record(slot->timestamp(), clock.now_ns());
+                handoff_latency.record(slot->create_ts(), clock.now_ns());
             }
 
             ring.release_consumer_slot(slot);

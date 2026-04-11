@@ -415,8 +415,8 @@ public:
 */
                 break;
             }
-            const auto slot_timestamp = slot->timestamp(); // Capture timestamp before processing for accurate latency measurement
-            const bool samples_now = slot_timestamp; // For telemetry sampling (every 1024 messages)
+            const auto slot_create_ts_ns = slot->create_ts(); // Capture create timestamp before processing for accurate latency measurement
+            const bool samples_now = slot_create_ts_ns; // For telemetry sampling (every 1024 messages)
             // The message slot remains valid until release_message() is called
             std::string_view sv{ slot->data(), slot->size() };
             // Observability: measure handoff duration (time from transport processing start to protocol consumption)
@@ -424,7 +424,7 @@ public:
                 std::uint64_t delivery_ns = 0;
                 if (samples_now) [[unlikely]] {
                     delivery_ns = clock.now_ns();
-                    telemetry_.handoff_latency.record(slot_timestamp, delivery_ns);
+                    telemetry_.handoff_latency.record(slot->delivery_ts(), delivery_ns);
                 }
             );
             // Handle the message (parsing & routing)
@@ -436,6 +436,7 @@ public:
             WK_TL3(
                 if (samples_now) [[unlikely]] {
                     telemetry_.message_process_duration.record(delivery_ns, clock.now_ns());
+                    telemetry_.process_latency.record(delivery_ns, clock.now_ns());
                 }
             );
             // Check to handle parser backpressure if needed
@@ -452,7 +453,7 @@ public:
             // Observability: measure end to end latency up to final user delivery (including protocol processing)
             WK_TL3(
                 if (samples_now) [[unlikely]] {
-                    telemetry_.end_to_end_latency.record(slot_timestamp, clock.now_ns());
+                    telemetry_.end_to_end_latency.record(slot_create_ts_ns, clock.now_ns());
                 }
             );
             ++messages_processed;

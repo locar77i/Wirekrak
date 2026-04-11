@@ -79,7 +79,8 @@ struct alignas(64) Session final {
     // Timing
     // ---------------------------------------------------------------------
     lcr::metrics::stats::duration64 poll_duration;            // Measures the duration of each poll() cycle 
-    lcr::metrics::stats::duration64 message_process_duration; // Measures the duration of every message processing (time spent inside the protocol layer to process one message)
+    lcr::metrics::stats::duration64 message_process_duration; // Measures the process duration of every message (parsing & delivery)
+    lcr::metrics::latency_histogram process_latency;          // Measures the message process efficiency (time spent inside the protocol layer to process one message)
     lcr::metrics::latency_histogram handoff_latency;          // Latency from message ingress at transport to protocol delivery (measures the handoff efficiency between transport and protocol)
     lcr::metrics::latency_histogram end_to_end_latency;       // Latency from message ingress at transport to final user delivery (includes handoff + protocol processing + user delivery)
 
@@ -138,6 +139,7 @@ struct alignas(64) Session final {
         // Timing
         poll_duration.copy_to(other.poll_duration);
         message_process_duration.copy_to(other.message_process_duration);
+        process_latency.copy_to(other.process_latency);
         handoff_latency.copy_to(other.handoff_latency);
         end_to_end_latency.copy_to(other.end_to_end_latency);
 
@@ -201,6 +203,7 @@ struct alignas(64) Session final {
         os << "\nTiming\n";
         os << "  Poll duration      : "; poll_duration.dump(os); os << '\n';
         os << "  Process message    : "; message_process_duration.dump(os); os << '\n';
+        os << "  Process latency    : "; process_latency.dump(os); os << '\n';
         os << "  Message handoff    : "; handoff_latency.dump(os); os << '\n';
         os << "  End-to-end latency : "; end_to_end_latency.dump(os); os << '\n';
 

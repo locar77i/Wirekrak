@@ -207,7 +207,7 @@ private:
                 }
                 WK_TL3(
                     if (samples_now) [[unlikely]] {
-                        current_slot->set_timestamp(clock.now_ns());
+                        current_slot->set_create_ts(clock.now_ns());
                     }
                 );
                 LCR_ASSERT_MSG(current_slot->size() == 0, "acquired slot must be empty");
@@ -251,6 +251,10 @@ private:
                 running_.store(false, std::memory_order_release); // Stop loop
                 break; // End of loop -> discard partial message if any -> signal close
             }
+
+            WK_TL3(
+                telemetry_.ingress_burst.record(clock.now_ns());
+            );
 
             // =========================================================
             // CLOSE (graceful, NOT an error)
@@ -301,7 +305,11 @@ private:
 
                 WK_TL3(
                     if (samples_now) [[unlikely]] {
-                        telemetry_.ws_message_ingress_duration.record_duration(clock.now_ns() - current_slot->timestamp());
+                        const auto slot_delivery_ts_ns = clock.now_ns();
+                        const auto delta = slot_delivery_ts_ns - current_slot->create_ts();
+                        telemetry_.message_ingress_duration.record_duration(delta);
+                        telemetry_.ingress_latency.record_duration(delta);
+                        current_slot->set_delivery_ts(slot_delivery_ts_ns);
                     }
                 );
 

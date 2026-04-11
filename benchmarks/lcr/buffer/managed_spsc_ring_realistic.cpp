@@ -41,10 +41,10 @@ constexpr size_t POOL_BLOCK_COUNT = 1 << 4;
 inline size_t size_dist(uint64_t i) {
     uint64_t x = i & 0xFF;
 
-    if (x < 200) return 232;      // ~78%
-    if (x < 252) return 1000;     // ~19%
-    if (x < 253) return 2024;     // ~1%
-    if (x < 254) return 4072;     // ~1%
+    if (x < 200) return 224;      // ~78%
+    if (x < 252) return 992;      // ~19%
+    if (x < 253) return 2016;     // ~1%
+    if (x < 254) return 4064;     // ~1%
     return 8192;                  // ~1%
 }
 
@@ -55,7 +55,7 @@ inline size_t size_dist(uint64_t i) {
 int main() {
     auto& clock = lcr::system::monotonic_clock::instance();
 
-    using slot_t = lcr::buffer::managed_slot<1000>;
+    using slot_t = lcr::buffer::managed_slot<992>;
     using pool_t = lcr::memory::block_pool;
     using ring_t = lcr::buffer::managed_spsc_ring<slot_t, pool_t, N>;
 
@@ -124,7 +124,7 @@ int main() {
             std::memset(slot->write_ptr(), 0xAB, len);   // Full write for realistic
             //slot->write_ptr()[0] = 0xAB;               // Minimal write for maximum throughput
             if ((counter & 0x3FF) == 0) [[unlikely]] {
-                slot->set_timestamp(clock.now_ns());
+                slot->set_create_ts(clock.now_ns());
                 slot->write_ptr()[0] = 1; // mark sampled
             }
             slot->commit(len);
@@ -159,7 +159,7 @@ int main() {
 
             data = slot->data()[0];
             if (data == 1) [[unlikely]] {
-                handoff_latency.record(slot->timestamp(), clock.now_ns());
+                handoff_latency.record(slot->create_ts(), clock.now_ns());
             }
 
             ring.release_consumer_slot(slot);
