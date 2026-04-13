@@ -3,8 +3,7 @@
 #include "flashstrike/events.hpp"
 #include "flashstrike/matching_engine/conf/partition_plan.hpp"
 #include "flashstrike/matching_engine/order_book.hpp"
-#include "flashstrike/matching_engine/telemetry/init.hpp"
-#include "flashstrike/matching_engine/telemetry/manager.hpp"
+#include "flashstrike/matching_engine/Telemetry.hpp"
 #include "lcr/system/monotonic_clock.hpp"
 #include "lcr/system/cpu_relax.hpp"
 #include "lcr/memory/footprint.hpp"
@@ -30,7 +29,7 @@ public:
         , pplan_()
         , instrument_(instrument)
         , normalized_instrument_(pplan_.compute(instrument, target_num_partitions))
-        , book_(max_orders, pplan_.num_partitions(), pplan_.partition_size(), pplan_.partition_bits(), metrics)
+        , book_(max_orders, pplan_.num_partitions(), pplan_.partition_size(), pplan_.partition_bits(), metrics.order_book_metrics, metrics)
         , seq_gen_(1) // start sequence numbers at 1
         , init_metrics_updater_(metrics.init_metrics)
         , manager_metrics_updater_(metrics.manager_metrics)

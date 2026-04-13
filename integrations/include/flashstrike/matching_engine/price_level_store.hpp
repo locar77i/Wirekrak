@@ -60,7 +60,7 @@ struct PriceComparator<Side::ASK> {
 template<Side SIDE>
 class PriceLevelStore { 
 public:
-    PriceLevelStore(OrderPool &order_pool, OrderIdMap &order_idmap, PartitionPool &part_pool, std::uint32_t num_partitions, std::uint32_t partition_bits, telemetry::PriceLevelStore& pls_asks_metrics, telemetry::PriceLevelStore& pls_bids_metrics)
+    PriceLevelStore(OrderPool &order_pool, OrderIdMap &order_idmap, PartitionPool &part_pool, std::uint32_t num_partitions, std::uint32_t partition_bits, telemetry::PriceLevelStore& metrics)
         : order_pool_(order_pool)
         , order_idmap_(order_idmap)
         , part_pool_(part_pool)
@@ -69,7 +69,7 @@ public:
         , partition_mask_((1ull << partition_bits) - 1)
         , bitmap_words_((num_partitions + BITS_PER_WORD - 1) / BITS_PER_WORD)
         , best_price_(INVALID_PRICE), has_best_(false)
-        , metrics_updater_(pls_asks_metrics, pls_bids_metrics)
+        , metrics_(metrics)
     {
         assert(num_partitions > 0 && "num_partitions must be > 0");
         assert((num_partitions & (num_partitions - 1)) == 0 && "num_partitions must be a power of two");
@@ -115,22 +115,26 @@ public:
     // Push an order into the appropriate PriceLevel within the store
     inline void insert_order(OrderIdx order_idx, Order &o) noexcept {
 #ifdef ENABLE_FS2_METRICS
-        auto start_ns = monotonic_clock::instance().now_ns();
+        const auto start_ns = monotonic_clock::instance().now_ns();
 #endif
         insert_order_(order_idx, o);
 #ifdef ENABLE_FS2_METRICS
-        metrics_updater_.on_insert_order<SIDE>(start_ns);
+        const auto end_ns = monotonic_clock::instance().now_ns();
+        metrics_.insert_order.record(start_ns, end_ns);
+        metrics_.insert_order_latency.record(start_ns, end_ns);
 #endif
     }
 
     // Modify an order's price
     [[nodiscard]] inline bool reprice_order(OrderIdx order_idx, Order &o, Price new_price) noexcept {
 #ifdef ENABLE_FS2_METRICS
-        auto start_ns = monotonic_clock::instance().now_ns();
+        const auto start_ns = monotonic_clock::instance().now_ns();
 #endif
         if(try_to_reprice_order_by_flashstrike_(order_idx, o, new_price)) [[likely]] {
 #ifdef ENABLE_FS2_METRICS
-            metrics_updater_.on_reprice_order<SIDE>(start_ns);
+            const auto end_ns = monotonic_clock::instance().now_ns();
+            metrics_.reprice_order.record(start_ns, end_ns);
+            metrics_.reprice_order_latency.record(start_ns, end_ns);
 #endif
             return true;
         }
@@ -138,7 +142,9 @@ public:
         o.price = new_price;
         insert_order_(order_idx, o);
 #ifdef ENABLE_FS2_METRICS
-        metrics_updater_.on_reprice_order<SIDE>(start_ns);
+        const auto end_ns = monotonic_clock::instance().now_ns();
+        metrics_.reprice_order.record(start_ns, end_ns);
+        metrics_.reprice_order_latency.record(start_ns, end_ns);
 #endif
         return true;
     }
@@ -146,7 +152,7 @@ public:
     // Modify an order's quantity
     [[nodiscard]] inline bool resize_order(Order &o, Quantity new_qty) noexcept {
 #ifdef ENABLE_FS2_METRICS
-        auto start_ns = monotonic_clock::instance().now_ns();
+        const auto start_ns = monotonic_clock::instance().now_ns();
 #endif
         // Compute partition and offset and get partition if needed to hold this price level
         PartitionId partid = partition_id_(o.price);
@@ -157,7 +163,9 @@ public:
         pl.add_quantity(new_qty - o.qty);
         o.qty = new_qty;
 #ifdef ENABLE_FS2_METRICS
-        metrics_updater_.on_resize_order<SIDE>(start_ns);
+        const auto end_ns = monotonic_clock::instance().now_ns();
+        metrics_.resize_order.record(start_ns, end_ns);
+        metrics_.resize_order_latency.record(start_ns, end_ns);
 #endif
         return true;
     }
@@ -165,11 +173,13 @@ public:
     // Remove an order from the store
     inline void remove_order(OrderIdx order_idx, Order &o) noexcept {
 #ifdef ENABLE_FS2_METRICS
-        auto start_ns = monotonic_clock::instance().now_ns();
+        const auto start_ns = monotonic_clock::instance().now_ns();
 #endif
         remove_order_(order_idx, o);
 #ifdef ENABLE_FS2_METRICS
-        metrics_updater_.on_remove_order<SIDE>(start_ns);
+        const auto end_ns = monotonic_clock::instance().now_ns();
+        metrics_.remove_order.record(start_ns, end_ns);
+        metrics_.remove_order_latency.record(start_ns, end_ns);
 #endif
     }
 
@@ -225,7 +235,7 @@ private:
     Price best_price_;  // global best price for this store
     bool has_best_;
 
-    telemetry::PriceLevelStoreUpdater metrics_updater_;
+    telemetry::PriceLevelStore& metrics_;
 
     // Private helper methods ----------------------------
 
@@ -287,7 +297,7 @@ private:
     // TODO: if profiling shows recompute is still a hotspot, we can add special instruction sets as AVX2/AVX512
     inline void recompute_global_best_() noexcept {
 #ifdef ENABLE_FS2_METRICS
-        auto start_ns = monotonic_clock::instance().now_ns();
+        const auto start_ns = monotonic_clock::instance().now_ns();
 #endif
         // bitmap-based recompute
         Price new_best = INVALID_PRICE;
@@ -312,7 +322,9 @@ private:
         has_best_ = (new_best != INVALID_PRICE);
         WK_TRACE(" -> Recomputed global best " << to_string(SIDE) << " price: " << best_price_);
 #ifdef ENABLE_FS2_METRICS
-        metrics_updater_.on_recompute_global_best<SIDE>(start_ns);
+        const auto end_ns = monotonic_clock::instance().now_ns();
+        metrics_.recompute_global_best.record(start_ns, end_ns);
+        metrics_.recompute_global_best_latency.record(start_ns, end_ns);
 #endif
     }
 
@@ -402,11 +414,13 @@ private:
             }
             else if (part->best_price() == o.price) { // If the emptied level was the partition best, recompute partition best
 #ifdef ENABLE_FS2_METRICS
-                auto start_ns = monotonic_clock::instance().now_ns();
+                const auto start_ns = monotonic_clock::instance().now_ns();
 #endif
                 part->recompute_best<SIDE>();
 #ifdef ENABLE_FS2_METRICS
-                metrics_updater_.on_recompute_partition_best<SIDE>(start_ns);
+                const auto end_ns = monotonic_clock::instance().now_ns();
+                metrics_.recompute_partition_best.record(start_ns, end_ns);
+                metrics_.recompute_partition_best_latency.record(start_ns, end_ns);
 #endif
                 return true; // Partition best changed (recomputed)
             }

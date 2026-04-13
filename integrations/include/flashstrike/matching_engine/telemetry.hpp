@@ -2,7 +2,7 @@
 
 #include "flashstrike/matching_engine/telemetry/init.hpp"
 #include "flashstrike/matching_engine/telemetry/manager.hpp"
-#include "flashstrike/matching_engine/telemetry/price_level_store.hpp"
+#include "flashstrike/matching_engine/telemetry/order_book.hpp"
 #include "flashstrike/matching_engine/telemetry/low_level.hpp"
 
 
@@ -17,6 +17,7 @@ struct Telemetry {
     telemetry::Manager manager_metrics;
     telemetry::PriceLevelStore pls_asks_metrics;
     telemetry::PriceLevelStore pls_bids_metrics;
+    telemetry::OrderBook order_book_metrics;
     telemetry::LowLevel low_level_metrics;
 
     // Constructor
@@ -36,6 +37,7 @@ struct Telemetry {
 #ifdef ENABLE_FS2_METRICS
         pls_asks_metrics.copy_to(other.pls_asks_metrics);
         pls_bids_metrics.copy_to(other.pls_bids_metrics);
+        order_book_metrics.copy_to(other.order_book_metrics);
 #endif
 #ifdef ENABLE_FS3_METRICS
         low_level_metrics.copy_to(other.low_level_metrics);
@@ -54,6 +56,7 @@ struct Telemetry {
     #ifdef ENABLE_FS2_METRICS
         pls_asks_metrics.dump("Price Levels - Asks", os);
         pls_bids_metrics.dump("Price Levels - Bids", os);
+        order_book_metrics.dump("Order Book", os);
     #endif
     #ifdef ENABLE_FS3_METRICS
         low_level_metrics.dump("Core", os);
@@ -72,6 +75,7 @@ struct Telemetry {
 #ifdef ENABLE_FS2_METRICS
         pls_asks_metrics.collect(prefix + "_asks", collector);
         pls_bids_metrics.collect(prefix + "_bids", collector);
+        order_book_metrics.collect(prefix + "_order_book", collector);
 #endif
 #ifdef ENABLE_FS3_METRICS
         low_level_metrics.collect(prefix + "_core", collector);

@@ -5,6 +5,7 @@
 
 #include "flashstrike/matching_engine/price_level_store.hpp"
 #include "flashstrike/matching_engine/telemetry.hpp"
+#include "flashstrike/matching_engine/telemetry/order_book.hpp"
 #include "lcr/system/monotonic_clock.hpp"
 #include "lcr/memory/footprint.hpp"
 #include "lcr/log/logger.hpp"
@@ -18,14 +19,15 @@ namespace matching_engine {
 // Main OrderBook class
 class OrderBook {
 public:
-    OrderBook(std::uint64_t max_orders, std::uint32_t num_partitions, std::uint64_t partition_size, std::uint32_t partition_bits, matching_engine::Telemetry& metrics)
+    OrderBook(std::uint64_t max_orders, std::uint32_t num_partitions, std::uint64_t partition_size, std::uint32_t partition_bits, telemetry::OrderBook& metrics, Telemetry& g_metrics)
         : start_ns_(monotonic_clock::instance().now_ns())
-        , order_pool_(max_orders, metrics.init_metrics, metrics.low_level_metrics)
-        , order_idmap_(order_pool_.capacity(), metrics.init_metrics, metrics.low_level_metrics)
-        , part_pool_(num_partitions, partition_size, metrics.init_metrics, metrics.low_level_metrics)
-        , bids_(order_pool_, order_idmap_, part_pool_, num_partitions, partition_bits, metrics.pls_asks_metrics, metrics.pls_bids_metrics)
-        , asks_(order_pool_, order_idmap_, part_pool_, num_partitions, partition_bits, metrics.pls_asks_metrics, metrics.pls_bids_metrics)
-        , init_metrics_updater_(metrics.init_metrics)
+        , metrics_(metrics)
+        , order_pool_(max_orders, g_metrics.init_metrics, g_metrics.low_level_metrics)
+        , order_idmap_(order_pool_.capacity(), g_metrics.init_metrics, g_metrics.low_level_metrics)
+        , part_pool_(num_partitions, partition_size, g_metrics.init_metrics, g_metrics.low_level_metrics)
+        , bids_(order_pool_, order_idmap_, part_pool_, num_partitions, partition_bits, metrics.pls_bids_metrics)
+        , asks_(order_pool_, order_idmap_, part_pool_, num_partitions, partition_bits, metrics.pls_asks_metrics)
+        , init_metrics_updater_(g_metrics.init_metrics)
     {
         init_metrics_updater_.on_create_order_book(start_ns_, memory_usage().total_bytes());
     }
@@ -199,6 +201,8 @@ public:
 
 private:
     Timestamp start_ns_;
+    telemetry::OrderBook& metrics_;
+
     OrderPool order_pool_;           // single pool for all orders
     OrderIdMap order_idmap_;          // map orderid -> order pool index
     PartitionPool part_pool_;         // single pool for all partition
