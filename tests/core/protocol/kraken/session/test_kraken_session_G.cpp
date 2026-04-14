@@ -116,7 +116,7 @@ void test_single_channel_long_run_fuzz() {
 
     TEST_CHECK(
         h.session.trade_subscriptions().total_symbols() ==
-        h.session.replay_database().trade_table().total_symbols()
+        h.replay_db_trade().total_symbols()
     );
 
     std::cout << "[TEST] OK\n";
@@ -243,10 +243,10 @@ void test_cross_channel_long_run_fuzz() {
     // ------------------------------------------------------------
 
     const auto& trade_mgr   = h.session.trade_subscriptions();
-    const auto& trade_db    = h.session.replay_database().trade_table();
+    const auto& trade_db    = h.replay_db_trade();
 
     const auto& book_mgr    = h.session.book_subscriptions();
-    const auto& book_db     = h.session.replay_database().book_table();
+    const auto& book_db     = h.replay_db_book();
 
     // ---------------- Trade invariants ----------------
 
@@ -388,8 +388,8 @@ void test_deterministic_chaos_simulator() {
     const auto& trade_mgr = h.session.trade_subscriptions();
     const auto& book_mgr  = h.session.book_subscriptions();
 
-    const auto& trade_db = h.session.replay_database().trade_table();
-    const auto& book_db  = h.session.replay_database().book_table();
+    const auto& trade_db = h.replay_db_trade();
+    const auto& book_db  = h.replay_db_book();
 
     // ------------------------------------------------------------
     // Replay DB must reflect logical manager state
@@ -508,8 +508,8 @@ void test_replay_storm_amplification() {
     const auto& trade_mgr = h.session.trade_subscriptions();
     const auto& book_mgr  = h.session.book_subscriptions();
 
-    const auto& trade_db = h.session.replay_database().trade_table();
-    const auto& book_db  = h.session.replay_database().book_table();
+    const auto& trade_db = h.replay_db_trade();
+    const auto& book_db  = h.replay_db_book();
 
     // Replay DB matches logical manager state
     TEST_CHECK(
@@ -668,8 +668,8 @@ void test_replay_with_delayed_ack_simulation() {
     const auto& trade_mgr = h.session.trade_subscriptions();
     const auto& book_mgr  = h.session.book_subscriptions();
 
-    const auto& trade_db = h.session.replay_database().trade_table();
-    const auto& book_db  = h.session.replay_database().book_table();
+    const auto& trade_db = h.replay_db_trade();
+    const auto& book_db  = h.replay_db_book();
 
     // Replay DB matches manager logical state
     TEST_CHECK( trade_mgr.total_symbols() == trade_db.total_symbols() );

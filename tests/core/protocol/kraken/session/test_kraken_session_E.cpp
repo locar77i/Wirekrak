@@ -97,8 +97,8 @@ void test_rejection_isolated_per_channel() {
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
     TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 0);
-    TEST_CHECK(h.session.replay_database().book_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
+    TEST_CHECK(h.replay_db_book().total_symbols() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -133,10 +133,10 @@ void test_rejection_isolation_with_reconnect() {
     h.reject_trade_subscription(trade_id, "BTC/USD");
 
     // Trade intent must be removed from Replay DB
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 0);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
 
     // Book intent must remain untouched
-    TEST_CHECK(h.session.replay_database().book_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_book().total_symbols() == 1);
 
     // ---------------------------------------------------------------------
     // Force reconnect
@@ -192,14 +192,14 @@ void test_replay_database_isolated_tables() {
     h.confirm_trade_subscription(trade_id, "BTC/USD");
     h.confirm_book_subscription(book_id, "ETH/USD", 25);
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
-    TEST_CHECK(h.session.replay_database().book_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_book().total_symbols() == 1);
 
     h.force_reconnect();
     h.wait_for_epoch(2);
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
-    TEST_CHECK(h.session.replay_database().book_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_book().total_symbols() == 1);
 
     std::cout << "[TEST] OK\n";
 }

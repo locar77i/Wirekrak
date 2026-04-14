@@ -66,14 +66,15 @@ Data-plane model:
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/channel/manager.hpp"
+#include "wirekrak/core/protocol/replay/database.hpp"
 #include "wirekrak/core/protocol/request/scheduler.hpp"
 #include "wirekrak/core/protocol/telemetry/session.hpp"
+#include "wirekrak/core/protocol/kraken/replay_traits.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/core/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/core/protocol/kraken/parser/router.hpp"
-#include "wirekrak/core/protocol/kraken/replay/database.hpp"
 #include "wirekrak/core/policy/protocol/session_bundle.hpp"
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
 #include "wirekrak/core/config/protocol.hpp"
@@ -291,7 +292,7 @@ public:
         if constexpr (ReplayPolicy::enabled) {
             // Store protocol intent for deterministic replay after reconnect.
             // Only acknowledged subscriptions will be replayed.
-            replay_db_.add(req);
+            replay_db_2_.add(req);
         }
         // 6) Emit the request according to the configured batching policy
         WK_DEBUG("[SESSION] Emitting subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
@@ -326,7 +327,7 @@ public:
         // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect (only if replay enabled)
         if constexpr (ReplayPolicy::enabled) {
             for (const auto& symbol : cancelled) {
-                replay_db_.remove_symbol<RequestT>(symbol);
+                replay_db_2_.remove_symbol<replay_type<RequestT>>(symbol);
             }
         }
         return req.req_id.value();
@@ -516,7 +517,7 @@ public:
                 // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
                 if constexpr (ReplayPolicy::enabled) {
                     if (ack.success) {
-                        replay_db_.remove_symbol<schema::trade::Subscribe>(ack.symbol);
+                        replay_db_2_.remove_symbol<schema::trade::Subscribe>(ack.symbol);
                     }
                 }
             }
@@ -547,7 +548,7 @@ public:
                 // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
                 if constexpr (ReplayPolicy::enabled) {
                     if (ack.success) {
-                        replay_db_.remove_symbol<schema::book::Subscribe>(ack.symbol);
+                        replay_db_2_.remove_symbol<schema::book::Subscribe>(ack.symbol);
                     }
                 }
             }
@@ -691,8 +692,8 @@ public:
     }
 
     [[nodiscard]]
-    inline const replay::Database& replay_database() const noexcept {
-        return replay_db_;
+    inline const auto& replay_database() const noexcept {
+        return replay_db_2_;
     }
 
     [[nodiscard]]
@@ -780,7 +781,12 @@ private:
     channel::Manager book_channel_manager_{};
 
     // Replay database
-    replay::Database replay_db_;
+    using ReplayDB = wirekrak::core::protocol::replay::Database<
+        schema::trade::Subscribe,
+        schema::book::Subscribe
+    >;
+
+    ReplayDB replay_db_2_;
 
     // Overall overload state tracking for transport, protocol, and user domains
     struct OverloadState {
@@ -813,7 +819,7 @@ private:
         // Replay subscriptions if this is a reconnect (epoch > 1)
         if (transport_epoch() > 1) {
             // 1) Replay trade subscriptions
-            auto trade_subscriptions = replay_db_.take_subscriptions<schema::trade::Subscribe>();
+            auto trade_subscriptions = replay_db_2_.take_subscriptions<schema::trade::Subscribe>();
             if(!trade_subscriptions.empty()) {
                 WK_DEBUG("[REPLAY] Replaying " << trade_subscriptions.size() << " trade subscription(s)");
                 for (const auto& subscription : trade_subscriptions) {
@@ -824,7 +830,7 @@ private:
                 WK_DEBUG("[REPLAY] No trade subscriptions to replay");
             }
             // 2) Replay book subscriptions
-            auto book_subscriptions = replay_db_.take_subscriptions<schema::book::Subscribe>();
+            auto book_subscriptions = replay_db_2_.take_subscriptions<schema::book::Subscribe>();
             if(!book_subscriptions.empty()) {
                 WK_DEBUG("[REPLAY] Replaying " << book_subscriptions.size() << " book subscription(s)");
                 for (const auto& subscription : book_subscriptions) {
@@ -852,7 +858,7 @@ private:
         req.symbols = std::move(accepted_symbols);
         // 3) Register in replay DB using filtered request (only if replay enabled)
         if constexpr (ReplayPolicy::enabled) {
-            replay_db_.add(req);
+            replay_db_2_.add(req);
         }
         WK_DEBUG("[SESSION] Emitting re-subscribe message: " << req.symbols.size() << " symbol/s");
         // 4) Emit the request according to the configured batching policy
@@ -903,7 +909,7 @@ private:
                 (void)book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
                 // Try process rejection in replay DB to prevent replay of failed subscriptions after reconnect (only if replay enabled)
                 if constexpr (ReplayPolicy::enabled) {
-                    (void)replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                    (void)replay_db_2_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
                 }
             }
         }

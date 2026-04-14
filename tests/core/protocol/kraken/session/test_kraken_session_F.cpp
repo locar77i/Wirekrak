@@ -41,7 +41,7 @@ void test_partial_rejection_before_reconnect() {
     h.confirm_trade_subscription(id, "BTC/USD");
     h.reject_trade_subscription(id, "ETH/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     h.force_reconnect();
     h.wait_for_epoch(2);
@@ -87,7 +87,7 @@ void test_reject_after_reconnect_before_ack() {
     h.drain();
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 0);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
     TEST_CHECK(!h.session.is_idle()); // because rejection exists
 
     h.drain_rejections(); // Drain rejection to reach protocol-idle state
@@ -116,8 +116,8 @@ void test_mixed_accept_reject_cross_channel() {
     // Reject trade only
     h.reject_trade_subscription(t_id, "BTC/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 0);
-    TEST_CHECK(h.session.replay_database().book_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
+    TEST_CHECK(h.replay_db_book().total_symbols() == 1);
 
     h.force_reconnect();
     h.wait_for_epoch(2);
@@ -162,7 +162,7 @@ void test_reconnect_storm_with_rejections() {
     // ACK BTC replay
     h.confirm_trade_subscription(id, "BTC/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     // Reconnect #2
     h.force_reconnect();

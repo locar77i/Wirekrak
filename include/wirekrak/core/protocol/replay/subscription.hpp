@@ -78,7 +78,6 @@ Usage
 
 namespace wirekrak::core {
 namespace protocol {
-namespace kraken {
 namespace replay {
 
 // ------------------------------------------------------------
@@ -98,7 +97,6 @@ public:
         bool erased = (it != symbols.end());
         if (erased) {
             symbols.erase(it, symbols.end());
-            WK_TRACE("[REPLAY:SUBSCRIPTION] Erased symbol {" << symbol << "}" << " from subscription (req_id=" << req_id() << ")");
         }
         return erased;
     }
@@ -130,6 +128,5 @@ private:
 };
 
 } // namespace replay
-} // namespace kraken
 } // namespace protocol
 } // namespace wirekrak::core

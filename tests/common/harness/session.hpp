@@ -219,6 +219,15 @@ struct Session {
     inline void reject_book_unsubscription(ctrl::req_id_t req_id, const Symbol& sym) {
         reject("unsubscribe", req_id, sym, "Unsubscription rejected");
     }
+
+
+    inline auto& replay_db_trade() noexcept {
+        return session.replay_database().template subscription_table_for<schema::trade::Subscribe>();
+    }
+
+    inline auto& replay_db_book() noexcept {
+        return session.replay_database().template subscription_table_for<schema::book::Subscribe>();
+    }
 };
 
 } // namespace harness

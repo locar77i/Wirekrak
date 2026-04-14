@@ -47,8 +47,8 @@ void test_initial_subscribe_rejected_removes_intent() {
     // Server rejects
     h.reject_trade_subscription(sub_id, "BTC/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_requests() == 0);
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 0);
+    TEST_CHECK(h.replay_db_trade().total_requests() == 0);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
 
     // Reconnect → nothing to replay
     h.force_reconnect();
@@ -73,7 +73,7 @@ void test_replay_rejected_removes_intent() {
     auto sub_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(sub_id, "BTC/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     // Reconnect → replay fires
     h.force_reconnect();
@@ -82,7 +82,7 @@ void test_replay_rejected_removes_intent() {
     // Replay rejected
     h.reject_trade_subscription(sub_id, "BTC/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 0);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
 
     // Reconnect again → should NOT replay
     h.force_reconnect();
@@ -108,7 +108,7 @@ void test_silent_pending_survives_disconnect() {
 
     // NO ACK
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     // Reconnect
     h.force_reconnect();
@@ -121,7 +121,7 @@ void test_silent_pending_survives_disconnect() {
     h.confirm_trade_subscription(sub_id, "BTC/USD");
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -140,12 +140,12 @@ void test_unsubscribe_accepted_removes_intent() {
     auto sub_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(sub_id, "BTC/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     auto unsub_id = h.unsubscribe_trade("BTC/USD");
     h.confirm_trade_unsubscription(unsub_id, "BTC/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 0);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
 
     // Reconnect → no replay
     h.force_reconnect();
@@ -170,7 +170,7 @@ void test_unsubscribe_rejected_keeps_intent() {
     auto sub_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(sub_id, "BTC/USD");
 
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     auto unsub_id = h.unsubscribe_trade("BTC/USD");
 
@@ -178,7 +178,7 @@ void test_unsubscribe_rejected_keeps_intent() {
     h.reject_trade_unsubscription(unsub_id, "BTC/USD");
 
     // Intent must remain
-    TEST_CHECK(h.session.replay_database().trade_table().total_symbols() == 1);
+    TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     // Reconnect → replay should happen
     h.force_reconnect();

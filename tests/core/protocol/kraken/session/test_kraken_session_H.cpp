@@ -95,7 +95,7 @@ void test_out_of_order_ack_burst() {
 
     TEST_CHECK(
         h.session.trade_subscriptions().total_symbols() ==
-        h.session.replay_database().trade_table().total_symbols()
+        h.replay_db_trade().total_symbols()
     );
 
     TEST_CHECK(h.session.is_idle());
@@ -180,7 +180,7 @@ void test_duplicate_ack_storm() {
 
     TEST_CHECK(
         h.session.trade_subscriptions().total_symbols() ==
-        h.session.replay_database().trade_table().total_symbols()
+        h.replay_db_trade().total_symbols()
     );
 
     TEST_CHECK(h.session.is_idle());
@@ -242,7 +242,7 @@ void test_subscribe_unsubscribe_race_under_replay() {
     // 2) Manager and Replay DB must agree on symbol count
     TEST_CHECK(
         h.session.trade_subscriptions().total_symbols() ==
-        h.session.replay_database().trade_table().total_symbols()
+        h.replay_db_trade().total_symbols()
     );
 
     // 3) No duplicate symbols possible
@@ -329,19 +329,19 @@ void test_replay_db_saturation_limit() {
     // ------------------------------------------------------------
 
     // Symbol universe upper bound respected
-    TEST_CHECK( h.session.replay_database().trade_table().total_symbols() <= SYMBOL_UNIVERSE );
+    TEST_CHECK( h.replay_db_trade().total_symbols() <= SYMBOL_UNIVERSE );
 
     TEST_CHECK( h.session.trade_subscriptions().total_symbols() <= SYMBOL_UNIVERSE );
 
     // Replay DB and Manager converge
-    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.session.replay_database().trade_table().total_symbols() );
+    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
 
     // No dangling protocol requests
     //TEST_CHECK(h.session.pending_protocol_requests() == 0); // Too strong ...
     TEST_CHECK( h.session.pending_protocol_requests() <= SYMBOL_UNIVERSE );
 
     // No structural explosion
-    TEST_CHECK( h.session.replay_database().trade_table().total_requests() <= SYMBOL_UNIVERSE );
+    TEST_CHECK( h.replay_db_trade().total_requests() <= SYMBOL_UNIVERSE );
 
     std::cout << "[TEST] OK\n";
 }
@@ -442,10 +442,10 @@ void test_replay_db_mixed_trade_book_stress() {
     TEST_CHECK( h.session.pending_protocol_symbols() <= h.session.replay_database().total_symbols());
 
     // Trade alignment
-    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.session.replay_database().trade_table().total_symbols() );
+    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
 
     // Book alignment
-    TEST_CHECK( h.session.book_subscriptions().total_symbols() == h.session.replay_database().book_table().total_symbols() );
+    TEST_CHECK( h.session.book_subscriptions().total_symbols() == h.replay_db_book().total_symbols() );
 
     std::cout << "[TEST] OK\n";
 }
@@ -584,10 +584,10 @@ void test_saturation_race_overlap() {
     TEST_CHECK( h.session.pending_protocol_symbols() <= h.session.replay_database().total_symbols());
 
     // Trade logical consistency
-    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.session.replay_database().trade_table().total_symbols() );
+    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
 
     // Book logical consistency
-    TEST_CHECK( h.session.book_subscriptions().total_symbols() == h.session.replay_database().book_table().total_symbols() );
+    TEST_CHECK( h.session.book_subscriptions().total_symbols() == h.replay_db_book().total_symbols() );
 
     // No cross-channel contamination
     TEST_CHECK( h.session.trade_subscriptions().total_symbols() >= 0 );
@@ -595,8 +595,8 @@ void test_saturation_race_overlap() {
     TEST_CHECK( h.session.book_subscriptions().total_symbols() >= 0 );
 
 #ifndef NDEBUG
-    h.session.replay_database().trade_table().assert_consistency();
-    h.session.replay_database().book_table().assert_consistency();
+    h.replay_db_trade().assert_consistency();
+    h.replay_db_book().assert_consistency();
 #endif
 
     std::cout << "[TEST] OK\n";
@@ -665,7 +665,7 @@ void test_hard_limit_enforcement() {
     );
 
     TEST_CHECK(
-        h.session.replay_database().trade_table().total_symbols() <= MAX_SYMBOLS
+        h.replay_db_trade().total_symbols() <= MAX_SYMBOLS
     );
 
     // ------------------------------------------------------------
@@ -682,11 +682,11 @@ void test_hard_limit_enforcement() {
     );
 
     TEST_CHECK(
-        h.session.replay_database().trade_table().total_symbols() <= MAX_SYMBOLS
+        h.replay_db_trade().total_symbols() <= MAX_SYMBOLS
     );
 
 #ifndef NDEBUG
-    h.session.replay_database().trade_table().assert_consistency();
+    h.replay_db_trade().assert_consistency();
 #endif
 
     std::cout << "[TEST] OK\n";
