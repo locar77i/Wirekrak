@@ -65,6 +65,7 @@ Data-plane model:
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
+#include "wirekrak/core/protocol/channel/manager.hpp"
 #include "wirekrak/core/protocol/request/scheduler.hpp"
 #include "wirekrak/core/protocol/telemetry/session.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
@@ -72,7 +73,6 @@ Data-plane model:
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
 #include "wirekrak/core/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/core/protocol/kraken/parser/router.hpp"
-#include "wirekrak/core/protocol/kraken/channel/manager.hpp"
 #include "wirekrak/core/protocol/kraken/replay/database.hpp"
 #include "wirekrak/core/policy/protocol/session_bundle.hpp"
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
@@ -776,8 +776,8 @@ private:
     lcr::local::queue<schema::rejection::Notice, config::protocol::REJECTION_RING_CAPACITY> user_rejection_buffer_;
 
     // Channel subscription managers
-    channel::Manager trade_channel_manager_{Channel::Trade};
-    channel::Manager book_channel_manager_{Channel::Book};
+    channel::Manager trade_channel_manager_{};
+    channel::Manager book_channel_manager_{};
 
     // Replay database
     replay::Database replay_db_;

@@ -8,12 +8,10 @@
 #include <cassert>
 
 #include "wirekrak/core/protocol/control/req_id.hpp"
-#include "wirekrak/core/symbol/intern.hpp"
-#include "lcr/log/logger.hpp"
 #include "lcr/trap.hpp"
 
 
-namespace wirekrak::core::protocol::kraken::channel {
+namespace wirekrak::core::protocol::channel {
 
 /*
 ===============================================================================
@@ -54,16 +52,12 @@ public:
     // ------------------------------------------------------------
     // Add a new pending request
     // ------------------------------------------------------------
-    inline void add(ctrl::req_id_t req_id, const RequestSymbols& symbols) noexcept {
+    inline void add(ctrl::req_id_t req_id, const RequestSymbolIds& sids) noexcept {
         auto& vec = requests_[req_id];
 
-        for (const auto& symbol : symbols) {
-            SymbolId sid = intern_symbol(symbol);
-
+        for (const auto& sid : sids) {
             // Enforce uniqueness at pending layer
             if (pending_symbols_.contains(sid)) {
-                WK_TRACE("[PENDING] Ignoring duplicate pending symbol {" 
-                         << symbol << "} (req_id=" << req_id << ")");
                 continue;
             }
 
@@ -82,8 +76,7 @@ public:
     // Returns true if removed
     // ------------------------------------------------------------
     [[nodiscard]]
-    inline bool remove(ctrl::req_id_t req_id, Symbol symbol) noexcept {
-        SymbolId sid = intern_symbol(symbol);
+    inline bool remove(ctrl::req_id_t req_id, SymbolId sid) noexcept {
 
         auto it = requests_.find(req_id);
         if (it == requests_.end())
@@ -110,8 +103,7 @@ public:
     // Returns true if removed
     // ------------------------------------------------------------
     [[nodiscard]]
-    inline bool remove_symbol(Symbol symbol) noexcept {
-        SymbolId sid = intern_symbol(symbol);
+    inline bool remove(SymbolId sid) noexcept {
 
         if (!pending_symbols_.contains(sid))
             return false;
@@ -141,12 +133,7 @@ public:
     // Queries
     // ------------------------------------------------------------
 
-    [[nodiscard]]
-    inline bool contains(Symbol symbol) const noexcept {
-        return pending_symbols_.contains(intern_symbol(symbol));
-    }
-
-    [[nodiscard]]
+   [[nodiscard]]
     inline bool contains(SymbolId sid) const noexcept {
         return pending_symbols_.contains(sid);
     }
@@ -193,4 +180,4 @@ private:
     std::unordered_set<SymbolId> pending_symbols_;
 };
 
-} // namespace wirekrak::core::protocol::kraken::channel
+} // namespace wirekrak::core::protocol::channel

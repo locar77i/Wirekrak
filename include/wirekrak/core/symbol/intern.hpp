@@ -24,8 +24,6 @@
 
 namespace wirekrak::core {
 
-using SymbolId = uint32_t;
-
 namespace symbol {
 
 // ============================================================================
