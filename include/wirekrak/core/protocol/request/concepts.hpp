@@ -2,7 +2,7 @@
 
 #include <type_traits>
 
-namespace wirekrak::core::protocol::kraken::request {
+namespace wirekrak::core::protocol::request {
 
 /*
 ===============================================================================
@@ -72,4 +72,4 @@ concept Control =
 template <typename T>
 concept ValidRequestIntent = detail::intent_tag_count<T> == 1;
 
-} // namespace wirekrak::core::protocol::kraken::request
+} // namespace wirekrak::core::protocol::request

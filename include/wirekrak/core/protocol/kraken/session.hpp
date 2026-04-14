@@ -67,13 +67,13 @@ Data-plane model:
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/channel/manager.hpp"
 #include "wirekrak/core/protocol/replay/database.hpp"
+#include "wirekrak/core/protocol/request/concepts.hpp"
 #include "wirekrak/core/protocol/request/scheduler.hpp"
 #include "wirekrak/core/protocol/telemetry/session.hpp"
 #include "wirekrak/core/protocol/kraken/replay_traits.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
-#include "wirekrak/core/protocol/kraken/request/concepts.hpp"
 #include "wirekrak/core/protocol/kraken/parser/router.hpp"
 #include "wirekrak/core/policy/protocol/session_bundle.hpp"
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
@@ -758,8 +758,8 @@ private:
     using RequestSchedulerT =
         std::conditional_t<
             BatchingPolicy::mode == policy::protocol::BatchingMode::Paced,
-            protocol::request::Scheduler<BatchingPolicy>,
-            protocol::request::NullScheduler
+            request::Scheduler<BatchingPolicy>,
+            request::NullScheduler
         >;
     RequestSchedulerT request_scheduler_;
 

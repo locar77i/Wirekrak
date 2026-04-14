@@ -4,7 +4,7 @@
 #include <vector>
 #include <cstdint>
 
-#include "wirekrak/core/protocol/kraken/request/validate.hpp"
+#include "wirekrak/core/protocol/kraken/schema/validate.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/symbol.hpp"
 #include "lcr/json.hpp"
@@ -65,8 +65,8 @@ struct Subscribe {
     [[nodiscard]]
     inline std::size_t write_json(char* buffer) const noexcept {
 #ifndef NDEBUG
-        request::validate_symbols(symbols);
-        request::validate_req_id(req_id);
+        schema::validate_symbols(symbols);
+        schema::validate_req_id(req_id);
 #endif
 
         std::size_t pos = 0;

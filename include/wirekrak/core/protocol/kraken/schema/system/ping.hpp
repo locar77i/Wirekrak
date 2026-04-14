@@ -4,7 +4,7 @@
 #include <string>
 #include <cstring>
 
-#include "wirekrak/core/protocol/kraken/request/validate.hpp"
+#include "wirekrak/core/protocol/kraken/schema/validate.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "lcr/json.hpp"
 #include "lcr/optional.hpp"
@@ -40,7 +40,7 @@ public:
     [[nodiscard]]
     inline std::size_t write_json(char* buffer) const noexcept {
 #ifndef NDEBUG
-        request::validate_req_id(req_id);
+        schema::validate_req_id(req_id);
 #endif
 
         std::size_t pos = 0;
