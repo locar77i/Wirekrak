@@ -2,5 +2,5 @@
 
 
 # ADD SUBDIRS
-add_subdirectory(channel)
+add_subdirectory(subscription)
 add_subdirectory(kraken)

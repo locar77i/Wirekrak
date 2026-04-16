@@ -11,7 +11,7 @@
 #include "lcr/trap.hpp"
 
 
-namespace wirekrak::core::protocol::channel {
+namespace wirekrak::core::protocol::subscription {
 
 /*
 ===============================================================================
@@ -180,4 +180,4 @@ private:
     std::unordered_set<SymbolId> pending_symbols_;
 };
 
-} // namespace wirekrak::core::protocol::channel
+} // namespace wirekrak::core::protocol::subscription

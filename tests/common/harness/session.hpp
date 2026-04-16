@@ -222,11 +222,11 @@ struct Session {
 
 
     inline auto& replay_db_trade() noexcept {
-        return session.replay_database().template subscription_table_for<schema::trade::Subscribe>();
+        return session.replay_database().template table_for<schema::trade::Subscribe>();
     }
 
     inline auto& replay_db_book() noexcept {
-        return session.replay_database().template subscription_table_for<schema::book::Subscribe>();
+        return session.replay_database().template table_for<schema::book::Subscribe>();
     }
 };
 

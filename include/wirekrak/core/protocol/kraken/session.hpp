@@ -65,12 +65,12 @@ Data-plane model:
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
-#include "wirekrak/core/protocol/channel/manager.hpp"
+#include "wirekrak/core/protocol/subscription/controller.hpp"
 #include "wirekrak/core/protocol/replay/database.hpp"
 #include "wirekrak/core/protocol/request/concepts.hpp"
 #include "wirekrak/core/protocol/request/scheduler.hpp"
 #include "wirekrak/core/protocol/telemetry/session.hpp"
-#include "wirekrak/core/protocol/kraken/replay_traits.hpp"
+#include "wirekrak/core/protocol/kraken/subscription_traits.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
@@ -123,6 +123,7 @@ public:
 
     // close connection
     inline void close() {
+        WK_DEBUG("[SESSION] Closing connection...");
         connection_.close();
     }
 
@@ -292,7 +293,7 @@ public:
         if constexpr (ReplayPolicy::enabled) {
             // Store protocol intent for deterministic replay after reconnect.
             // Only acknowledged subscriptions will be replayed.
-            replay_db_2_.add(req);
+            replay_db_.add(req);
         }
         // 6) Emit the request according to the configured batching policy
         WK_DEBUG("[SESSION] Emitting subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
@@ -327,7 +328,7 @@ public:
         // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect (only if replay enabled)
         if constexpr (ReplayPolicy::enabled) {
             for (const auto& symbol : cancelled) {
-                replay_db_2_.remove_symbol<replay_type<RequestT>>(symbol);
+                replay_db_.remove_symbol<RequestT>(symbol);
             }
         }
         return req.req_id.value();
@@ -494,65 +495,16 @@ public:
         // ===============================================================================
         // PROCESS TRADE MESSAGES
         // ===============================================================================
-        { // === Process trade subscribe ring ===
-        schema::trade::SubscribeAck ack;
-        while (ctx_->trade_subscribe_ring.pop(ack)) {
-            if (!ack.req_id.has()) [[unlikely]] {
-                WK_WARN("[SESSION] Subscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
-            }
-            else {
-                trade_channel_manager_.process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
-            }
-        }}
-        { // === Process trade unsubscribe ring ===
-        schema::trade::UnsubscribeAck ack;
-        while (ctx_->trade_unsubscribe_ring.pop(ack)) {
-            WK_TRACE("[SESSION] Processing trade unsubscribe ACK for symbol {" << ack.symbol << "}");
-            //dispatcher_.remove_symbol_handlers<schema::trade::UnsubscribeAck>(ack.symbol);
-            if (!ack.req_id.has()) [[unlikely]] {
-                WK_WARN("[SESSION] Unsubscription ACK missing req_id for channel 'trade' {" << ack.symbol << "}");
-            }
-            else {
-                trade_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
-                // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
-                if constexpr (ReplayPolicy::enabled) {
-                    if (ack.success) {
-                        replay_db_2_.remove_symbol<schema::trade::Subscribe>(ack.symbol);
-                    }
-                }
-            }
-        }}
+        process_subscribe_ack_ring_<schema::trade::SubscribeAck>(ctx_->trade_subscribe_ring);
+
+        process_unsubscribe_ack_ring_<schema::trade::UnsubscribeAck>(ctx_->trade_unsubscribe_ring);
+        
         // ===============================================================================
         // PROCESS BOOK UPDATES
         // ===============================================================================
-        { // === Process book subscribe ring ===
-        schema::book::SubscribeAck ack;
-        while (ctx_->book_subscribe_ring.pop(ack)) {
-            if (!ack.req_id.has()) [[unlikely]] {
-                WK_WARN("[SESSION] Subscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
-            }
-            else {
-                book_channel_manager_.process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
-            }
-        }}
-        { // === Process book unsubscribe ring ===
-        schema::book::UnsubscribeAck ack;
-        while (ctx_->book_unsubscribe_ring.pop(ack)) {
-            WK_TRACE("[SESSION] Processing book unsubscribe ACK for symbol {" << ack.symbol << "}");
-            //dispatcher_.remove_symbol_handlers<schema::book::UnsubscribeAck>(ack.symbol);
-            if (!ack.req_id.has()) [[unlikely]] {
-                WK_WARN("[SESSION] Unsubscription ACK missing req_id for channel 'book' {" << ack.symbol << "}");
-            }
-            else {
-                book_channel_manager_.process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
-                // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
-                if constexpr (ReplayPolicy::enabled) {
-                    if (ack.success) {
-                        replay_db_2_.remove_symbol<schema::book::Subscribe>(ack.symbol);
-                    }
-                }
-            }
-        }}
+        process_subscribe_ack_ring_<schema::book::SubscribeAck>(ctx_->book_subscribe_ring);
+
+        process_unsubscribe_ack_ring_<schema::book::UnsubscribeAck>(ctx_->book_unsubscribe_ring);
 
         // ===============================================================================
         // Batching logic for user requests
@@ -580,6 +532,38 @@ public:
         return connection_.epoch();
     }
 
+    template<class AckT, class RingT>
+    void process_subscribe_ack_ring_(RingT& ring) {
+        AckT ack;
+        while (ring.pop(ack)) {
+            if (ack.req_id.has()) [[likely]] {
+                subscription_manager_for_<AckT>().process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
+            }
+            else {
+                // TODO: Increment a metric for ACKs with missing req_id to monitor potential protocol issues
+            }
+        }
+    }
+
+    template<class AckT, class RingT>
+    void process_unsubscribe_ack_ring_(RingT& ring) {
+        AckT ack;
+        while (ring.pop(ack)) {
+            if (ack.req_id.has()) [[likely]] {
+                subscription_manager_for_<AckT>().process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
+                // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
+                if constexpr (ReplayPolicy::enabled) {
+                    if (ack.success) {
+                        replay_db_.remove_symbol<AckT>(ack.symbol);
+                    }
+                }
+            }
+            else {
+                // TODO: Increment a metric for ACKs with missing req_id to monitor potential protocol issues
+            }
+        }
+    }
+
     // Returns true if the current connection is connected
     [[nodiscard]]
     inline bool is_connected() const noexcept {
@@ -594,14 +578,14 @@ public:
 
     // Accessor to the trade subscription manager
     [[nodiscard]]
-    inline const channel::Manager& trade_subscriptions() const noexcept {
-        return trade_channel_manager_;
+    inline const auto& trade_subscriptions() const noexcept {
+        return subscription_manager_for_<schema::trade::Subscribe>();
     }
 
     // Accessor to the book subscription manager
     [[nodiscard]]
-    inline const channel::Manager& book_subscriptions() const noexcept {
-        return book_channel_manager_;
+    inline const auto& book_subscriptions() const noexcept {
+        return subscription_manager_for_<schema::book::Subscribe>();
     }
 
     // -----------------------------------------------------------------------------
@@ -671,29 +655,22 @@ public:
             connection_.is_idle() &&
             ctx_->empty() &&
             user_rejection_buffer_.empty() &&
-            !trade_channel_manager_.has_pending_requests() &&
-            !book_channel_manager_.has_pending_requests();
+            subscription_controller_.is_idle();
     }
 
     [[nodiscard]]
     inline std::size_t pending_protocol_requests() const noexcept {
-        return
-            trade_channel_manager_.pending_requests() +
-            book_channel_manager_.pending_requests();
+        return subscription_controller_.pending_requests();
     }
 
     [[nodiscard]]
     inline std::size_t pending_protocol_symbols() const noexcept {
-        return
-            trade_channel_manager_.pending_subscribe_symbols() +
-            trade_channel_manager_.pending_unsubscribe_symbols() +
-            book_channel_manager_.pending_subscribe_symbols() +
-            book_channel_manager_.pending_unsubscribe_symbols();
+        return subscription_controller_.pending_symbols();
     }
 
     [[nodiscard]]
     inline const auto& replay_database() const noexcept {
-        return replay_db_2_;
+        return replay_db_;
     }
 
     [[nodiscard]]
@@ -776,17 +753,18 @@ private:
     // Decoupled from internal protocol processing to prevent user behavior from affecting Core correctness.
     lcr::local::queue<schema::rejection::Notice, config::protocol::REJECTION_RING_CAPACITY> user_rejection_buffer_;
 
-    // Channel subscription managers
-    channel::Manager trade_channel_manager_{};
-    channel::Manager book_channel_manager_{};
+    using SubscriptionController = subscription::Controller<
+        schema::trade::Subscribe,
+        schema::book::Subscribe
+    >;
+    SubscriptionController subscription_controller_;
 
     // Replay database
     using ReplayDB = wirekrak::core::protocol::replay::Database<
         schema::trade::Subscribe,
         schema::book::Subscribe
     >;
-
-    ReplayDB replay_db_2_;
+    ReplayDB replay_db_;
 
     // Overall overload state tracking for transport, protocol, and user domains
     struct OverloadState {
@@ -818,28 +796,18 @@ private:
     inline void do_replay_() noexcept {
         // Replay subscriptions if this is a reconnect (epoch > 1)
         if (transport_epoch() > 1) {
-            // 1) Replay trade subscriptions
-            auto trade_subscriptions = replay_db_2_.take_subscriptions<schema::trade::Subscribe>();
-            if(!trade_subscriptions.empty()) {
-                WK_DEBUG("[REPLAY] Replaying " << trade_subscriptions.size() << " trade subscription(s)");
-                for (const auto& subscription : trade_subscriptions) {
-                    re_subscribe_(subscription.request());
+            replay_db_.for_each([&]<class T>() {
+            auto subs = replay_db_.take_subscriptions<T>();
+            if (!subs.empty()) {
+                WK_DEBUG("[REPLAY] Replaying " << subs.size() << " " << channel_name_of_v<T> << " subscription(s)");
+                for (const auto& sub : subs) {
+                    re_subscribe_(sub.request());
                 }
             }
             else {
-                WK_DEBUG("[REPLAY] No trade subscriptions to replay");
+                WK_DEBUG("[REPLAY] No " << channel_name_of_v<T> << " subscriptions to replay");
             }
-            // 2) Replay book subscriptions
-            auto book_subscriptions = replay_db_2_.take_subscriptions<schema::book::Subscribe>();
-            if(!book_subscriptions.empty()) {
-                WK_DEBUG("[REPLAY] Replaying " << book_subscriptions.size() << " book subscription(s)");
-                for (const auto& subscription : book_subscriptions) {
-                    re_subscribe_(subscription.request());
-                }
-            }
-            else {
-                WK_DEBUG("[REPLAY] No book subscriptions to replay");
-            }
+        });
         }
     }
 
@@ -858,7 +826,7 @@ private:
         req.symbols = std::move(accepted_symbols);
         // 3) Register in replay DB using filtered request (only if replay enabled)
         if constexpr (ReplayPolicy::enabled) {
-            replay_db_2_.add(req);
+            replay_db_.add(req);
         }
         WK_DEBUG("[SESSION] Emitting re-subscribe message: " << req.symbols.size() << " symbol/s");
         // 4) Emit the request according to the configured batching policy
@@ -871,8 +839,7 @@ private:
     inline void handle_disconnect_() {
         WK_TRACE("[SESSION] handle disconnect (transport_epoch = " << transport_epoch() << ")");
         // Clear runtime state
-        trade_channel_manager_.clear_all();
-        book_channel_manager_.clear_all();
+        subscription_controller_.clear_all();
         overload_state_.reset();
     }
 
@@ -904,12 +871,10 @@ private:
             << "} (req_id=" << (notice.req_id.has() ? notice.req_id.value() : ctrl::INVALID_REQ_ID) << ") - " << notice.error);
         if (notice.req_id.has()) {
             if (notice.symbol.has()) {
-                // we cannot infer channel from notice, so we try all managers
-                (void)trade_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
-                (void)book_channel_manager_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                (void)subscription_controller_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
                 // Try process rejection in replay DB to prevent replay of failed subscriptions after reconnect (only if replay enabled)
                 if constexpr (ReplayPolicy::enabled) {
-                    (void)replay_db_2_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
+                    (void)replay_db_.try_process_rejection(notice.req_id.value(), notice.symbol.value());
                 }
             }
         }
@@ -1026,8 +991,8 @@ private:
     inline bool hard_symbol_limit_enforcement_(const RequestT& req) const noexcept {
         const std::size_t requested = req.symbols.size();
         // Current logical symbol counts
-        const std::size_t trade_now = trade_channel_manager_.total_symbols();
-        const std::size_t book_now = book_channel_manager_.total_symbols();
+        const std::size_t trade_now = trade_subscriptions().total_symbols();
+        const std::size_t book_now = book_subscriptions().total_symbols();
         const std::size_t global_now = trade_now + book_now;
         // Check limits
         if constexpr (channel_of_v<RequestT> == Channel::Trade) { // Check trade limits
@@ -1055,24 +1020,12 @@ private:
     // Helpers to get the correct subscription manager
     template<class MessageT>
     auto& subscription_manager_for_() {
-        if constexpr (channel_of_v<MessageT> == Channel::Trade) {
-            return trade_channel_manager_;
-        }
-        else if constexpr (channel_of_v<MessageT> == Channel::Book) {
-            return book_channel_manager_;
-        }
-        // else if constexpr (...) return ticker_handlers_;
+        return subscription_controller_.template manager_for<MessageT>();
     }
 
     template<class MessageT>
     const auto& subscription_manager_for_() const {
-        if constexpr (channel_of_v<MessageT> == Channel::Trade) {
-            return trade_channel_manager_;
-        }
-        else if constexpr (channel_of_v<MessageT> == Channel::Book) {
-            return book_channel_manager_;
-        }
-        // else if constexpr (...) return ticker_handlers_;
+        return subscription_controller_.template manager_for<MessageT>();
     }    
 
 

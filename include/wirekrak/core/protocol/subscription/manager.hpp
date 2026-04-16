@@ -6,19 +6,19 @@
 
 #include "wirekrak/core/symbol/intern.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
-#include "wirekrak/core/protocol/channel/pending_requests.hpp"
+#include "wirekrak/core/protocol/subscription/pending_requests.hpp"
 #include "lcr/log/logger.hpp"
 #include "lcr/trap.hpp"
 
 
-namespace wirekrak::core::protocol::channel {
+namespace wirekrak::core::protocol::subscription {
 
 /*
 ===============================================================================
 Idempotent Manager
 ===============================================================================
 
-Tracks protocol subscription lifecycle for a single channel.
+Tracks protocol lifecycle for a single subscription.
 
 State model:
 
@@ -47,6 +47,7 @@ Design:
 ===============================================================================
 */
 
+template<class RequestT>
 class Manager {
 public:
     explicit Manager()
@@ -307,4 +308,4 @@ private:
     std::unordered_set<SymbolId> active_symbols_;
 };
 
-} // namespace wirekrak::core::protocol::channel
+} // namespace wirekrak::core::protocol::subscription

@@ -25,7 +25,7 @@
 //     - Does not store user behavior or callbacks
 //
 // • Generic and extensible
-//     - Supports any protocol via template parameter pack (RequestTs...)
+//     - Supports any protocol via template parameter pack (SubscriptionTs...)
 //     - No exchange-specific logic or branching
 //
 // • Compile-time routing
@@ -46,15 +46,15 @@
 //     - No hidden allocations in hot paths
 //
 // ---------------------------------------------------------------------------
-// Relationship with replay_traits
+// Relationship with subscription_traits
 // ---------------------------------------------------------------------------
 // • The database operates on **subscription types only**
 // • Mapping from RequestT → subscription type is defined externally via
-//   replay_traits
+//   subscription_traits
 //
 // Example:
 //     trade::Subscribe   → stored directly
-//     trade::Unsubscribe → mapped to trade::Subscribe (via replay_traits)
+//     trade::Unsubscribe → mapped to trade::Subscribe (via subscription_traits)
 //
 // This separation ensures:
 //     - Database remains protocol-agnostic
@@ -108,6 +108,7 @@
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/protocol/replay/table.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
+#include "wirekrak/core/protocol/subscription_traits.hpp"
 #include "lcr/log/logger.hpp"
 
 namespace wirekrak::core::protocol::replay {
@@ -123,7 +124,7 @@ namespace wirekrak::core::protocol::replay {
 // - Zero runtime overhead
 // - Preserves all original semantics
 // =============================================================
-template<class... RequestTs>
+template<class... SubscriptionTs>
 class Database {
 public:
     Database() = default;
@@ -134,7 +135,7 @@ public:
     // ------------------------------------------------------------
     template<class RequestT>
     inline void add(RequestT req) noexcept {
-        table<RequestT>().add(std::move(req));
+        table_<subscription_type<RequestT>>().add(std::move(req));
     }
 
     // ------------------------------------------------------------
@@ -142,7 +143,7 @@ public:
     // ------------------------------------------------------------
     template<class RequestT>
     inline void remove(RequestT req) noexcept {
-        auto& t = table<RequestT>();
+        auto& t = table_<subscription_type<RequestT>>();
         for (const auto& symbol : req.symbols) {
             t.erase_symbol(symbol);
         }
@@ -153,7 +154,7 @@ public:
     // ------------------------------------------------------------
     template<class RequestT>
     inline void remove_symbol(Symbol symbol) noexcept {
-        table<RequestT>().erase_symbol(symbol);
+        table_<subscription_type<RequestT>>().erase_symbol(symbol);
     }
 
     // ------------------------------------------------------------
@@ -180,7 +181,7 @@ public:
     template<class RequestT>
     [[nodiscard]]
     inline std::vector<Subscription<RequestT>> take_subscriptions() noexcept {
-        return table<RequestT>().take_subscriptions();
+        return table_<subscription_type<RequestT>>().take_subscriptions();
     }
 
     // ------------------------------------------------------------
@@ -195,18 +196,6 @@ public:
     // ------------------------------------------------------------
     // Diagnostics
     // ------------------------------------------------------------
-
-    template<class RequestT>
-    [[nodiscard]]
-    inline const auto& subscription_table_for() const noexcept {
-        return table<RequestT>();
-    }
-
-    template<class RequestT>
-    [[nodiscard]]
-    inline auto& subscription_table_for() noexcept {
-        return table<RequestT>();
-    }
 
     [[nodiscard]]
     inline std::size_t total_requests() const noexcept {
@@ -226,24 +215,91 @@ public:
         return total;
     }
 
+    // ------------------------------------------------------------
+    // Access the Table associated with a given RequestT
+    // (resolved via subscription_traits)
+    // ------------------------------------------------------------
+    template<class RequestT>
+    auto& table_for() noexcept {
+        return table_<subscription_type<RequestT>>();
+    }
+
+    template<class RequestT>
+    const auto& table_for() const noexcept {
+        return table_<subscription_type<RequestT>>();
+    }
+
+    // ------------------------------------------------------------
+    // Iterate over all subscription types
+    // ------------------------------------------------------------
+    //
+    // Invokes a callable once per subscription type (SubscriptionT)
+    //
+    // The callable must support a templated call operator:
+    //
+    //   db.for_each([&]<class T>() {
+    //       // use T
+    //   });
+    //
+    // This enables fully generic replay logic without
+    // exposing internal storage or requiring runtime dispatch.
+    //
+    // ------------------------------------------------------------
+    template<class F>
+    inline void for_each(F&& f) noexcept {
+        (f.template operator()<SubscriptionTs>(), ...);
+    }
+
+    template<class F>
+    inline void for_each(F&& f) const noexcept {
+        (f.template operator()<SubscriptionTs>(), ...);
+    }
+
+    // ------------------------------------------------------------
+    // Iterate over all subscription tables
+    // ------------------------------------------------------------
+    //
+    // Similar to for_each, but provides direct access to each Table<SubscriptionT>.
+    //
+    //   db.for_each_table([&]<class T>(Table<T>& t) {
+    //       // use T and t
+    //   });
+    //
+    // This is useful for operations that need to inspect or modify the tables directly.
+    //
+    // ------------------------------------------------------------
+    template<class F>
+    inline void for_each_table(F&& f) noexcept {
+        (f.template operator()<SubscriptionTs>(table_<SubscriptionTs>()), ...);
+    }
+
+    template<class F>
+    inline void for_each_table(F&& f) const noexcept {
+        (f.template operator()<SubscriptionTs>(table_<SubscriptionTs>()), ...);
+    }
+
 private:
     // ------------------------------------------------------------
     // Storage: one table per RequestT
     // ------------------------------------------------------------
-    std::tuple<Table<RequestTs>...> tables_;
+    std::tuple<Table<SubscriptionTs>...> tables_;
 
     // ------------------------------------------------------------
     // Access helpers
     // ------------------------------------------------------------
     template<class RequestT>
-    inline auto& table() noexcept {
+    inline auto& table_() noexcept {
+        static_assert((std::is_same_v<RequestT, SubscriptionTs> || ...), "Database does not manage this subscription type");
         return std::get<Table<RequestT>>(tables_);
     }
 
     template<class RequestT>
-    inline const auto& table() const noexcept {
+    inline const auto& table_() const noexcept {
+        static_assert((std::is_same_v<RequestT, SubscriptionTs> || ...), "Database does not manage this subscription type");
         return std::get<Table<RequestT>>(tables_);
     }
+
+    
 };
 
 } // namespace wirekrak::core::protocol::replay

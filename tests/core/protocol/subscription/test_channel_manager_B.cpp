@@ -38,7 +38,8 @@ Non-Goals:
 #include <iostream>
 #include <vector>
 
-#include "wirekrak/core/protocol/channel/manager.hpp"
+#include "wirekrak/core/protocol/subscription/manager.hpp"
+#include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::protocol;
@@ -50,7 +51,7 @@ using namespace wirekrak::core::protocol;
 void test_unsubscribe_happy_path() {
     std::cout << "[TEST] Group B1: unsubscribe happy path\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
 
     const ctrl::req_id_t req_id{10};
 
@@ -81,7 +82,7 @@ void test_unsubscribe_happy_path() {
 void test_unsubscribe_rejected() {
     std::cout << "[TEST] Group B2: unsubscribe rejected\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
 
     const ctrl::req_id_t req_id{10};
 
@@ -112,7 +113,7 @@ void test_unsubscribe_rejected() {
 void test_unsubscribe_non_active_symbol() {
     std::cout << "[TEST] Group B3: unsubscribe non-active symbol\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
 
     const ctrl::req_id_t req_id{10};
 

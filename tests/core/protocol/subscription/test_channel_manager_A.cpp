@@ -1,12 +1,12 @@
 /*
 ===============================================================================
- protocol::kraken::channel::Manager — Group A Unit Tests
+ protocol::kraken::subscription::Manager — Group A Unit Tests
 ===============================================================================
 
 Scope:
 ------
 These tests validate the *pure protocol state machine* behavior of
-channel::Manager.
+subscription::Manager.
 
 They focus exclusively on:
 - Pending subscription tracking
@@ -38,7 +38,8 @@ Non-Goals:
 #include <iostream>
 #include <vector>
 
-#include "wirekrak/core/protocol/channel/manager.hpp"
+#include "wirekrak/core/protocol/subscription/manager.hpp"
+#include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::protocol;
@@ -50,7 +51,7 @@ using namespace wirekrak::core::protocol;
 void test_subscribe_happy_path_single_symbol() {
     std::cout << "[TEST] Group A1: subscribe happy path (single symbol)\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
     const ctrl::req_id_t req_id{10};
 
     (void)mgr.register_subscription({"BTC/USD"}, req_id);
@@ -78,7 +79,7 @@ void test_subscribe_happy_path_single_symbol() {
 void test_subscribe_rejected() {
     std::cout << "[TEST] Group A2: subscribe rejected\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
     const ctrl::req_id_t req_id{10};
 
     (void)mgr.register_subscription({"BTC/USD"}, req_id);
@@ -103,7 +104,7 @@ void test_subscribe_rejected() {
 void test_multi_symbol_subscribe_partial_ack() {
     std::cout << "[TEST] Group A3: multi-symbol subscribe (partial ACK)\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
     const ctrl::req_id_t req_id{10};
 
     (void)mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
@@ -130,7 +131,7 @@ void test_multi_symbol_subscribe_partial_ack() {
 void test_multi_symbol_subscribe_full_ack() {
     std::cout << "[TEST] Group A4: multi-symbol subscribe (full ACK)\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
     const ctrl::req_id_t req_id{10};
 
     (void)mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
@@ -160,7 +161,7 @@ void test_multi_symbol_subscribe_full_ack() {
 void test_duplicate_subscribe_ack_is_ignored() {
     std::cout << "[TEST] Group A5: duplicate subscribe ACK is ignored\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
     const ctrl::req_id_t req_id{10};
 
     (void)mgr.register_subscription({"BTC/USD", "ETH/USD"}, req_id);
@@ -189,7 +190,7 @@ void test_duplicate_subscribe_ack_is_ignored() {
 void test_subscribe_ack_unknown_req_id_ignored() {
     std::cout << "[TEST] Group A6: subscribe ACK with unknown req_id is ignored\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
 
     // No prior subscriptions registered
 

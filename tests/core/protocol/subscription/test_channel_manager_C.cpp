@@ -37,7 +37,8 @@ Non-Goals:
 #include <iostream>
 #include <vector>
 
-#include "wirekrak/core/protocol/channel/manager.hpp"
+#include "wirekrak/core/protocol/subscription/manager.hpp"
+#include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "common/test_check.hpp"
 
 using namespace wirekrak::core::protocol;
@@ -49,7 +50,7 @@ using namespace wirekrak::core::protocol;
 void test_rejection_clears_pending_subscription() {
     std::cout << "[TEST] Group C1: rejection clears pending subscription\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
 
     const ctrl::req_id_t req_id{10};
 
@@ -75,7 +76,7 @@ void test_rejection_clears_pending_subscription() {
 void test_rejection_unknown_req_id_is_ignored() {
     std::cout << "[TEST] Group C2: rejection with unknown req_id is ignored\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
 
     const ctrl::req_id_t req_id{10};
 
@@ -104,7 +105,7 @@ void test_rejection_unknown_req_id_is_ignored() {
 void test_clear_all_resets_everything() {
     std::cout << "[TEST] Group C3: clear_all resets everything\n";
 
-    channel::Manager mgr;
+    subscription::Manager<kraken::schema::trade::Subscribe> mgr;
 
     const ctrl::req_id_t req_id{10};
 
