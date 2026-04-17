@@ -281,8 +281,8 @@ public:
             req.req_id = req_id_seq_.next();
         }
         // 3) Register subscription with manager (internal filtering)
-        auto& mgr = subscription_manager_for_<RequestT>();
-        auto accepted_symbols = mgr.register_subscription(std::move(req.symbols), req.req_id.value());
+        auto accepted_symbols = subscription_controller_.template
+            register_subscription<RequestT>(std::move(req.symbols), req.req_id.value());
         if (accepted_symbols.empty()) {
             WK_TRACE("[SESSION] Subscription fully filtered by manager");
             return ctrl::INVALID_REQ_ID;
@@ -324,7 +324,8 @@ public:
         }
         WK_TL1(telemetry_.unsubscriptions_requested_total.inc());
         // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
-        RequestSymbols cancelled = subscription_manager_for_<RequestT>().register_unsubscription(std::move(req.symbols), req.req_id.value());
+        RequestSymbols cancelled = subscription_controller_.template
+            register_unsubscription<RequestT>(std::move(req.symbols), req.req_id.value());
         // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect (only if replay enabled)
         if constexpr (ReplayPolicy::enabled) {
             for (const auto& symbol : cancelled) {
@@ -537,7 +538,8 @@ public:
         AckT ack;
         while (ring.pop(ack)) {
             if (ack.req_id.has()) [[likely]] {
-                subscription_manager_for_<AckT>().process_subscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
+                subscription_controller_.template
+                    process_subscribe_ack<AckT>(ack.req_id.value(), ack.symbol, ack.success);
             }
             else {
                 // TODO: Increment a metric for ACKs with missing req_id to monitor potential protocol issues
@@ -550,7 +552,8 @@ public:
         AckT ack;
         while (ring.pop(ack)) {
             if (ack.req_id.has()) [[likely]] {
-                subscription_manager_for_<AckT>().process_unsubscribe_ack(ack.req_id.value(), ack.symbol, ack.success);
+                subscription_controller_.template
+                    process_unsubscribe_ack<AckT>(ack.req_id.value(), ack.symbol, ack.success);
                 // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
                 if constexpr (ReplayPolicy::enabled) {
                     if (ack.success) {
@@ -610,39 +613,93 @@ public:
     }
 
     // -----------------------------------------------------------------------------
-    // Protocol quiescence indicator
+    // Protocol quiescence indicator (strict, deterministic)
     // -----------------------------------------------------------------------------
     //
-    // Returns true if the Session is **protocol-idle**.
+    // Returns true if the Session is **protocol-quiescent**.
     //
-    // Protocol-idle means that, at the current instant:
+    // Quiescent means that, at the current instant:
+    //
     //   • No subscribe or unsubscribe requests are awaiting ACKs
-    //   • No protocol replays, reconnect handshakes, or retry cycles are in progress
-    //   • No control-plane work remains that requires further poll() calls
+    //   • No replay or reconnect-driven protocol work is pending
+    //   • No internal protocol state requires further poll() calls
+    //   • Transport has no pending control-plane work
+    //   • No rejection messages remain undrained
     //
     // In other words:
+    //
     //   If poll() is never called again, the Session will not violate
     //   protocol correctness or leave the exchange in an inconsistent state.
     //
     // IMPORTANT SEMANTICS:
     //
-    // • This is NOT a data-plane signal.
-    //   Active subscriptions may still exist and produce future data.
+    // • This is a STRICT, deterministic signal (no time-based heuristics)
+    //
+    // • This is NOT a data-plane signal:
+    //     Active subscriptions may still produce future data
     //
     // • This does NOT guarantee that all user-visible messages
-    //   (trade, book, rejection, status, pong) have been drained.
+    //     (trade, book, status, pong) have been drained
     //
-    // • This does NOT imply that the transport is closed or inactive.
+    // • This does NOT imply that the transport is closed or inactive
     //
     // Threading & usage:
-    //   • Not thread-safe
-    //   • Intended to be queried from the Session event loop
-    //   • Typically used to drive graceful shutdown or drain loops
+    //
+    // • Not thread-safe
+    // • Intended to be queried from the Session event loop
+    // • Used for correctness-sensitive logic
     //
     // -----------------------------------------------------------------------------
-    // Example usage:
+    [[nodiscard]]
+    inline bool is_quiescent() const noexcept {
+        return
+            connection_.is_idle() &&          // transport has no pending work
+            ctx_->empty() &&                 // no pending parsed artifacts
+            user_rejection_buffer_.empty() &&// no undrained semantic errors
+            subscription_controller_.is_quiescent(); // STRICT (no timeout)
+    }
+
+    // -----------------------------------------------------------------------------
+    // Protocol idle indicator (graceful shutdown heuristic)
+    // -----------------------------------------------------------------------------
     //
-    //   // Drain until protocol is quiescent
+    // Returns true if the Session is **operationally idle**.
+    //
+    // Idle means:
+    //
+    //   • The Session is either strictly quiescent
+    //     OR
+    //   • No protocol progress has been observed for a configured timeout
+    //
+    // This is a TIME-BASED heuristic built on top of protocol progress tracking.
+    // It allows the system to stop waiting for late or lost ACKs during shutdown.
+    //
+    // IMPORTANT SEMANTICS:
+    //
+    // • This may return true even if:
+    //     - Some subscriptions are still awaiting ACK
+    //     - The exchange has not completed all protocol flows
+    //
+    // • This is INTENDED for:
+    //     - Graceful shutdown loops
+    //     - Drain-with-timeout patterns
+    //
+    // • This MUST NOT be used for:
+    //     - Protocol correctness decisions
+    //     - State validation or invariants
+    //
+    // • When ProgressPolicy::enabled == false:
+    //     - This degenerates to strict quiescence (never lies)
+    //
+    // Threading & usage:
+    //
+    // • Not thread-safe
+    // • Intended for outer control loops (shutdown, lifecycle management)
+    //
+    // -----------------------------------------------------------------------------
+    // Example:
+    //
+    //   // Graceful shutdown with timeout fallback
     //   while (!session.is_idle()) {
     //       session.poll();
     //       drain_messages();
@@ -651,11 +708,65 @@ public:
     // -----------------------------------------------------------------------------
     [[nodiscard]]
     inline bool is_idle() const noexcept {
-        return
-            connection_.is_idle() &&
-            ctx_->empty() &&
-            user_rejection_buffer_.empty() &&
-            subscription_controller_.is_idle();
+        // Fast path: strict quiescence
+        if (is_quiescent()) {
+            return true;
+        }
+        // If no timeout policy → never lie
+        if constexpr (!ProgressPolicy::enabled) {
+            return false;
+        }
+        // Timeout-based fallback (controller already tracks progress globally)
+        return subscription_controller_.is_idle();
+    }
+
+    // -----------------------------------------------------------------------------
+    // Protocol stall indicator
+    // -----------------------------------------------------------------------------
+    //
+    // Returns true if the Session is **stalled**.
+    //
+    // A stalled state occurs when:
+    //   • The protocol has NOT reached quiescence (pending work still exists)
+    //   • The progress timeout has been exceeded (no forward progress observed)
+    //
+    // In other words:
+    //   The system is waiting for external events (e.g. ACKs, rejections),
+    //   but none have been observed within the configured timeout window.
+    //
+    // This typically indicates:
+    //   • Exchange-side delays or dropped messages
+    //   • Partial or missing ACKs
+    //   • Protocol-level convergence failure
+    //
+    // IMPORTANT SEMANTICS:
+    //
+    // • This is a **diagnostic signal**, not a correctness guarantee.
+    //   The Session may still be in a logically inconsistent state.
+    //
+    // • This does NOT imply that the transport is disconnected or unhealthy.
+    //
+    // • This does NOT modify internal state or force convergence.
+    //
+    // • Behavior depends on ProgressPolicy:
+    //     - Strict: always false (no timeout fallback)
+    //     - Timeout: becomes true after timeout_ns without progress
+    //
+    // Threading & usage:
+    //   • Not thread-safe
+    //   • Intended for observability, logging, and shutdown decisions
+    //
+    // Typical usage:
+    //
+    //   if (session.is_stalled()) {
+    //       log_timeout();
+    //       // optional: force close or escalate
+    //   }
+    //
+    // -----------------------------------------------------------------------------
+    [[nodiscard]]
+    inline bool is_stalled() const noexcept {
+        return !is_quiescent() && is_idle();
     }
 
     [[nodiscard]]
@@ -666,6 +777,11 @@ public:
     [[nodiscard]]
     inline std::size_t pending_protocol_symbols() const noexcept {
         return subscription_controller_.pending_symbols();
+    }
+
+    [[nodiscard]]
+    inline const auto& subscription_controller() const noexcept {
+        return subscription_controller_;
     }
 
     [[nodiscard]]
@@ -708,6 +824,7 @@ private:
     // Public policy aliases for cleaner access
     using BackpressurePolicy  = typename PolicyBundle::backpressure;
     using LivenessPolicy      = typename PolicyBundle::liveness;
+    using ProgressPolicy      = typename PolicyBundle::progress;
     using SymbolLimitPolicy   = typename PolicyBundle::symbol_limit;
     using ReplayPolicy        = typename PolicyBundle::replay;
     using BatchingPolicy      = typename PolicyBundle::batching;
@@ -754,6 +871,7 @@ private:
     lcr::local::queue<schema::rejection::Notice, config::protocol::REJECTION_RING_CAPACITY> user_rejection_buffer_;
 
     using SubscriptionController = subscription::Controller<
+        ProgressPolicy,
         schema::trade::Subscribe,
         schema::book::Subscribe
     >;
@@ -816,8 +934,8 @@ private:
         //WK_INFO("[SESSION] Re-subscribing to channel '" << channel_name_of_v<RequestT> << "' " << core::to_string(req.symbols));
         WK_INFO("[SESSION] Re-subscribing to channel '" << channel_name_of_v<RequestT> << "' (total: " << req.symbols.size() << " symbol/s)");
         // 1) Register subscription with manager (internal filtering)
-        auto& mgr = subscription_manager_for_<RequestT>();
-        auto accepted_symbols = mgr.register_subscription(std::move(req.symbols), req.req_id.value());
+        auto accepted_symbols = subscription_controller_.template
+            register_subscription<RequestT>(std::move(req.symbols), req.req_id.value());
         if (accepted_symbols.empty()) {
             WK_TRACE("[SESSION] Re-subscription fully filtered by manager");
             return;
@@ -1017,12 +1135,9 @@ private:
         return true;
     }
 
-    // Helpers to get the correct subscription manager
-    template<class MessageT>
-    auto& subscription_manager_for_() {
-        return subscription_controller_.template manager_for<MessageT>();
-    }
-
+    // ------------------------------------------------------------
+    // Const helper to get the correct subscription manager
+    // ------------------------------------------------------------
     template<class MessageT>
     const auto& subscription_manager_for_() const {
         return subscription_controller_.template manager_for<MessageT>();

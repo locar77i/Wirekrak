@@ -98,7 +98,7 @@ void test_out_of_order_ack_burst() {
         h.replay_db_trade().total_symbols()
     );
 
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
@@ -183,7 +183,7 @@ void test_duplicate_ack_storm() {
         h.replay_db_trade().total_symbols()
     );
 
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
@@ -319,7 +319,7 @@ void test_replay_db_saturation_limit() {
     // Stabilize
     // ------------------------------------------------------------
 
-    for (int i = 0; i < 200 && !h.session.is_idle(); ++i) {
+    for (int i = 0; i < 200 && !h.session.is_quiescent(); ++i) {
         h.drain();
         h.drain_rejections();
     }
@@ -429,7 +429,7 @@ void test_replay_db_mixed_trade_book_stress() {
     }
 
     // Stabilize
-    for (int i = 0; i < 100 && !h.session.is_idle(); ++i) {
+    for (int i = 0; i < 100 && !h.session.is_quiescent(); ++i) {
         h.drain();
     }
 
@@ -620,6 +620,7 @@ void test_hard_limit_enforcement() {
     using SessionPolicies = policy::protocol::session_bundle<
         policy::protocol::DefaultBackpressure,
         policy::protocol::DefaultLiveness,
+        policy::protocol::DefaultProgress,
         Hard5
     >;
 

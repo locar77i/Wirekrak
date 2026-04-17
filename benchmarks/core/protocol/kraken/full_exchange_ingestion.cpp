@@ -28,6 +28,7 @@ using MySessionPolicies =
     policy::protocol::session_bundle<
         policy::protocol::backpressure::Custom<(1 << 24)>,  // <EscalationThreshold>,
         policy::protocol::DefaultLiveness,
+        policy::protocol::DefaultProgress,
         policy::protocol::DefaultSymbolLimit,
         policy::protocol::DefaultReplay,
         policy::protocol::BatchingPolicy<

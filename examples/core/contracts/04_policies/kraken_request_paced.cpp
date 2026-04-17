@@ -91,6 +91,7 @@ using MySessionPolicies =
     policy::protocol::session_bundle<
         policy::protocol::DefaultBackpressure,
         policy::protocol::DefaultLiveness,
+        policy::protocol::DefaultProgress,
         policy::protocol::DefaultSymbolLimit,
         policy::protocol::DefaultReplay,
         policy::protocol::BatchingPolicy<

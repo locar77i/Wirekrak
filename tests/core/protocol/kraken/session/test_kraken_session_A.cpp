@@ -53,7 +53,7 @@ void test_single_active_subscription_replayed() {
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
     TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }

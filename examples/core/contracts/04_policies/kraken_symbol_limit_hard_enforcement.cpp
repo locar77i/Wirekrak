@@ -70,6 +70,7 @@ using MySessionPolicies =
     policy::protocol::session_bundle<
         policy::protocol::DefaultBackpressure,
         policy::protocol::liveness::Passive,
+        policy::protocol::DefaultProgress,
         policy::protocol::SymbolLimitPolicy<
             policy::protocol::LimitMode::Hard,
             2,  // max_trade

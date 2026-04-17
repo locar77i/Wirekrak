@@ -1,5 +1,87 @@
 #pragma once
 
+/*
+===============================================================================
+PendingRequests (Symbol-Level Pending Index)
+===============================================================================
+
+Purpose
+-------
+Tracks pending protocol requests at symbol granularity.
+
+This structure provides a bidirectional mapping:
+
+    req_id -> vector<SymbolId>
+    SymbolId -> (implicitly owned by exactly one req_id)
+
+and enforces **global uniqueness of SymbolId** across all pending requests.
+
+-------------------------------------------------------------------------------
+Core Invariants
+-------------------------------------------------------------------------------
+
+• A SymbolId may appear at most once across all pending requests
+• pending_symbols_.size() equals total number of stored symbols
+• If a request vector becomes empty, it is erased
+• All operations are O(1) average (unordered containers + small vectors)
+• Not thread-safe (event-loop only)
+
+-------------------------------------------------------------------------------
+Semantics
+-------------------------------------------------------------------------------
+
+• add():
+    - Inserts symbols under a req_id
+    - Silently ignores duplicates already present globally
+
+• remove(req_id, sid):
+    - Removes a specific symbol from a specific request
+
+• remove(sid):
+    - Removes a symbol globally (owner lookup required)
+
+• contains():
+    - Fast membership test for pending symbols
+
+-------------------------------------------------------------------------------
+Design
+-------------------------------------------------------------------------------
+
+• Vector per request:
+    - Optimized for small batches (e.g. Kraken ≤ 10 symbols/request)
+
+• Global uniqueness:
+    - Enforced via pending_symbols_ (O(1) lookup)
+
+• No ordering guarantees:
+    - Requests and symbols are treated as sets for correctness
+
+-------------------------------------------------------------------------------
+System Role
+-------------------------------------------------------------------------------
+
+• Pure data structure (no protocol semantics)
+• No timing, no progress tracking, no lifecycle decisions
+• Used internally by:
+
+    → subscription::Manager (symbol-level state machine)
+
+Higher-level components define meaning:
+
+    → Controller : progress + timeout policy
+    → Session    : quiescence and shutdown behavior
+
+-------------------------------------------------------------------------------
+Notes
+-------------------------------------------------------------------------------
+
+• Duplicate suppression is structural, not policy-driven
+• Consistency between requests_ and pending_symbols_ is critical
+• Debug builds can validate invariants via assert_consistency()
+
+===============================================================================
+*/
+
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -12,38 +94,6 @@
 
 
 namespace wirekrak::core::protocol::subscription {
-
-/*
-===============================================================================
-PendingRequests
-===============================================================================
-
-Purpose
--------
-Tracks pending protocol requests at symbol granularity.
-
-Each request:
-  req_id -> vector<SymbolId>
-
-Additionally:
-  pending_symbols_ ensures symbol-level uniqueness and O(1) lookup.
-
-Core Invariants
----------------
-• A SymbolId may appear at most once across all pending requests.
-• pending_symbols_.size() equals total number of stored symbols.
-• If a request vector becomes empty, it is erased.
-• Not thread-safe (event-loop only).
-
-Design
-------
-• Vector is used per request (Kraken ≤ 10 symbols per request).
-• Symbol uniqueness enforced globally inside this container.
-• Policy-neutral: does not decide whether duplicates are valid;
-  simply prevents duplication inside pending state.
-
-===============================================================================
-*/
 
 class PendingRequests {
 public:

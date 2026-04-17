@@ -128,10 +128,28 @@ int run_multi_subscription(int argc, char** argv, const char* title, lcr::memory
     // -------------------------------------------------------------------------
     // Graceful shutdown: drain until protocol is idle and close session
     // -------------------------------------------------------------------------
-    while (!session.is_idle()) {
+    while (true) {
+        // Fast path: if session is quiescent, we can exit immediately
+        if (session.is_quiescent()) {
+            break; // clean completion
+        }
+        // Timeout fallback (heuristic)
+        if (session.is_idle()) {
+            WK_WARN("[MAIN] Shutdown timeout: session did not reach quiescence. Forcing close.");
+            session.subscription_controller().for_each_manager([&]<class T>(const auto& mgr) {
+                std::cerr << "Manager<" << typeid(T).name() << ">\n";
+                std::cerr << "  pending reqs: " << mgr.pending_requests() << "\n";
+                std::cerr << "  pending syms: " << mgr.pending_symbols() << "\n";
+                std::cerr << "  active syms : " << mgr.active_symbols() << "\n";
+            });
+            break;
+        }
+        // Poll and drain messages to make progress towards quiescence
         (void)session.poll();
-        loop::drain_messages(session);
-        std::this_thread::yield();
+        did_work = loop::drain_messages(session);
+        if (!did_work) {
+            std::this_thread::yield();
+        }
     }
 
     session.close();

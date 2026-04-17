@@ -53,11 +53,11 @@ void test_partial_rejection_before_reconnect() {
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
 
-    TEST_CHECK(!h.session.is_idle()); // because rejection exists
+    TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
     h.drain_rejections(); // Drain rejection to reach protocol-idle state
 
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
@@ -88,11 +88,11 @@ void test_reject_after_reconnect_before_ack() {
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
     TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
-    TEST_CHECK(!h.session.is_idle()); // because rejection exists
+    TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
     h.drain_rejections(); // Drain rejection to reach protocol-idle state
 
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
@@ -129,11 +129,11 @@ void test_mixed_accept_reject_cross_channel() {
     h.confirm_book_subscription(b_id, "ETH/USD", 25);
 
     TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
-    TEST_CHECK(!h.session.is_idle()); // because rejection exists
+    TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
     h.drain_rejections(); // Drain rejection to reach protocol-idle state
 
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
@@ -174,11 +174,11 @@ void test_reconnect_storm_with_rejections() {
     h.confirm_trade_subscription(id, "BTC/USD");
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(!h.session.is_idle()); // because rejection exists
+    TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
     h.drain_rejections(); // Drain rejection to reach protocol-idle state
 
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }

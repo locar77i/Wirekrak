@@ -164,12 +164,12 @@ void test_rejection_isolation_with_reconnect() {
     TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
 
-    TEST_CHECK(!h.session.is_idle()); // because rejection exists
+    TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
     // Drain rejection to reach protocol-idle state
     h.drain_rejections();
 
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
@@ -233,7 +233,7 @@ void test_multi_channel_reconnect_stress() {
 
         TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
         TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
-        TEST_CHECK(h.session.is_idle());
+        TEST_CHECK(h.session.is_quiescent());
     }
 
     std::cout << "[TEST] OK\n";

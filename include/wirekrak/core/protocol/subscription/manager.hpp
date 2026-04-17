@@ -1,5 +1,88 @@
 #pragma once
 
+/*
+===============================================================================
+Idempotent Subscription Manager (Symbol-Level State Machine)
+===============================================================================
+
+Tracks protocol state for a single subscription type at **symbol granularity**.
+
+This component is purely deterministic and does NOT implement any timing,
+progress tracking, or timeout logic. Higher-level orchestration is handled by
+the Subscription Controller.
+
+-------------------------------------------------------------------------------
+State model
+-------------------------------------------------------------------------------
+
+    active_symbols_
+    pending_subscriptions_
+    pending_unsubscriptions_
+
+-------------------------------------------------------------------------------
+Invariants
+-------------------------------------------------------------------------------
+
+• A symbol may exist in exactly one of:
+    - active_symbols_
+    - pending_subscriptions_
+    - pending_unsubscriptions_
+
+• total_symbols() represents logical ownership:
+      active + pending_subscribe
+
+• Pending unsubscribe symbols are still logically active until ACKed
+
+-------------------------------------------------------------------------------
+Semantics
+-------------------------------------------------------------------------------
+
+• Subscription registration is idempotent:
+    - Duplicate requests are filtered
+    - Conflicting transitions are resolved locally
+
+• State transitions are driven by:
+    - register_subscription()
+    - register_unsubscription()
+    - process_*_ack()
+    - try_process_rejection()
+
+• No symbol duplication is allowed
+
+-------------------------------------------------------------------------------
+Design goals
+-------------------------------------------------------------------------------
+
+• Idempotent at symbol level
+• Deterministic (no time-based behavior)
+• Safe under reconnect replay storms
+• Zero dynamic allocation beyond container growth
+• Suitable for ultra-low-latency paths
+
+-------------------------------------------------------------------------------
+System role
+-------------------------------------------------------------------------------
+
+• Manager is a **local state machine**
+• Does NOT track time, progress, or liveness
+• Does NOT decide when the system is "idle"
+
+These responsibilities belong to:
+
+    → Controller  : aggregates managers + tracks progress (timestamps)
+    → Session     : defines global quiescence and shutdown behavior
+
+-------------------------------------------------------------------------------
+Notes
+-------------------------------------------------------------------------------
+
+• Replay DB must remain consistent with total_symbols()
+• Pending state is resolved only via ACK or rejection
+• Unknown ACKs are tolerated but logged
+
+===============================================================================
+*/
+
 #include <unordered_set>
 #include <cstdint>
 #include <cassert>
@@ -12,40 +95,6 @@
 
 
 namespace wirekrak::core::protocol::subscription {
-
-/*
-===============================================================================
-Idempotent Manager
-===============================================================================
-
-Tracks protocol lifecycle for a single subscription.
-
-State model:
-
-    active_symbols_
-    pending_subscriptions_
-    pending_unsubscriptions_
-
-Invariants:
------------
-• A symbol may exist in exactly one of:
-    - active_symbols_
-    - pending_subscriptions_
-    - pending_unsubscriptions_
-
-• total_symbols() represents logical ownership:
-      active + pending_subscribe
-
-• Pending unsubscribe symbols are still logically active.
-
-Design:
--------
-• Idempotent at symbol level
-• Safe under reconnect replay storms
-• Replay DB must match total_symbols()
-• No symbol duplication allowed
-===============================================================================
-*/
 
 template<class RequestT>
 class Manager {
@@ -136,11 +185,12 @@ public:
     // ACK processing
     // ------------------------------------------------------------
 
-    inline void process_subscribe_ack(ctrl::req_id_t req_id, Symbol symbol, bool success) noexcept {
+    inline bool process_subscribe_ack(ctrl::req_id_t req_id, Symbol symbol, bool success) noexcept {
         SymbolId sid = intern_symbol(symbol);
 
         if (!pending_subscriptions_.contains(sid)) {
-            return;
+            WK_WARN("[SUBSCRIPTION MANAGER] Received subscribe ACK for unknown symbol {" << symbol << "} (req_id=" << req_id << ")");
+            return false;
         }
 
         if (success) {
@@ -148,13 +198,15 @@ public:
         } else {
             reject_subscription_(req_id, sid);
         }
+        return true;
     }
 
-    inline void process_unsubscribe_ack(ctrl::req_id_t req_id,  Symbol symbol,  bool success) noexcept {
+    inline bool process_unsubscribe_ack(ctrl::req_id_t req_id,  Symbol symbol,  bool success) noexcept {
         SymbolId sid = intern_symbol(symbol);
         
         if (!pending_unsubscriptions_.contains(sid)) {
-            return;
+            WK_WARN("[SUBSCRIPTION MANAGER] Received unsubscribe ACK for unknown symbol {" << symbol << "} (req_id=" << req_id << ")");
+            return false;
         }
 
         if (success) {
@@ -162,6 +214,7 @@ public:
         } else {
             reject_unsubscription_(req_id, sid);
         }
+        return true;
     }
 
     // ------------------------------------------------------------

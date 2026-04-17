@@ -53,6 +53,7 @@ using MySessionPolicies =
     policy::protocol::session_bundle<
         policy::protocol::backpressure::Strict,
         policy::protocol::liveness::Passive,
+        policy::protocol::DefaultProgress,
         policy::protocol::DefaultSymbolLimit,
         policy::protocol::replay::Enabled
     >;

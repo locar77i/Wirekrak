@@ -146,7 +146,7 @@ void test_reconnect_stress_convergence() {
 
         TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 2);
         TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-        TEST_CHECK(h.session.is_idle());
+        TEST_CHECK(h.session.is_quiescent());
     }
 
     std::cout << "[TEST] OK\n";

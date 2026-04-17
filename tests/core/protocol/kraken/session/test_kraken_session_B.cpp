@@ -105,7 +105,7 @@ void test_user_subscribes_during_replay_window() {
     // Final convergence
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 2);
     TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
@@ -152,7 +152,7 @@ void test_replay_fires_only_once_per_epoch() {
 
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
     TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
@@ -199,7 +199,7 @@ void test_replay_ack_unknown_req_id_is_ignored() {
     // Should now be active
     TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
     TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.is_idle());
+    TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
 }
