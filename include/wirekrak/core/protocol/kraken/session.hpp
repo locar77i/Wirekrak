@@ -1108,30 +1108,29 @@ private:
     [[nodiscard]]
     inline bool hard_symbol_limit_enforcement_(const RequestT& req) const noexcept {
         const std::size_t requested = req.symbols.size();
-        // Current logical symbol counts
-        const std::size_t trade_now = trade_subscriptions().total_symbols();
-        const std::size_t book_now = book_subscriptions().total_symbols();
-        const std::size_t global_now = trade_now + book_now;
-        // Check limits
-        if constexpr (channel_of_v<RequestT> == Channel::Trade) { // Check trade limits
-
-            if (SymbolLimitPolicy::max_trade > 0 && trade_now + requested > SymbolLimitPolicy::max_trade) {
-                WK_WARN("[SESSION:trade] Symbol limit exceeded (" << "active: " << trade_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_trade << ")");
+        // --------------------------------------------------------
+        // Per-request limit
+        // --------------------------------------------------------
+        if constexpr (SymbolLimitPolicy::max_per_channel > 0) {
+            const std::size_t current = subscription_controller_.template manager_for<RequestT>().total_symbols();
+            if (current + requested > SymbolLimitPolicy::max_per_channel) {
+                WK_WARN("[SESSION] Symbol limit exceeded (" << "active: " << current
+                    << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_per_channel << ")");
                 return false;
             }
         }
-        else if constexpr (channel_of_v<RequestT> == Channel::Book) { // Check book limits
-
-            if (SymbolLimitPolicy::max_book > 0 && book_now + requested > SymbolLimitPolicy::max_book) {
-                WK_WARN("[SESSION:book] Symbol limit exceeded (" << "active: " << book_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_book << ")");
+        // --------------------------------------------------------
+        // Global limit
+        // --------------------------------------------------------
+        if constexpr (SymbolLimitPolicy::max_global > 0) {
+            const std::size_t current = subscription_controller_.total_symbols();
+            if (current + requested > SymbolLimitPolicy::max_global) {
+                WK_WARN("[SESSION] Symbol limit exceeded (global) " << "(active: " << current
+                    << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_global << ")");
                 return false;
             }
         }
-        // Check global limits
-        if (SymbolLimitPolicy::max_global > 0 && global_now + requested > SymbolLimitPolicy::max_global) {
-            WK_WARN("[SESSION] Global symbol limit exceeded (" << "active: " << global_now << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_global << ")");
-            return false;
-        }
+
         return true;
     }
 

@@ -1,78 +1,51 @@
 #pragma once
 
 // ============================================================================
-// Protocol Symbol Limit Policy
+// Protocol Symbol Limit Policy (Generic, Exchange-Agnostic)
 // ============================================================================
 //
 // Controls compile-time subscription capacity limits enforced by the Session.
 //
-// Symbol limits allow the application to define deterministic bounds on the
-// number of active market data subscriptions. This prevents accidental
-// overload, protects system resources, and enforces exchange-imposed limits.
+// This version is fully protocol-agnostic and does NOT assume any notion of
+// channels (e.g. trade, book). Limits are expressed in terms of:
 //
-// The policy is evaluated before subscription requests are sent to the
-// transport layer, ensuring that invalid requests are rejected locally and
-// never reach the exchange.
+//   • max_per_channel  → maximum symbols per single channel
+//   • max_global       → maximum total active symbols
 //
 // DESIGN GOALS
 // ------------
 // • Compile-time configurable limits
 // • Deterministic enforcement
 // • Zero runtime overhead when disabled
-// • No dynamic allocation
-// • Protocol correctness preserved
+// • Fully exchange-agnostic
+// • Backward-compatible extension path (per-type limits)
 //
 // POLICY MODES
 // ------------
 //
 // None
-//   - No subscription limits are enforced.
-//   - The Session forwards all subscription requests to the transport.
+//   - No limits enforced
 //
 // Hard
-//   - Subscription requests exceeding configured limits are rejected
-//     immediately by the Session.
-//   - No transport message is sent.
-//   - No partial allocation occurs.
-//   - Replay database and managers remain unchanged.
+//   - Requests exceeding limits are rejected locally
+//   - No transport emission
+//   - No partial allocation
 //
-// LIMIT TYPES
-// -----------
+// EXTENSIBILITY
+// -------------
 //
-// MaxTrade
-//   Maximum number of trade channel symbols.
+// Future extensions may introduce:
 //
-// MaxBook
-//   Maximum number of book channel symbols.
+//   template<class RequestT>
+//   static constexpr std::size_t limit_for = max_per_channel;
 //
-// MaxGlobal
-//   Maximum total number of symbols across all channels.
-//
-// The global limit must always be greater than or equal to the per-channel
-// limits to maintain internal consistency.
-//
-// EXAMPLE
-// -------
-//
-//   SymbolLimitPolicy<LimitMode::Hard, 100, 50, 120>
-//
-//   - Up to 100 trade symbols allowed
-//   - Up to 50 book symbols allowed
-//   - Up to 120 symbols total across all channels
-//
-// USE CASES
-// ---------
-// • Enforcing exchange subscription caps
-// • Protecting systems from excessive subscription fan-out
-// • Risk-controlled deployments
-// • Multi-tenant environments with bounded capacity
+// without breaking existing users.
 //
 // ============================================================================
 
 #include <cstddef>
 #include <concepts>
 #include <ostream>
-
 
 namespace wirekrak::core::policy::protocol {
 
@@ -81,10 +54,9 @@ namespace wirekrak::core::policy::protocol {
 // ------------------------------------------------------------
 
 enum class LimitMode {
-    None,   // No limits enforced
-    Hard    // Reject when exceeding limit
+    None,
+    Hard
 };
-
 
 // ------------------------------------------------------------
 // Concept
@@ -94,8 +66,7 @@ template<class T>
 concept HasSymbolLimitMembers =
     requires {
         { T::mode } -> std::same_as<const LimitMode&>;
-        { T::max_trade } -> std::same_as<const std::size_t&>;
-        { T::max_book } -> std::same_as<const std::size_t&>;
+        { T::max_per_channel } -> std::same_as<const std::size_t&>;
         { T::max_global } -> std::same_as<const std::size_t&>;
         { T::enabled } -> std::same_as<const bool&>;
         { T::hard } -> std::same_as<const bool&>;
@@ -114,81 +85,62 @@ concept SymbolLimitConcept =
     )
     &&
     (
-        // Mode None → all limits must be zero
+        // Mode None → no limits
         (
             T::mode == LimitMode::None &&
-            T::max_trade == 0 &&
-            T::max_book == 0 &&
+            T::max_per_channel == 0 &&
             T::max_global == 0
         )
         ||
-        // Mode Hard → global must be consistent
+        // Mode Hard → global must be >= per-request
         (
             T::mode == LimitMode::Hard &&
-            T::max_global >= T::max_trade &&
-            T::max_global >= T::max_book
+            T::max_global >= T::max_per_channel
         )
     );
-
 
 // ------------------------------------------------------------
 // SymbolLimitPolicy
 // ------------------------------------------------------------
-//
-// Compile-time subscription symbol limits.
-//
-// Template parameters:
-//   ModeV       → None or Hard
-//   MaxTradeV   → Maximum trade symbols
-//   MaxBookV    → Maximum book symbols
-//   MaxGlobalV  → Maximum total symbols across channels
-//
-// All limits are enforced at Session level.
-// Manager and ReplayDB remain policy-agnostic.
-//
-// ------------------------------------------------------------
 
 template<
     LimitMode ModeV,
-    std::size_t MaxTradeV,
-    std::size_t MaxBookV,
+    std::size_t MaxPerChannelV,
     std::size_t MaxGlobalV
 >
 struct SymbolLimitPolicy {
 
     static constexpr LimitMode mode = ModeV;
 
-    static constexpr std::size_t max_trade  = MaxTradeV;
-    static constexpr std::size_t max_book   = MaxBookV;
-    static constexpr std::size_t max_global = MaxGlobalV;
+    static constexpr std::size_t max_per_channel = MaxPerChannelV;
+    static constexpr std::size_t max_global      = MaxGlobalV;
 
-    static constexpr bool enabled =  ModeV != LimitMode::None;
-
-    static constexpr bool hard = ModeV == LimitMode::Hard;
+    static constexpr bool enabled = ModeV != LimitMode::None;
+    static constexpr bool hard    = ModeV == LimitMode::Hard;
 
     // ------------------------------------------------------------
-    // Introspection Helpers (Zero Runtime Cost)
+    // FUTURE EXTENSION POINT (do not remove)
     // ------------------------------------------------------------
     //
-    // These helpers allow compile-time policies to expose
-    // their configuration in a deterministic, presentation-friendly way.
+    // Allows seamless upgrade to per-type limits:
     //
-    // - No instances required
-    // - No dynamic allocation
-    // - Fully inlinable
-    // - Removed entirely by the compiler if unused
+    // template<class RequestT>
+    // static constexpr std::size_t limit_for = max_per_channel;
     //
+    // ------------------------------------------------------------
 
-    // Human-readable mode name
+    // ------------------------------------------------------------
+    // Introspection
+    // ------------------------------------------------------------
+
     static constexpr const char* mode_name() noexcept {
         switch (mode) {
             case LimitMode::None: return "None";
             case LimitMode::Hard: return "Hard";
         }
-        return "Unknown"; // defensive fallback (should never happen)
+        return "Unknown";
     }
 
-    // Dump policy configuration
     static void dump(std::ostream& os) {
         os << "[Protocol Symbol Limit Policy]\n";
 
@@ -196,15 +148,13 @@ struct SymbolLimitPolicy {
         os << "- Enabled     : " << (enabled ? "yes" : "no") << "\n";
 
         if constexpr (ModeV == LimitMode::Hard) {
-            os << "- Max trade   : " << max_trade  << "\n";
-            os << "- Max book    : " << max_book   << "\n";
+            os << "- Max/channel : " << max_per_channel << "\n";
             os << "- Max global  : " << max_global << "\n";
         }
 
         os << "\n";
     }
 };
-
 
 // ------------------------------------------------------------
 // Predefined Policies
@@ -213,11 +163,11 @@ struct SymbolLimitPolicy {
 using NoSymbolLimits =
     SymbolLimitPolicy<
         LimitMode::None,
-        0, 0, 0
+        0,
+        0
     >;
 
-// Assert that NoSymbolLimits satisfies the SymbolLimitConcept
-static_assert(SymbolLimitConcept<NoSymbolLimits>, "NoSymbolLimits does not satisfy SymbolLimitConcept");
+static_assert(SymbolLimitConcept<NoSymbolLimits>);
 
 // ----------------------------------------------------------------------------
 // Default
@@ -225,6 +175,6 @@ static_assert(SymbolLimitConcept<NoSymbolLimits>, "NoSymbolLimits does not satis
 
 using DefaultSymbolLimit = NoSymbolLimits;
 
-static_assert(SymbolLimitConcept<DefaultSymbolLimit>, "DefaultSymbolLimit does not satisfy SymbolLimitConcept");
+static_assert(SymbolLimitConcept<DefaultSymbolLimit>);
 
 } // namespace wirekrak::core::policy::protocol

@@ -614,7 +614,7 @@ void test_hard_limit_enforcement() {
     using Hard5 =
     policy::protocol::SymbolLimitPolicy<
         policy::protocol::LimitMode::Hard,
-        5, 5, 8
+        5, 8
     >;
 
     using SessionPolicies = policy::protocol::session_bundle<

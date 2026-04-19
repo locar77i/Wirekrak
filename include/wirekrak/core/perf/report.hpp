@@ -412,11 +412,9 @@ private:
 
         os << "\n  Dominant factor\n";
 
-        if (ingress_pct > 95.0) {
-            os << "    - Tail latency fully dominated by upstream (network / exchange behavior)\n";
-        } else if (ingress_pct > 80.0) {
+        if (ingress_pct >= queue_pct && ingress_pct >= proc_pct) {
             os << "    - Tail latency is dominated by INGRESS (network / exchange behavior)\n";
-        } else if (queue_pct > 50.0) {
+        } else if (queue_pct >= ingress_pct && queue_pct >= proc_pct) {
             os << "    - Tail latency is dominated by QUEUEING (burst / backpressure)\n";
         } else {
             os << "    - Tail latency is dominated by PROCESSING\n";
