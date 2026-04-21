@@ -71,6 +71,7 @@ Data-plane model:
 #include "wirekrak/core/protocol/request/scheduler.hpp"
 #include "wirekrak/core/protocol/telemetry/session.hpp"
 #include "wirekrak/core/protocol/kraken/subscription_traits.hpp"
+#include "wirekrak/core/protocol/kraken/subscription_set.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
@@ -103,6 +104,9 @@ template<
 class Session {
 public:
     using ConnectionT = transport::Connection<WS, MessageRing, ConnectionPolicyBundle>;
+
+    template<class T>
+    using domain_t = subscription_type<T>;
 
 public:
     Session(MessageRing& ring)
@@ -282,7 +286,7 @@ public:
         }
         // 3) Register subscription with manager (internal filtering)
         auto accepted_symbols = subscription_controller_.template
-            register_subscription<RequestT>(std::move(req.symbols), req.req_id.value());
+            register_subscription<domain_t<RequestT>>(std::move(req.symbols), req.req_id.value());
         if (accepted_symbols.empty()) {
             WK_TRACE("[SESSION] Subscription fully filtered by manager");
             return ctrl::INVALID_REQ_ID;
@@ -293,7 +297,7 @@ public:
         if constexpr (ReplayPolicy::enabled) {
             // Store protocol intent for deterministic replay after reconnect.
             // Only acknowledged subscriptions will be replayed.
-            replay_db_.add(req);
+            replay_db_.add<domain_t<RequestT>>(req);
         }
         // 6) Emit the request according to the configured batching policy
         WK_DEBUG("[SESSION] Emitting subscribe message: " << req.symbols.size() << " symbol/s (req_id=" << req.req_id.value() << ")");
@@ -325,11 +329,11 @@ public:
         WK_TL1(telemetry_.unsubscriptions_requested_total.inc());
         // 3) Tell subscription manager we are awaiting an ACK (transfer ownership of symbols)
         RequestSymbols cancelled = subscription_controller_.template
-            register_unsubscription<RequestT>(std::move(req.symbols), req.req_id.value());
+            register_unsubscription<domain_t<RequestT>>(std::move(req.symbols), req.req_id.value());
         // 4) Update replay DB to prevent replay of the cancelled symbols after reconnect (only if replay enabled)
         if constexpr (ReplayPolicy::enabled) {
             for (const auto& symbol : cancelled) {
-                replay_db_.remove_symbol<RequestT>(symbol);
+                replay_db_.remove_symbol<domain_t<RequestT>>(symbol);
             }
         }
         return req.req_id.value();
@@ -539,7 +543,7 @@ public:
         while (ring.pop(ack)) {
             if (ack.req_id.has()) [[likely]] {
                 subscription_controller_.template
-                    process_subscribe_ack<AckT>(ack.req_id.value(), ack.symbol, ack.success);
+                    process_subscribe_ack<domain_t<AckT>>(ack.req_id.value(), ack.symbol, ack.success);
             }
             else {
                 // TODO: Increment a metric for ACKs with missing req_id to monitor potential protocol issues
@@ -553,11 +557,11 @@ public:
         while (ring.pop(ack)) {
             if (ack.req_id.has()) [[likely]] {
                 subscription_controller_.template
-                    process_unsubscribe_ack<AckT>(ack.req_id.value(), ack.symbol, ack.success);
+                    process_unsubscribe_ack<domain_t<AckT>>(ack.req_id.value(), ack.symbol, ack.success);
                 // Prevent replay of the cancelled symbol after reconnect (only if replay enabled)
                 if constexpr (ReplayPolicy::enabled) {
                     if (ack.success) {
-                        replay_db_.remove_symbol<AckT>(ack.symbol);
+                        replay_db_.remove_symbol<domain_t<AckT>>(ack.symbol);
                     }
                 }
             }
@@ -872,15 +876,13 @@ private:
 
     using SubscriptionController = subscription::Controller<
         ProgressPolicy,
-        schema::trade::Subscribe,
-        schema::book::Subscribe
+        kraken::SubscriptionSet::types
     >;
     SubscriptionController subscription_controller_;
 
     // Replay database
-    using ReplayDB = wirekrak::core::protocol::replay::Database<
-        schema::trade::Subscribe,
-        schema::book::Subscribe
+    using ReplayDB = replay::Database<
+        kraken::SubscriptionSet::types
     >;
     ReplayDB replay_db_;
 
@@ -935,7 +937,7 @@ private:
         WK_INFO("[SESSION] Re-subscribing to channel '" << channel_name_of_v<RequestT> << "' (total: " << req.symbols.size() << " symbol/s)");
         // 1) Register subscription with manager (internal filtering)
         auto accepted_symbols = subscription_controller_.template
-            register_subscription<RequestT>(std::move(req.symbols), req.req_id.value());
+            register_subscription<domain_t<RequestT>>(std::move(req.symbols), req.req_id.value());
         if (accepted_symbols.empty()) {
             WK_TRACE("[SESSION] Re-subscription fully filtered by manager");
             return;
@@ -944,7 +946,7 @@ private:
         req.symbols = std::move(accepted_symbols);
         // 3) Register in replay DB using filtered request (only if replay enabled)
         if constexpr (ReplayPolicy::enabled) {
-            replay_db_.add(req);
+            replay_db_.add<domain_t<RequestT>>(req);
         }
         WK_DEBUG("[SESSION] Emitting re-subscribe message: " << req.symbols.size() << " symbol/s");
         // 4) Emit the request according to the configured batching policy
@@ -1112,7 +1114,7 @@ private:
         // Per-request limit
         // --------------------------------------------------------
         if constexpr (SymbolLimitPolicy::max_per_channel > 0) {
-            const std::size_t current = subscription_controller_.template manager_for<RequestT>().total_symbols();
+            const std::size_t current = subscription_controller_.template manager_for<domain_t<RequestT>>().total_symbols();
             if (current + requested > SymbolLimitPolicy::max_per_channel) {
                 WK_WARN("[SESSION] Symbol limit exceeded (" << "active: " << current
                     << ", requested: " << requested << ", max: " << SymbolLimitPolicy::max_per_channel << ")");

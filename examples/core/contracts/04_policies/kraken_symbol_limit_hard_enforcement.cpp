@@ -73,8 +73,7 @@ using MySessionPolicies =
         policy::protocol::DefaultProgress,
         policy::protocol::SymbolLimitPolicy<
             policy::protocol::LimitMode::Hard,
-            2,  // max_trade
-            1,  // max_book
+            1,  // max_per_channel
             2   // max_global
         >
     >;

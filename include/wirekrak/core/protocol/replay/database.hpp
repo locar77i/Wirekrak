@@ -108,10 +108,19 @@
 #include "wirekrak/core/symbol.hpp"
 #include "wirekrak/core/protocol/replay/table.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
-#include "wirekrak/core/protocol/subscription_traits.hpp"
+#include "wirekrak/core/meta/type_list.hpp"
 #include "lcr/log/logger.hpp"
 
+
 namespace wirekrak::core::protocol::replay {
+
+// ============================================================
+// Primary template
+// ============================================================
+
+template<class SubscriptionSet>
+class Database;
+
 
 // =============================================================
 // Generic Replay Database
@@ -125,7 +134,7 @@ namespace wirekrak::core::protocol::replay {
 // - Preserves all original semantics
 // =============================================================
 template<class... SubscriptionTs>
-class Database {
+class Database<meta::type_list<SubscriptionTs...>> {
 public:
     Database() = default;
     ~Database() = default;
@@ -133,17 +142,17 @@ public:
     // ------------------------------------------------------------
     // Insert or update a subscription request
     // ------------------------------------------------------------
-    template<class RequestT>
-    inline void add(RequestT req) noexcept {
-        table_<subscription_type<RequestT>>().add(std::move(req));
+    template<class DomainT>
+    inline void add(DomainT req) noexcept {
+        table_<DomainT>().add(std::move(req));
     }
 
     // ------------------------------------------------------------
     // Removes symbols (unsubscribe semantics)
     // ------------------------------------------------------------
-    template<class RequestT>
-    inline void remove(RequestT req) noexcept {
-        auto& t = table_<subscription_type<RequestT>>();
+    template<class DomainT>
+    inline void remove(DomainT req) noexcept {
+        auto& t = table_<DomainT>();
         for (const auto& symbol : req.symbols) {
             t.erase_symbol(symbol);
         }
@@ -152,9 +161,9 @@ public:
     // ------------------------------------------------------------
     // Remove a single symbol (ACK-driven removal)
     // ------------------------------------------------------------
-    template<class RequestT>
+    template<class DomainT>
     inline void remove_symbol(Symbol symbol) noexcept {
-        table_<subscription_type<RequestT>>().erase_symbol(symbol);
+        table_<DomainT>().erase_symbol(symbol);
     }
 
     // ------------------------------------------------------------
@@ -165,7 +174,7 @@ public:
         bool done = false;
 
         std::apply([&](auto&... t) {
-            ((done = done || t.try_process_rejection(req_id, symbol)), ...);
+            (( !done && (done = t.try_process_rejection(req_id, symbol)) ), ...);
         }, tables_);
 
         if (done) {
@@ -178,10 +187,10 @@ public:
     // ------------------------------------------------------------
     // Transfer all replayable subscriptions for a given type
     // ------------------------------------------------------------
-    template<class RequestT>
+    template<class DomainT>
     [[nodiscard]]
-    inline std::vector<Subscription<RequestT>> take_subscriptions() noexcept {
-        return table_<subscription_type<RequestT>>().take_subscriptions();
+    inline std::vector<Subscription<DomainT>> take_subscriptions() noexcept {
+        return table_<DomainT>().take_subscriptions();
     }
 
     // ------------------------------------------------------------
@@ -219,14 +228,14 @@ public:
     // Access the Table associated with a given RequestT
     // (resolved via subscription_traits)
     // ------------------------------------------------------------
-    template<class RequestT>
+    template<class DomainT>
     auto& table_for() noexcept {
-        return table_<subscription_type<RequestT>>();
+        return table_<DomainT>();
     }
 
-    template<class RequestT>
+    template<class DomainT>
     const auto& table_for() const noexcept {
-        return table_<subscription_type<RequestT>>();
+        return table_<DomainT>();
     }
 
     // ------------------------------------------------------------
