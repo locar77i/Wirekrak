@@ -6,6 +6,7 @@
 
 #include "wirekrak/core/protocol/kraken/parser/dom/trade/unsubscribe_ack.hpp"
 
+using namespace wirekrak::core::protocol;
 using namespace wirekrak::core::protocol::kraken;
 
 // -----------------------------------------------------------------------------
@@ -16,7 +17,7 @@ static bool parse(std::string_view json, schema::trade::UnsubscribeAck& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
-    return (parser::dom::trade::unsubscribe_ack::parse(doc.value(), out) == parser::Result::Parsed);
+    return (parser::dom::trade::unsubscribe_ack::parse(doc.value(), out) == MessageResult::Parsed);
 }
 
 /*

@@ -6,6 +6,7 @@
 
 #include "wirekrak/core/protocol/kraken/parser/dom/status/update.hpp"
 
+using namespace wirekrak::core::protocol;
 using namespace wirekrak::core::protocol::kraken;
 
 /*
@@ -31,7 +32,7 @@ static bool parse(std::string_view json, schema::status::Update& out) {
     simdjson::dom::parser parser;
     auto doc = parser.parse(json);
     assert(!doc.error());
-    return (parser::dom::status::update::parse(doc.value(), out) == parser::Result::Parsed);
+    return (parser::dom::status::update::parse(doc.value(), out) == MessageResult::Parsed);
 }
 
 // ------------------------------------------------------------

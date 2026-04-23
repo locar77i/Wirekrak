@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "wirekrak/core/protocol/kraken/parser/result.hpp"
+#include "wirekrak/core/protocol/message_result.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
 #include "wirekrak/core/protocol/kraken/channel_traits.hpp"
@@ -15,12 +15,12 @@ namespace wirekrak::core::protocol::kraken::parser::dom::book::detail {
 
 template<typename Ack>
 [[nodiscard]]
-inline Result parse_ack_common(const simdjson::dom::element& root, std::string_view expected_method, Ack& out) noexcept{
+inline MessageResult parse_ack_common(const simdjson::dom::element& root, std::string_view expected_method, Ack& out) noexcept{
     using namespace simdjson;
 
     // Root
     auto r = helper::require_object(root);
-    if (r != Result::Parsed) {
+    if (r != MessageResult::Parsed) {
         WK_TRACE("[PARSER] Root not an object in " << expected_method << " ACK -> ignore message.");
         return r;
     }
@@ -35,7 +35,7 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
 
     // success (required)
     r = helper::parse_bool_required(root, "success", out.success);
-    if (r != Result::Parsed) {
+    if (r != MessageResult::Parsed) {
         WK_TRACE("[PARSER] Field 'success' missing in " << expected_method << " ACK -> ignore message.");
         return r;
     }
@@ -46,7 +46,7 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
         // result object (required)
         simdjson::dom::element result;
         r = helper::parse_object_required(root, "result", result);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_WARN("[PARSER] Field 'result' missing or invalid in '" << expected_method << "' message -> ignore message.");
             return r;
         }
@@ -61,7 +61,7 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
 
         // symbol (required)
         r = adapter::parse_symbol_required(result, "symbol", out.symbol);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'symbol' missing in " << expected_method << " ACK -> ignore message.");
             return r;
         }
@@ -69,7 +69,7 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
         // depth (required)
         std::uint64_t depth = 0;
         r = helper::parse_uint64_required(result, "depth", depth);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'depth' missing in " << expected_method << " ACK -> ignore message.");
             return r;
         }
@@ -78,7 +78,7 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
         // snapshot (subscribe-only)
         if constexpr (requires { out.snapshot; }) {
             r = helper::parse_bool_optional(result, "snapshot", out.snapshot);
-            if (r != Result::Parsed) {
+            if (r != MessageResult::Parsed) {
                 WK_TRACE("[PARSER] Field 'snapshot' invalid in " << expected_method << " ACK -> ignore message.");
                 return r;
             }
@@ -88,7 +88,7 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
         if constexpr (requires { out.warnings; }) {
             bool presence;
             r = helper::parse_string_list_optional(result, "warnings", out.warnings, presence);
-            if (r != Result::Parsed) {
+            if (r != MessageResult::Parsed) {
                 WK_TRACE("[PARSER] Field 'warnings' invalid in " << expected_method << " ACK -> ignore message.");
                 return r;
             }
@@ -97,7 +97,7 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
         // error must NOT exist on success
         if (!root["error"].error()) {
             WK_TRACE("[PARSER] Field 'error' present in successful " << expected_method << " ACK -> ignore message.");
-            return Result::InvalidSchema;
+            return MessageResult::InvalidSchema;
         }
     }
 
@@ -105,7 +105,7 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
     else {
         std::string_view err;
         r = helper::parse_string_required(root, "error", err);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'error' missing in failed " << expected_method << " ACK -> ignore message.");
             return r;
         }
@@ -122,25 +122,25 @@ inline Result parse_ack_common(const simdjson::dom::element& root, std::string_v
 
     // req_id (optional)
     r = helper::parse_uint64_optional(root, "req_id", out.req_id);
-    if (r != Result::Parsed) {
+    if (r != MessageResult::Parsed) {
         WK_TRACE("[PARSER] Field 'req_id' invalid in " << expected_method << " ACK -> ignore message.");
         return r;
     }
 
     // timestamps (optional)
     r = adapter::parse_timestamp_optional(root, "time_in", out.time_in);
-    if (r != Result::Parsed) {
+    if (r != MessageResult::Parsed) {
         WK_TRACE("[PARSER] Field 'time_in' invalid in " << expected_method << " ACK -> ignore message.");
         return r;
     }
 
     r = adapter::parse_timestamp_optional(root, "time_out", out.time_out);
-    if (r != Result::Parsed) {
+    if (r != MessageResult::Parsed) {
         WK_TRACE("[PARSER] Field 'time_out' invalid in " << expected_method << " ACK -> ignore message.");
         return r;
     }
 
-    return Result::Parsed;
+    return MessageResult::Parsed;
 }
 
 } // namespace wirekrak::core::protocol::kraken::parser::dom::book::detail

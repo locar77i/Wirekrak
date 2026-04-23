@@ -6,6 +6,7 @@
 
 #include <simdjson.h>
 
+#include "wirekrak/core/protocol/message_result.hpp"
 #include "wirekrak/core/protocol/kraken/enums.hpp"
 #include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
@@ -91,7 +92,7 @@ Responsibilities:
   • Never perform semantic or domain validation
   • Never log, throw, or allocate
 
-Helpers return a lightweight Result enum to distinguish:
+Helpers return a lightweight MessageResult enum to distinguish:
   • Ok              → structurally valid
   • InvalidSchema   → malformed JSON or wrong types
   • InvalidValue    → reserved for higher layers
@@ -124,24 +125,24 @@ public:
 
     // Main entry point
     [[nodiscard]]
-    inline Result parse_and_route(std::string_view raw_msg, Method& method, Channel& channel) noexcept {
+    inline MessageResult parse_and_route(std::string_view raw_msg, Method& method, Channel& channel) noexcept {
         using namespace simdjson;
         // Parse JSON message
         simdjson::dom::element root;
         auto error = parser_.parse(raw_msg).get(root);
         if (error) {
             WK_WARN("[PARSER] JSON parse error: " << error << " in message: " << raw_msg);
-            return Result::InvalidSchema;
+            return MessageResult::InvalidSchema;
         }
         // METHOD DISPATCH (ACK / CONTROL)
-        if (dom::adapter::parse_method_required(root, method) == Result::Parsed) {
+        if (dom::adapter::parse_method_required(root, method) == MessageResult::Parsed) {
             return parse_method_message_(method, root);
         }
         // CHANNEL DISPATCH (DATA)
-        if (dom::adapter::parse_channel_required(root, channel) == Result::Parsed) {
+        if (dom::adapter::parse_channel_required(root, channel) == MessageResult::Parsed) {
             return parse_channel_message_(channel, root);
         }
-        return Result::Ignored;
+        return MessageResult::Ignored;
     }
 
 
@@ -159,7 +160,7 @@ private:
     // =========================================================================
 
     [[nodiscard]]
-    inline Result parse_method_message_(Method method, const simdjson::dom::element& root) noexcept {
+    inline MessageResult parse_method_message_(Method method, const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
 
         // Fix 1nd kraken API inconsistency: 'result' object is not present in 'pong' messages ...
@@ -186,12 +187,12 @@ private:
         Channel channel;
         // result object (required)
         simdjson::dom::element result;
-        if (dom::helper::parse_object_required(root, "result", result) != Result::Parsed) {
+        if (dom::helper::parse_object_required(root, "result", result) != MessageResult::Parsed) {
             channel = Channel::Unknown;
         }
         else {
             // channel (required)
-            if (dom::adapter::parse_channel_required(result, channel) != Result::Parsed) {
+            if (dom::adapter::parse_channel_required(result, channel) != MessageResult::Parsed) {
                 WK_WARN("[PARSER] Field 'channel' missing or invalid in '" << to_string(method) << "' message -> ignore message.");
                 channel = Channel::Unknown;
             }
@@ -204,50 +205,50 @@ private:
             default:
                 WK_WARN("[PARSER] Unhandled method -> ignore");
         }
-        return Result::Ignored;
+        return MessageResult::Ignored;
     }
 
     // SUBSCRIBE ACK PARSER
     [[nodiscard]]
-    inline Result parse_subscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
-        auto r = Result::Ignored;
+    inline MessageResult parse_subscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
+        auto r = MessageResult::Ignored;
         switch (channel) {
             case Channel::Trade: {
                 schema::trade::SubscribeAck resp;
                 r = dom::trade::subscribe_ack::parse(root, resp);
-                if (r == Result::Parsed) {
+                if (r == MessageResult::Parsed) {
                     if (!ctx_view_.trade_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Trade subscribe ring full - message has not been delivered (size: " << ctx_view_.trade_subscribe_ring.size()
                             << ", capacity: " << ctx_view_.trade_subscribe_ring.capacity() << ").");
-                        return Result::Backpressure;
+                        return MessageResult::Backpressure;
                     }
-                    return Result::Delivered;
+                    return MessageResult::Delivered;
                 }
                 WK_WARN("[PARSER] Failed to parse trade subscribe ACK.");
             } break;
             case Channel::Book: {
                 schema::book::SubscribeAck resp;
                 r = dom::book::subscribe_ack::parse(root, resp);
-                if (r == Result::Parsed) {
+                if (r == MessageResult::Parsed) {
                     if (!ctx_view_.book_subscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Book subscribe ring full - message has not been delivered (size: " << ctx_view_.book_subscribe_ring.size()
                             << ", capacity: " << ctx_view_.book_subscribe_ring.capacity() << ").");
-                        return Result::Backpressure;
+                        return MessageResult::Backpressure;
                     }
-                    return Result::Delivered;
+                    return MessageResult::Delivered;
                 }
                 WK_WARN("[PARSER] Failed to parse book subscribe ACK.");
             } break;
             default: { // 2025-12-20 08:39:28 [WARN] [PARSER] Failed to parse method message: {"error":"Already subscribed","method":"subscribe","req_id":2,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:28.809188Z","time_out":"2025-12-20T07:39:28.809200Z"}
                 schema::rejection::Notice resp;
                 r = dom::rejection_notice::parse(root, resp);
-                if (r == Result::Parsed) {
+                if (r == MessageResult::Parsed) {
                     if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Rejection ring full - message has not been delivered (size: " << ctx_view_.rejection_ring.size()
                             << ", capacity: " << ctx_view_.rejection_ring.capacity() << ").");
-                        return Result::Backpressure;
+                        return MessageResult::Backpressure;
                     }
-                    return Result::Delivered;
+                    return MessageResult::Delivered;
                 }
                 WK_WARN("[PARSER] Failed to parse rejection notice.");
             } break;
@@ -257,45 +258,45 @@ private:
 
     // UNSUBSCRIBE ACK PARSER
     [[nodiscard]]
-    inline Result parse_unsubscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
-        auto r = Result::Ignored;
+    inline MessageResult parse_unsubscribe_ack(Channel channel, const simdjson::dom::element& root) noexcept {
+        auto r = MessageResult::Ignored;
         switch (channel) {
             case Channel::Trade: {
                 schema::trade::UnsubscribeAck resp;
                 r = dom::trade::unsubscribe_ack::parse(root, resp);
-                if (r == Result::Parsed) {
+                if (r == MessageResult::Parsed) {
                     if (!ctx_view_.trade_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Trade unsubscribe ring full - message has not been delivered (size: " << ctx_view_.trade_unsubscribe_ring.size()
                             << ", capacity: " << ctx_view_.trade_unsubscribe_ring.capacity() << ").");
-                        return Result::Backpressure;
+                        return MessageResult::Backpressure;
                     }
-                    return Result::Delivered;
+                    return MessageResult::Delivered;
                 }
                 WK_WARN("[PARSER] Failed to parse trade unsubscribe ACK.");
             } break;
             case Channel::Book: {
                 schema::book::UnsubscribeAck resp;
                 r = dom::book::unsubscribe_ack::parse(root, resp);
-                if (r == Result::Parsed) {
+                if (r == MessageResult::Parsed) {
                     if (!ctx_view_.book_unsubscribe_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Book unsubscribe ring full - message has not been delivered (size: " << ctx_view_.book_unsubscribe_ring.size()
                             << ", capacity: " << ctx_view_.book_unsubscribe_ring.capacity() << ").");
-                        return Result::Backpressure;
+                        return MessageResult::Backpressure;
                     }
-                    return Result::Delivered;
+                    return MessageResult::Delivered;
                 }
                 WK_WARN("[PARSER] Failed to parse book unsubscribe ACK.");
             } break;
             default: { // 2025-12-20 08:39:43 [WARN] [PARSER] Failed to parse method message: {"error":"Subscription Not Found","method":"subscribe","req_id":4,"success":false,"symbol":"BTC/USD","time_in":"2025-12-20T07:39:43.909056Z","time_out":"2025-12-20T07:39:43.909073Z"}
                 schema::rejection::Notice resp;
                 r = dom::rejection_notice::parse(root, resp);
-                if (r == Result::Parsed) {
+                if (r == MessageResult::Parsed) {
                     if (!ctx_view_.rejection_ring.push(std::move(resp))) { // TODO: handle backpressure
                         WK_WARN("[PARSER] Rejection ring full - message has not been delivered (size: " << ctx_view_.rejection_ring.size()
                             << ", capacity: " << ctx_view_.rejection_ring.capacity() << ").");
-                        return Result::Backpressure;
+                        return MessageResult::Backpressure;
                     }
-                    return Result::Delivered;
+                    return MessageResult::Delivered;
                 }
                 WK_WARN("[PARSER] Failed to parse rejection notice.");
             } break;
@@ -309,7 +310,7 @@ private:
     // ========================================================================
 
     [[nodiscard]]
-    inline Result parse_channel_message_(Channel channel, const simdjson::dom::element& root) noexcept {
+    inline MessageResult parse_channel_message_(Channel channel, const simdjson::dom::element& root) noexcept {
         switch (channel) {
             case Channel::Trade:
                 return parse_trade_(root);
@@ -319,7 +320,7 @@ private:
                 return parse_book_(root);
             case Channel::Heartbeat:
                 // TODO: parse heartbeat message and update heartbeat stats in context
-                return Result::Delivered;
+                return MessageResult::Delivered;
             case Channel::Status: {
                 return parse_status_(root);
             } break;
@@ -327,71 +328,71 @@ private:
                 WK_WARN("[PARSER] Unhandled channel -> ignore");
                 break;
         }
-        return Result::Ignored;
+        return MessageResult::Ignored;
     }
 
     // TRADE PARSER
     [[nodiscard]]
-    inline Result parse_trade_(const simdjson::dom::element& root) noexcept {
+    inline MessageResult parse_trade_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         schema::trade::Response response;
         auto r = dom::trade::response::parse(root, response);
-        if (r == Result::Parsed) {
+        if (r == MessageResult::Parsed) {
             if (!ctx_view_.trade_ring.push(std::move(response))) {
-                return Result::Backpressure;
+                return MessageResult::Backpressure;
             }
-            return Result::Delivered;
+            return MessageResult::Delivered;
         }
         return r;
     }
 
     // TICKER PARSER
     [[nodiscard]]
-    inline Result parse_ticker_(const simdjson::dom::element& root) noexcept {
+    inline MessageResult parse_ticker_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         WK_WARN("[PARSER] Unhandled channel 'ticker' -> ignore");
         // TODO
-        return Result::Ignored;
+        return MessageResult::Ignored;
     }
 
     // BOOK PARSER
     [[nodiscard]]
-    inline Result parse_book_(const simdjson::dom::element& root) noexcept {
+    inline MessageResult parse_book_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         schema::book::Response response;
         auto r = dom::book::response::parse(root, response);
-        if (r == Result::Parsed) {
+        if (r == MessageResult::Parsed) {
             if (!ctx_view_.book_ring.push(std::move(response))) {
-                return Result::Backpressure;
+                return MessageResult::Backpressure;
             }
-            return Result::Delivered;
+            return MessageResult::Delivered;
         }
         return r;
     }
 
     // PONG PARSER
     [[nodiscard]]
-    inline Result parse_pong_(const simdjson::dom::element& root) noexcept {
+    inline MessageResult parse_pong_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         schema::system::Pong resp;
         auto r = dom::system::pong::parse(root, resp);
-        if (r == Result::Parsed) {
+        if (r == MessageResult::Parsed) {
             // We intentionally overwrite the previous value: no backpressure, no queuing, freshness over history
             ctx_view_.pong_slot = std::move(resp);
-            return Result::Delivered;
+            return MessageResult::Delivered;
         }
         return r;
     }
 
     [[nodiscard]]
-    inline Result parse_status_(const simdjson::dom::element& root) noexcept {
+    inline MessageResult parse_status_(const simdjson::dom::element& root) noexcept {
         using namespace simdjson;
         schema::status::Update resp;
         auto r = dom::status::update::parse(root, resp);
-        if (r == Result::Parsed) {
+        if (r == MessageResult::Parsed) {
             // We intentionally overwrite the previous value: no backpressure, no queuing, freshness over history
             ctx_view_.status_slot = std::move(resp);
-            return Result::Delivered;
+            return MessageResult::Delivered;
         }
         return r;
     }

@@ -2,6 +2,7 @@
 
 #include <string_view>
 
+#include "wirekrak/core/protocol/message_result.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/pong.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
@@ -14,27 +15,27 @@ namespace wirekrak::core::protocol::kraken::parser::dom::system {
 struct pong {
 
     [[nodiscard]]
-    static inline Result parse(const simdjson::dom::element& root, schema::system::Pong& out) noexcept {
+    static inline MessageResult parse(const simdjson::dom::element& root, schema::system::Pong& out) noexcept {
         using namespace simdjson;
 
 /* Kraken API doc says:
         // Root must be an object
         auto r = helper::require_object(root);
-        if (r != parser::Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Root not an object in pong response -> ignore message.");
             return r;
         }
 
         // success (required)
         r = helper::parse_bool_required(root, "success", out.success);
-        if (r != parser::Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'success' missing or invalid in pong response -> ignore message.");
             return r;
         }
 
         // req_id (optional)
         r = helper::parse_uint64_optional(root, "req_id", out.req_id);
-        if (r != parser::Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'req_id' invalid in pong response -> ignore message.");
             return r;
         }
@@ -45,7 +46,7 @@ struct pong {
             // result object (required)
             simdjson::dom::element result;
             r = helper::parse_object_required(root, "result", result);
-            if (r != parser::Result::Parsed) {
+            if (r != MessageResult::Parsed) {
                 WK_WARN("[PARSER] Field 'result' missing or invalid in pong response -> ignore message.");
                 return r;
             }
@@ -53,21 +54,21 @@ struct pong {
             // warnings (optional, strict)
             bool presence;
             r = helper::parse_string_list_optional(result, "warnings", out.warnings, presence);
-            if (r != parser::Result::Parsed) {
+            if (r != MessageResult::Parsed) {
                 WK_TRACE("[PARSER] Field 'warnings' invalid in pong response -> ignore message.");
                 return r;
             }
 
             // time_in (optional)
             r = adapter::parse_timestamp_optional(root, "time_in", out.time_in);
-            if (r != parser::Result::Parsed) {
+            if (r != MessageResult::Parsed) {
                 WK_TRACE("[PARSER] Field 'time_in' invalid in pong response -> ignore message.");
                 return r;
             }
 
             // time_out (optional)
             r = adapter::parse_timestamp_optional(root, "time_out", out.time_out);
-            if (r != parser::Result::Parsed) {
+            if (r != MessageResult::Parsed) {
                 WK_TRACE("[PARSER] Field 'time_out' invalid in pong response -> ignore message.");
                 return r;
             }
@@ -77,7 +78,7 @@ struct pong {
         else {
             std::string_view sv;
             r = helper::parse_string_required(root, "error", sv);
-            if (r != parser::Result::Parsed) {
+            if (r != MessageResult::Parsed) {
                 WK_TRACE("[PARSER] Field 'error' missing in failed pong response -> ignore message.");
                 return r;
             }
@@ -90,35 +91,35 @@ struct pong {
 
         // Root must be an object
         auto r = helper::require_object(root);
-        if (r != parser::Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Root not an object in pong response -> ignore message.");
             return r;
         }
 
         // req_id (optional)
         r = helper::parse_uint64_optional(root, "req_id", out.req_id);
-        if (r != parser::Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'req_id' invalid in pong response -> ignore message.");
             return r;
         }
 
         // time_in (optional)
         r = adapter::parse_timestamp_optional(root, "time_in", out.time_in);
-        if (r != parser::Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'time_in' invalid in pong response -> ignore message.");
             return r;
         }
 
         // time_out (optional)
         r = adapter::parse_timestamp_optional(root, "time_out", out.time_out);
-        if (r != parser::Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'time_out' invalid in pong response -> ignore message.");
             return r;
         }
 
         // success (optional for pong)
         r = helper::parse_bool_optional(root, "success", out.success);
-        if (r != parser::Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'success' invalid in pong response -> ignore message.");
             return r;
         }
@@ -131,7 +132,7 @@ struct pong {
                 // result object (required)
                 simdjson::dom::element result;
                 r = helper::parse_object_required(root, "result", result);
-                if (r != parser::Result::Parsed) {
+                if (r != MessageResult::Parsed) {
                     WK_WARN("[PARSER] Field 'result' missing or invalid in pong response -> ignore message.");
                     return r;
                 }
@@ -139,7 +140,7 @@ struct pong {
                 // warnings (optional, strict)
                 bool presence;
                 r = helper::parse_string_list_optional(result, "warnings", out.warnings, presence);
-                if (r != parser::Result::Parsed) {
+                if (r != MessageResult::Parsed) {
                     WK_TRACE("[PARSER] Field 'warnings' invalid in pong response -> ignore message.");
                     return r;
                 }
@@ -148,7 +149,7 @@ struct pong {
             else {
                 std::string_view sv;
                 r = helper::parse_string_required(root, "error", sv);
-                if (r != parser::Result::Parsed) {
+                if (r != MessageResult::Parsed) {
                     WK_TRACE("[PARSER] Field 'error' missing in failed pong response -> ignore message.");
                     return r;
                 }
@@ -156,7 +157,7 @@ struct pong {
             }
         }
         
-        return Result::Parsed;
+        return MessageResult::Parsed;
     }
 };
 

@@ -4,12 +4,12 @@
 #include <string_view>
 
 
-namespace wirekrak::core::protocol::kraken::parser {
+namespace wirekrak::core::protocol {
 
 // ===============================================
 // PARSER RESULT ENUM
 // ===============================================
-enum class Result : std::uint8_t {
+enum class MessageResult : std::uint8_t {
     // ---- Parsing domain (0–7) ----
     Ignored        = 0,            // Not applicable / unknown method or channel
     InvalidJson    = 1,            // Structural failure
@@ -26,17 +26,17 @@ enum class Result : std::uint8_t {
 // Convert enum → string (for logging / diagnostics)
 // -----------------------------------------------------------------------------
 [[nodiscard]]
-inline constexpr std::string_view to_string(Result r) noexcept {
+inline constexpr std::string_view to_string(MessageResult r) noexcept {
     switch (r) {
-        case Result::Ignored:        return "Ignored";
-        case Result::InvalidJson:    return "InvalidJson";
-        case Result::InvalidSchema:  return "InvalidSchema";
-        case Result::InvalidValue:   return "InvalidValue";
-        case Result::Parsed:         return "Parsed";
-        case Result::Delivered:      return "Delivered";
-        case Result::Backpressure:   return "Backpressure";
-        default:                     return "unknown";
+        case MessageResult::Ignored:        return "Ignored";
+        case MessageResult::InvalidJson:    return "InvalidJson";
+        case MessageResult::InvalidSchema:  return "InvalidSchema";
+        case MessageResult::InvalidValue:   return "InvalidValue";
+        case MessageResult::Parsed:         return "Parsed";
+        case MessageResult::Delivered:      return "Delivered";
+        case MessageResult::Backpressure:   return "Backpressure";
+        default:                            return "unknown";
     }
 }
 
-} // namespace wirekrak::core::protocol::kraken::parser
+} // namespace wirekrak::core::protocol

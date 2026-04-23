@@ -6,6 +6,7 @@
 
 #include "wirekrak/core/protocol/kraken/parser/dom/system/pong.hpp"
 
+using namespace wirekrak::core::protocol;
 using namespace wirekrak::core::protocol::kraken;
 
 /*
@@ -63,7 +64,7 @@ void test_pong_heartbeat_minimal() {
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
     assert(!pong.success.has());          // implicit success
     assert(pong.warnings.empty());
     assert(!pong.error.has());
@@ -90,7 +91,7 @@ void test_pong_heartbeat_with_timestamps() {
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
     assert(!pong.success.has());
     assert(pong.req_id.has());
     assert(pong.time_in.has());
@@ -122,7 +123,7 @@ void test_pong_success_minimal() {
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
     assert(pong.success.has());
     assert(pong.success.value());
     assert(pong.warnings.empty());
@@ -154,7 +155,7 @@ void test_pong_success_full() {
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
     assert(pong.success.has());
     assert(pong.success.value());
     assert(pong.req_id.has());
@@ -187,7 +188,7 @@ void test_pong_error_minimal() {
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
     assert(pong.success.has());
     assert(!pong.success.value());
     assert(pong.error.has());
@@ -215,7 +216,7 @@ void test_pong_success_missing_result() {
 
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -236,7 +237,7 @@ void test_pong_error_missing_error_field() {
 
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -260,7 +261,7 @@ void test_pong_invalid_warnings_type() {
 
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -278,7 +279,7 @@ void test_pong_root_not_object() {
 
     schema::system::Pong pong{};
     auto r = parser::dom::system::pong::parse(doc.value(), pong);
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }

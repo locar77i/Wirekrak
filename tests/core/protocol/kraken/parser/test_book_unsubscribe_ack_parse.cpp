@@ -6,6 +6,7 @@
 
 #include "wirekrak/core/protocol/kraken/parser/dom/book/unsubscribe_ack.hpp"
 
+using namespace wirekrak::core::protocol;
 using namespace wirekrak::core::protocol::kraken;
 
 
@@ -60,7 +61,7 @@ void test_book_unsubscribe_ack_success() {
     schema::book::UnsubscribeAck ack{};
     auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
 
     // Required fields
     assert(ack.symbol == "BTC/USD");
@@ -103,7 +104,7 @@ void test_book_unsubscribe_ack_error() {
     schema::book::UnsubscribeAck ack{};
     auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
     assert(ack.success == false);
     assert(ack.error.has());
     assert(ack.error.value() == "not subscribed");
@@ -135,7 +136,7 @@ void test_book_unsubscribe_ack_wrong_method() {
     schema::book::UnsubscribeAck ack{};
     auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -163,7 +164,7 @@ void test_book_unsubscribe_ack_wrong_channel() {
     schema::book::UnsubscribeAck ack{};
     auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -191,7 +192,7 @@ void test_book_unsubscribe_ack_missing_symbol() {
     schema::book::UnsubscribeAck ack{};
     auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -219,7 +220,7 @@ void test_book_unsubscribe_ack_invalid_depth_type() {
     schema::book::UnsubscribeAck ack{};
     auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -241,7 +242,7 @@ void test_book_unsubscribe_ack_missing_result() {
     schema::book::UnsubscribeAck ack{};
     auto r = parser::dom::book::unsubscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }

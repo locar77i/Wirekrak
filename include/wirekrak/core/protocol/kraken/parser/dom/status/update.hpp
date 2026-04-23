@@ -2,6 +2,7 @@
 
 #include <simdjson.h>
 
+#include "wirekrak/core/protocol/message_result.hpp"
 #include "wirekrak/core/protocol/kraken/schema/status/update.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/helpers.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
@@ -21,13 +22,13 @@ public:
     //   "data": [ { ... } ]
     // }
     [[nodiscard]]
-    static inline Result parse(const simdjson::dom::element& root, schema::status::Update& out) noexcept
+    static inline MessageResult parse(const simdjson::dom::element& root, schema::status::Update& out) noexcept
     {
         using namespace simdjson;
 
         // Root must be an object
         auto r = helper::require_object(root);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Root not an object in status update -> ignore message.");
             return r;
         }
@@ -35,7 +36,7 @@ public:
         // data must be an array
         simdjson::dom::array data;
         r = helper::parse_array_required(root, "data", data);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'data' missing or invalid in status update -> ignore message.");
             return r;
         }
@@ -44,14 +45,14 @@ public:
         auto it = data.begin();
         if (it == data.end()) {
             WK_TRACE("[PARSER] Empty 'data' array in status update -> ignore message.");
-            return Result::InvalidSchema;
+            return MessageResult::InvalidSchema;
         }
 
         const simdjson::dom::element& obj = *it;
 
         // system (required)
         r = adapter::parse_system_state_required(obj, "system", out.system);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'system' invalid or missing in status update -> ignore message.");
             return r;
         }
@@ -59,7 +60,7 @@ public:
         // api_version (required)
         std::string_view api_sv;
         r = helper::parse_string_required(obj, "api_version", api_sv);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'api_version' missing in status update -> ignore message.");
             return r;
         }
@@ -67,19 +68,19 @@ public:
 
         // connection_id (optional)
         r = helper::parse_uint64_optional(obj, "connection_id", out.connection_id);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'connection_id' missing or invalid in status update -> ignore message.");
             return r;
         }
 
         // version (optional)
         r = helper::parse_string_optional(obj, "version", out.version);
-        if (r != Result::Parsed) {
+        if (r != MessageResult::Parsed) {
             WK_TRACE("[PARSER] Field 'version' missing in status update -> ignore message.");
             return r;
         }
 
-        return Result::Parsed;
+        return MessageResult::Parsed;
     }
 };
 

@@ -64,6 +64,7 @@ Data-plane model:
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/connection.hpp"
 #include "wirekrak/core/protocol/concept/json_writable.hpp"
+#include "wirekrak/core/protocol/message_result.hpp"
 #include "wirekrak/core/protocol/control/req_id.hpp"
 #include "wirekrak/core/protocol/subscription/controller.hpp"
 #include "wirekrak/core/protocol/replay/database.hpp"
@@ -447,7 +448,7 @@ public:
                 }
             );
             // Check to handle parser backpressure if needed
-            if (r == parser::Result::Backpressure) {
+            if (r == MessageResult::Backpressure) {
                 WK_WARN("[SESSION] Failed to deliver " << to_string(channel) << " message (backpressure)"
                     " - protocol correctness compromised (user is not draining fast enough)");
                 connection_.release_message(slot);
@@ -963,23 +964,23 @@ private:
         overload_state_.reset();
     }
 
-    inline void handle_parser_result_(parser::Result result, std::string_view raw_message) noexcept {
+    inline void handle_parser_result_(MessageResult result, std::string_view raw_message) noexcept {
         switch (result) {
-        case parser::Result::Ignored:
+        case MessageResult::Ignored:
             WK_TRACE("[SESSION] Message ignored by parser: " << raw_message);
             WK_TL1( telemetry_.parse_ignored_total.inc() );
             break;
-        case parser::Result::InvalidJson:
-        case parser::Result::InvalidSchema:
-        case parser::Result::InvalidValue:
+        case MessageResult::InvalidJson:
+        case MessageResult::InvalidSchema:
+        case MessageResult::InvalidValue:
             WK_WARN("[SESSION] Failed to parse message: " << raw_message << " (result: " << to_string(result) << ")");
             WK_TL1( telemetry_.parse_failure_total.inc() );
             break;
-        case parser::Result::Parsed:
-        case parser::Result::Delivered:
+        case MessageResult::Parsed:
+        case MessageResult::Delivered:
             WK_TL1( telemetry_.parse_success_total.inc() );
             break;
-        case parser::Result::Backpressure:
+        case MessageResult::Backpressure:
             WK_TL1( telemetry_.parse_backpressure_total.inc() );
             break;
         }

@@ -6,6 +6,7 @@
 
 #include "wirekrak/core/protocol/kraken/parser/dom/book/subscribe_ack.hpp"
 
+using namespace wirekrak::core::protocol;
 using namespace wirekrak::core::protocol::kraken;
 
 
@@ -62,7 +63,7 @@ void test_book_subscribe_ack_success() {
     schema::book::SubscribeAck ack{};
     auto r = parser::dom::book::subscribe_ack::parse(root, ack);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
 
     // Required fields
     assert(ack.symbol == "BTC/USD");
@@ -112,7 +113,7 @@ void test_book_subscribe_ack_error() {
     schema::book::SubscribeAck ack{};
     auto r = parser::dom::book::subscribe_ack::parse(root, ack);
 
-    assert(r == parser::Result::Parsed);
+    assert(r == MessageResult::Parsed);
     assert(ack.success == false);
     assert(ack.error.has());
     assert(ack.error.value() == "invalid depth");
@@ -145,7 +146,7 @@ void test_book_subscribe_ack_wrong_method() {
     schema::book::SubscribeAck ack{};
     auto r = parser::dom::book::subscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -175,7 +176,7 @@ void test_book_subscribe_ack_wrong_channel() {
     schema::book::SubscribeAck ack{};
     auto r = parser::dom::book::subscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -204,7 +205,7 @@ void test_book_subscribe_ack_missing_symbol() {
     schema::book::SubscribeAck ack{};
     auto r = parser::dom::book::subscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -233,7 +234,7 @@ void test_book_subscribe_ack_invalid_depth_type() {
     schema::book::SubscribeAck ack{};
     auto r = parser::dom::book::subscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
@@ -255,7 +256,7 @@ void test_book_subscribe_ack_missing_result() {
     schema::book::SubscribeAck ack{};
     auto r = parser::dom::book::subscribe_ack::parse(root, ack);
 
-    assert(r != parser::Result::Parsed);
+    assert(r != MessageResult::Parsed);
 
     std::cout << "[TEST] OK\n";
 }
