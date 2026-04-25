@@ -1,6 +1,6 @@
 #pragma once
 
-#include "wirekrak/core/protocol/subscription_traits.hpp"
+#include "wirekrak/core/protocol/subscriptions/traits.hpp"
 
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/unsubscribe.hpp"

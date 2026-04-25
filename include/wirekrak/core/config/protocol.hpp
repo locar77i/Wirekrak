@@ -21,6 +21,11 @@ Design principles:
 */
 
 // -----------------------------------------------------------------------------
+// Default ring capacity (fallback for message types not explicitly configured)
+// -----------------------------------------------------------------------------
+inline constexpr static std::size_t DEFAULT_RING_CAPACITY  = 1 << 10; // 1024 (fallback default)
+
+// -----------------------------------------------------------------------------
 // Control-plane messages (low frequency)
 // -----------------------------------------------------------------------------
 inline constexpr static std::size_t REJECTION_RING_CAPACITY  = 1 << 6; // 64

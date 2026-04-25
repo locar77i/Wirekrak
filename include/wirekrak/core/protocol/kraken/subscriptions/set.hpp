@@ -70,8 +70,7 @@
 
 #include "wirekrak/core/meta/type_list.hpp"
 
-#include "wirekrak/core/protocol/subscription_traits.hpp"
-#include "wirekrak/core/protocol/subscription_set.hpp"
+#include "wirekrak/core/protocol/kraken/subscriptions/traits.hpp"
 
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
