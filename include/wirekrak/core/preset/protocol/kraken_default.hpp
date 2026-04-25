@@ -14,3 +14,24 @@ namespace wirekrak::core::preset::protocol::kraken {
         >;
 
 } // namespace wirekrak::core::preset::protocol::kraken
+
+
+
+
+
+
+
+#include "wirekrak/core/protocol/session.hpp"
+#include "wirekrak/core/protocol/kraken_model.hpp"
+
+
+namespace wirekrak::core::preset::protocol {
+
+    using DefaultKrakenSession =
+        wirekrak::core::protocol::Session<
+            wirekrak::core::protocol::KrakenModel,
+            transport::DefaultWebSocket,
+            DefaultMessageRing
+        >;
+
+} // namespace wirekrak::core::preset::protocol
