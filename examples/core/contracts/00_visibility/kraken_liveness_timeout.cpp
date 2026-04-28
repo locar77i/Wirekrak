@@ -97,13 +97,14 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Main polling loop
     // -------------------------------------------------------------------------
-    status::Update last_status;
+    status::Update* last_status;
     while (true) {
         const uint64_t epoch = session.poll();
 
         // --- Observe latest status ---
-        if (session.try_load_status(last_status)) {
-            std::cout << " -> " << last_status << std::endl;
+        last_status = session.data_plane().get<status::Update>();
+        if (last_status) {
+            std::cout << " -> " << *last_status << std::endl;
         }
 
         // --- Observe transport progression ---

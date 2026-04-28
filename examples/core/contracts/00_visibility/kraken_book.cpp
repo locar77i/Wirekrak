@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
     while (running.load(std::memory_order_relaxed) && messages_received < 60 && session.is_active()) {
         (void)session.poll();   // REQUIRED: drives all Core behavior
         // Drain book messages in a loop until empty, to ensure we process all messages received in this poll
-        session.drain_book_messages([&](const book::Response& msg) {
+        session.data_plane().drain<book::Response>([&](const auto& msg) {
             std::cout << " -> " << msg << std::endl;
             ++messages_received;
             did_work = true;

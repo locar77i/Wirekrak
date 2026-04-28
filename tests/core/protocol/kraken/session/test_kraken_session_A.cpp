@@ -40,19 +40,19 @@ void test_single_active_subscription_replayed() {
     auto req_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(req_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
 
     h.force_reconnect();
     h.wait_for_epoch(2);
 
     // Replay should be pending
-    TEST_CHECK(h.session.trade_subscriptions().has_pending_requests());
+    TEST_CHECK(h.trade_subscriptions().has_pending_requests());
 
     // ACK replay
     h.confirm_trade_subscription(req_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
     TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
@@ -78,25 +78,25 @@ void test_multiple_channel_replay() {
     auto book_req_id = h.subscribe_book("ETH/USD", depth);
     h.confirm_book_subscription(book_req_id, "ETH/USD", depth);
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 1);
 
     // Reconnect
     h.force_reconnect();
     h.wait_for_epoch(2);
 
     // Both should be replayed
-    TEST_CHECK(h.session.trade_subscriptions().has_pending_requests());
-    TEST_CHECK(h.session.book_subscriptions().has_pending_requests());
+    TEST_CHECK(h.trade_subscriptions().has_pending_requests());
+    TEST_CHECK(h.book_subscriptions().has_pending_requests());
 
     // ACK both replays
     h.confirm_trade_subscription(trade_req_id, "BTC/USD");
     h.confirm_book_subscription(book_req_id, "ETH/USD", depth);
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-    TEST_CHECK(h.session.book_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.book_subscriptions().pending_requests() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -120,14 +120,14 @@ void test_no_active_no_replay() {
     req_id = h.unsubscribe_trade("BTC/USD");
     h.confirm_trade_unsubscription(req_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
 
     // Reconnect
     h.force_reconnect();
     h.wait_for_epoch(2);
 
     // No replay expected
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     std::cout << "[TEST] OK\n";
 }

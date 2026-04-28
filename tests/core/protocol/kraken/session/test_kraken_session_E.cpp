@@ -36,14 +36,14 @@ void test_trade_replay_isolated_from_book() {
     auto trade_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(trade_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 0);
 
     h.force_reconnect();
     h.wait_for_epoch(2);
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
-    TEST_CHECK(h.session.book_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.book_subscriptions().pending_requests() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -62,14 +62,14 @@ void test_book_replay_isolated_from_trade() {
     auto book_id = h.subscribe_book("ETH/USD", 25);
     h.confirm_book_subscription(book_id, "ETH/USD", 25);
 
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
 
     h.force_reconnect();
     h.wait_for_epoch(2);
 
-    TEST_CHECK(h.session.book_subscriptions().pending_requests() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.book_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -94,8 +94,8 @@ void test_rejection_isolated_per_channel() {
     // Reject trade BEFORE ACK
     h.reject_trade_subscription(trade_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 1);
 
     TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
     TEST_CHECK(h.replay_db_book().total_symbols() == 1);
@@ -122,8 +122,8 @@ void test_rejection_isolation_with_reconnect() {
     h.confirm_trade_subscription(trade_id, "BTC/USD");
     h.confirm_book_subscription(book_id, "ETH/USD", 25);
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 1);
 
     // ---------------------------------------------------------------------
     // Now simulate server rejection for TRADE only
@@ -148,21 +148,21 @@ void test_rejection_isolation_with_reconnect() {
     TEST_CHECK(h.session.transport_epoch() == 2);
 
     // Managers were reset on disconnect → active should now be 0
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 0);
 
     // ---------------------------------------------------------------------
     // Replay should fire ONLY for Book
     // ---------------------------------------------------------------------
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-    TEST_CHECK(h.session.book_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.book_subscriptions().pending_requests() == 1);
 
     // ACK replayed Book subscription
     h.confirm_book_subscription(book_id, "ETH/USD", 25);
 
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
 
     TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
@@ -225,14 +225,14 @@ void test_multi_channel_reconnect_stress() {
         h.force_reconnect();
         h.wait_for_epoch(i);
 
-        TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
-        TEST_CHECK(h.session.book_subscriptions().pending_requests() == 1);
+        TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
+        TEST_CHECK(h.book_subscriptions().pending_requests() == 1);
 
         h.confirm_trade_subscription(trade_id, "BTC/USD");
         h.confirm_book_subscription(book_id, "ETH/USD", 25);
 
-        TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-        TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
+        TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+        TEST_CHECK(h.book_subscriptions().active_symbols() == 1);
         TEST_CHECK(h.session.is_quiescent());
     }
 

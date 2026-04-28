@@ -39,8 +39,8 @@ void test_reconnect_while_pending_subscription() {
     auto req_id = h.subscribe_trade("BTC/USD");
 
     // Pending subscription should be visible
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
 
     // Reconnect
     h.force_reconnect();
@@ -49,15 +49,15 @@ void test_reconnect_while_pending_subscription() {
     TEST_CHECK(h.session.transport_epoch() == 2);
 
     // Pending subscription should be visible again
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
 
     // ACK replayed subscription
     h.confirm_trade_subscription(req_id, "BTC/USD");
 
     // Should now be active
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -77,7 +77,7 @@ void test_user_subscribes_during_replay_window() {
     auto req_id1 = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(req_id1, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
 
     // Reconnect
     h.force_reconnect();
@@ -86,13 +86,13 @@ void test_user_subscribes_during_replay_window() {
     TEST_CHECK(h.session.transport_epoch() == 2);
 
     // Replay should have fired -> pending > 0
-    TEST_CHECK(h.session.trade_subscriptions().has_pending_requests());
+    TEST_CHECK(h.trade_subscriptions().has_pending_requests());
 
     // BEFORE replay ACK arrives → user subscribes new symbol
     auto req_id2 = h.subscribe_trade("ETH/USD");
 
     // Now pending should reflect replay + user request
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() >= 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() >= 1);
 
     // Simulate ACK for replayed BTC/USD
     h.confirm_trade_subscription(req_id1, "BTC/USD");
@@ -103,8 +103,8 @@ void test_user_subscribes_during_replay_window() {
     h.drain();
 
     // Final convergence
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 2);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 2);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
     TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
@@ -125,8 +125,8 @@ void test_replay_fires_only_once_per_epoch() {
     auto req_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(req_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     // Force reconnect
     h.force_reconnect();
@@ -135,23 +135,23 @@ void test_replay_fires_only_once_per_epoch() {
     TEST_CHECK(h.session.transport_epoch() == 2);
 
     // Replay should have fired exactly once
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
     std::size_t pending_after_first_poll =
-        h.session.trade_subscriptions().pending_requests();
+        h.trade_subscriptions().pending_requests();
 
     // Call poll() 1000 times without ACK
     h.drain(1000);
 
     // Pending must remain unchanged (no duplicate replay)
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests()
+    TEST_CHECK(h.trade_subscriptions().pending_requests()
                == pending_after_first_poll);
 
     // Now ACK replay
     h.confirm_trade_subscription(req_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
     TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";
@@ -172,8 +172,8 @@ void test_replay_ack_unknown_req_id_is_ignored() {
     auto valid_req_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(valid_req_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     // Force reconnect
     h.force_reconnect();
@@ -182,7 +182,7 @@ void test_replay_ack_unknown_req_id_is_ignored() {
     TEST_CHECK(h.session.transport_epoch() == 2);
 
     // Replay should now be pending
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
     // Send ACK with completely unknown req_id
     ctrl::req_id_t unknown_req_id = 999999;
@@ -190,15 +190,15 @@ void test_replay_ack_unknown_req_id_is_ignored() {
     h.confirm_trade_subscription(unknown_req_id, "BTC/USD");
 
     // State must be the same before reconnect (unknown ACK should be ignored)
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
 
     // Now ACK correct replay
     h.confirm_trade_subscription(valid_req_id, "BTC/USD");
 
     // Should now be active
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
     TEST_CHECK(h.session.is_quiescent());
 
     std::cout << "[TEST] OK\n";

@@ -34,6 +34,8 @@
 //
 // ============================================================================
 
+#include "wirekrak/core/protocol/session.hpp"
+#include "wirekrak/core/protocol/kraken_model.hpp"
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "wirekrak/core/preset/control_ring_default.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
@@ -54,7 +56,8 @@ using MyConnectionPolicies =
     >;
 
 using MySession =
-    protocol::kraken::Session<
+    protocol::Session<
+        protocol::KrakenModel,
         preset::transport::DefaultWebSocket,
         preset::DefaultMessageRing,
         policy::protocol::DefaultSession,

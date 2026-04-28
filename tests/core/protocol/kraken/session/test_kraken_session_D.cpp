@@ -70,19 +70,19 @@ void test_replay_once_per_epoch() {
     auto id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
 
     h.force_reconnect();
     h.wait_for_epoch(2);
 
     // Replay must have created exactly one pending request
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
     // Poll repeatedly - replay must NOT fire again
     for (int i = 0; i < 5; ++i)
         h.drain();
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
     std::cout << "[TEST] OK\n";
 }
@@ -105,12 +105,12 @@ void test_no_duplicate_replay_across_epochs() {
         h.force_reconnect();
         h.wait_for_epoch(i);
 
-        TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+        TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
         h.confirm_trade_subscription(id, "BTC/USD");
 
-        TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-        TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+        TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+        TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
     }
 
     std::cout << "[TEST] OK\n";
@@ -133,19 +133,19 @@ void test_reconnect_stress_convergence() {
     h.confirm_trade_subscription(id1, "BTC/USD");
     h.confirm_trade_subscription(id2, "ETH/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 2);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 2);
 
     for (int i = 2; i <= 6; ++i) {
         h.force_reconnect();
         h.wait_for_epoch(i);
 
-        TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 2);
+        TEST_CHECK(h.trade_subscriptions().pending_requests() == 2);
 
         h.confirm_trade_subscription(id1, "BTC/USD");
         h.confirm_trade_subscription(id2, "ETH/USD");
 
-        TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 2);
-        TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+        TEST_CHECK(h.trade_subscriptions().active_symbols() == 2);
+        TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
         TEST_CHECK(h.session.is_quiescent());
     }
 

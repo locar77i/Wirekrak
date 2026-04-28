@@ -170,4 +170,5 @@ Wirekrak Core is built to evolve without breaking contracts.
 #include "wirekrak/core/transport/websocket_concept.hpp"
 #include "wirekrak/core/transport/websocket/engine.hpp"
 #include "wirekrak/core/transport/connection.hpp"
-#include "wirekrak/core/protocol/kraken/session.hpp"
+#include "wirekrak/core/protocol/session.hpp"
+#include "wirekrak/core/protocol/kraken_model.hpp"

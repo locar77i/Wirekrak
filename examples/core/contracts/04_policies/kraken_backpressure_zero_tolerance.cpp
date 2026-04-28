@@ -55,8 +55,11 @@
 
 #include "wirekrak/core/transport/websocket/engine.hpp"
 #include "wirekrak/core/transport/websocket_concept.hpp"
+#include "wirekrak/core/protocol/session.hpp"
+#include "wirekrak/core/protocol/kraken_model.hpp"
 #include "wirekrak/core/preset/transport/backend_default.hpp"
-#include "wirekrak/core/preset/protocol/kraken_default.hpp"
+#include "wirekrak/core/preset/control_ring_default.hpp"
+#include "wirekrak/core/preset/message_ring_default.hpp"
 
 #include "common/run_multi_subscription_example.hpp"
 #include "common/default_memory_pool.hpp"
@@ -85,8 +88,9 @@ using MyWebSocket =
 // Assert that MyWebSocket conforms to transport::WebSocketConcept concept
 static_assert(transport::WebSocketConcept<MyWebSocket>);
 
-using MySession = 
-    protocol::kraken::Session<
+using MySession =
+    protocol::Session<
+        protocol::KrakenModel,
         MyWebSocket,
         preset::DefaultMessageRing,
         MySessionPolicies

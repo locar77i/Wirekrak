@@ -10,7 +10,8 @@
 #include <cassert>
 
 #include "wirekrak/core/transport/websocket_concept.hpp"
-#include "wirekrak/core/protocol/kraken/session.hpp"
+#include "wirekrak/core/protocol/session.hpp"
+#include "wirekrak/core/protocol/kraken_model.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/subscribe.hpp"
 #include "wirekrak/core/protocol/kraken/schema/book/subscribe.hpp"
 #include "wirekrak/core/policy/protocol/session_bundle.hpp"
@@ -65,7 +66,7 @@ template<
 >
 struct Session {
 
-    using SessionUnderTest = kraken::Session<WS, MessageRing, PolicyBundle>;
+    using SessionUnderTest = protocol::Session<protocol::KrakenModel, WS, MessageRing, PolicyBundle>;
     SessionUnderTest session;
 
     Session()
@@ -113,7 +114,7 @@ struct Session {
     // Drain rejection messages until idle
     // -------------------------------------------------------------------------
     inline void drain_rejections() {
-        session.drain_rejection_messages([](const schema::rejection::Notice& msg) {
+        session.data_plane().template drain<schema::rejection::Notice>([&](const auto& msg) {
             std::cout << " -> " << msg << std::endl;
         });
     }
@@ -220,6 +221,17 @@ struct Session {
         reject("unsubscribe", req_id, sym, "Unsubscription rejected");
     }
 
+
+    inline auto& trade_subscriptions() noexcept {
+        return
+        session.subscription_controller().template
+            manager_for<schema::trade::Subscribe>();
+    }
+
+    inline auto& book_subscriptions() noexcept {
+        return session.subscription_controller().template
+            manager_for<schema::book::Subscribe>();
+    }
 
     inline auto& replay_db_trade() noexcept {
         return session.replay_database().template table_for<schema::trade::Subscribe>();

@@ -107,15 +107,15 @@ void test_single_channel_long_run_fuzz() {
     // Final invariants
     // ------------------------------------------------------------
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() >= 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() >= 0);
 
     TEST_CHECK(
         h.session.pending_protocol_requests() >=
-        h.session.trade_subscriptions().pending_requests()
+        h.trade_subscriptions().pending_requests()
     );
 
     TEST_CHECK(
-        h.session.trade_subscriptions().total_symbols() ==
+        h.trade_subscriptions().total_symbols() ==
         h.replay_db_trade().total_symbols()
     );
 
@@ -242,10 +242,10 @@ void test_cross_channel_long_run_fuzz() {
     // Final invariants
     // ------------------------------------------------------------
 
-    const auto& trade_mgr   = h.session.trade_subscriptions();
+    const auto& trade_mgr   = h.trade_subscriptions();
     const auto& trade_db    = h.replay_db_trade();
 
-    const auto& book_mgr    = h.session.book_subscriptions();
+    const auto& book_mgr    = h.book_subscriptions();
     const auto& book_db     = h.replay_db_book();
 
     // ---------------- Trade invariants ----------------
@@ -385,8 +385,8 @@ void test_deterministic_chaos_simulator() {
     // Structural invariants only (NO convergence assumption)
     // ------------------------------------------------------------
 
-    const auto& trade_mgr = h.session.trade_subscriptions();
-    const auto& book_mgr  = h.session.book_subscriptions();
+    const auto& trade_mgr = h.trade_subscriptions();
+    const auto& book_mgr  = h.book_subscriptions();
 
     const auto& trade_db = h.replay_db_trade();
     const auto& book_db  = h.replay_db_book();
@@ -505,8 +505,8 @@ void test_replay_storm_amplification() {
     // Structural invariants (no convergence requirement)
     // ------------------------------------------------------------
 
-    const auto& trade_mgr = h.session.trade_subscriptions();
-    const auto& book_mgr  = h.session.book_subscriptions();
+    const auto& trade_mgr = h.trade_subscriptions();
+    const auto& book_mgr  = h.book_subscriptions();
 
     const auto& trade_db = h.replay_db_trade();
     const auto& book_db  = h.replay_db_book();
@@ -665,8 +665,8 @@ void test_replay_with_delayed_ack_simulation() {
     // Structural invariants
     // ------------------------------------------------------------
 
-    const auto& trade_mgr = h.session.trade_subscriptions();
-    const auto& book_mgr  = h.session.book_subscriptions();
+    const auto& trade_mgr = h.trade_subscriptions();
+    const auto& book_mgr  = h.book_subscriptions();
 
     const auto& trade_db = h.replay_db_trade();
     const auto& book_db  = h.replay_db_book();

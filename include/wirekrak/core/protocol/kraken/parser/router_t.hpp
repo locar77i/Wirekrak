@@ -7,7 +7,6 @@
 
 #include "wirekrak/core/protocol/message_result.hpp"
 #include "wirekrak/core/protocol/kraken/enums.hpp"
-#include "wirekrak/core/protocol/kraken/context.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/adapters.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/rejection_notice.hpp"
 #include "wirekrak/core/protocol/kraken/parser/dom/status/update.hpp"

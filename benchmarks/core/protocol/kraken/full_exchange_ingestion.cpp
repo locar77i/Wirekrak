@@ -55,15 +55,6 @@ using MyWebSocket =
 // Assert that MyWebSocket conforms to transport::WebSocketConcept concept
 static_assert(transport::WebSocketConcept<MyWebSocket>);
 
-/*
-using MySession =
-    protocol::kraken::Session<
-        MyWebSocket,
-        MyMessageRing,
-        MySessionPolicies
-    >;
-*/
-
 using MySession =
     protocol::Session<
         protocol::KrakenModel,

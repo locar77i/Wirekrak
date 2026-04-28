@@ -504,8 +504,9 @@ public:
     [[nodiscard]]
     inline bool is_quiescent() const noexcept {
         return
-            connection_.is_idle() &&                 // transport has no pending work
-            subscription_controller_.is_quiescent(); // STRICT (no timeout)
+            connection_.is_idle() &&                   // transport has no pending work
+            subscription_controller_.is_quiescent() && // STRICT (no timeout)
+            data_plane_.empty();
     }
 
     // -----------------------------------------------------------------------------
@@ -665,6 +666,11 @@ public:
         PolicyBundle::dump(os);
         ConnectionT::dump_configuration(os);
         WS::dump_configuration(os);
+    }
+
+    // TODO: DELETEME
+    inline void ping() noexcept{
+        WK_DEBUG("[SESSION] Sending dummy ping message -> TODO: replace with real ping request when control_tag supported");
     }
 
 #ifdef WK_UNIT_TEST

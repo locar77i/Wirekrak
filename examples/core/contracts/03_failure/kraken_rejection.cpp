@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Attempt invalid subscription
     // -------------------------------------------------------------------------
-    const auto& mgr = session.trade_subscriptions();
+    const auto& mgr = session.subscription_controller().manager_for<trade::Subscribe>();
     std::cout << "[example] Trade subscriptions (before subscribe): active symbols = " << mgr.active_symbols() << " - pending symbols = " << mgr.pending_symbols() << std::endl;
     (void)session.subscribe(
         trade::Subscribe{ .symbols = { "INVALID/SYMBOL" } }

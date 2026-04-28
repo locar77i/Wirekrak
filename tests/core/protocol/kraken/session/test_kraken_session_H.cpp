@@ -52,7 +52,7 @@ void test_out_of_order_ack_burst() {
     auto id2 = h.subscribe_trade("ETH/USD");
     auto id3 = h.subscribe_trade("SOL/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_subscription_requests() == 3);
+    TEST_CHECK(h.trade_subscriptions().pending_subscription_requests() == 3);
 
     // ------------------------------------------------------------
     // Step 2: Force reconnect before any ACK
@@ -64,7 +64,7 @@ void test_out_of_order_ack_burst() {
     TEST_CHECK(new_epoch > prev_epoch);
 
     // Still pending
-    TEST_CHECK(h.session.trade_subscriptions().pending_subscription_requests() == 3);
+    TEST_CHECK(h.trade_subscriptions().pending_subscription_requests() == 3);
 
     // ------------------------------------------------------------
     // Step 3: Deliver ACKs in reverse order
@@ -89,12 +89,12 @@ void test_out_of_order_ack_burst() {
     // Final invariants
     // ------------------------------------------------------------
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 3);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 3);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
     TEST_CHECK(h.session.pending_protocol_requests() == 0);
 
     TEST_CHECK(
-        h.session.trade_subscriptions().total_symbols() ==
+        h.trade_subscriptions().total_symbols() ==
         h.replay_db_trade().total_symbols()
     );
 
@@ -127,8 +127,8 @@ void test_duplicate_ack_storm() {
 
     h.drain();
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     // ------------------------------------------------------------
     // Phase B - Subscribe + duplicate rejection
@@ -143,8 +143,8 @@ void test_duplicate_ack_storm() {
     h.drain();
     h.drain_rejections();
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     // ------------------------------------------------------------
     // Phase C - Unsubscribe + duplicate success
@@ -158,8 +158,8 @@ void test_duplicate_ack_storm() {
 
     h.drain();
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     // ------------------------------------------------------------
     // Phase D - Replay old ACKs again (should be ignored)
@@ -174,12 +174,12 @@ void test_duplicate_ack_storm() {
     h.drain();
     h.drain_rejections();
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
     TEST_CHECK(h.session.pending_protocol_requests() == 0);
 
     TEST_CHECK(
-        h.session.trade_subscriptions().total_symbols() ==
+        h.trade_subscriptions().total_symbols() ==
         h.replay_db_trade().total_symbols()
     );
 
@@ -205,7 +205,7 @@ void test_subscribe_unsubscribe_race_under_replay() {
     auto sub_id = h.subscribe_trade("BTC/USD");
     h.confirm_trade_subscription(sub_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
 
     // ------------------------------------------------------------
     // 2) Force reconnect → triggers replay
@@ -241,13 +241,13 @@ void test_subscribe_unsubscribe_race_under_replay() {
 
     // 2) Manager and Replay DB must agree on symbol count
     TEST_CHECK(
-        h.session.trade_subscriptions().total_symbols() ==
+        h.trade_subscriptions().total_symbols() ==
         h.replay_db_trade().total_symbols()
     );
 
     // 3) No duplicate symbols possible
     TEST_CHECK(
-        h.session.trade_subscriptions().active_symbols() <= 1
+        h.trade_subscriptions().active_symbols() <= 1
     );
 
     std::cout << "[TEST] OK\n";
@@ -331,10 +331,10 @@ void test_replay_db_saturation_limit() {
     // Symbol universe upper bound respected
     TEST_CHECK( h.replay_db_trade().total_symbols() <= SYMBOL_UNIVERSE );
 
-    TEST_CHECK( h.session.trade_subscriptions().total_symbols() <= SYMBOL_UNIVERSE );
+    TEST_CHECK( h.trade_subscriptions().total_symbols() <= SYMBOL_UNIVERSE );
 
     // Replay DB and Manager converge
-    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
+    TEST_CHECK( h.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
 
     // No dangling protocol requests
     //TEST_CHECK(h.session.pending_protocol_requests() == 0); // Too strong ...
@@ -442,10 +442,10 @@ void test_replay_db_mixed_trade_book_stress() {
     TEST_CHECK( h.session.pending_protocol_symbols() <= h.session.replay_database().total_symbols());
 
     // Trade alignment
-    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
+    TEST_CHECK( h.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
 
     // Book alignment
-    TEST_CHECK( h.session.book_subscriptions().total_symbols() == h.replay_db_book().total_symbols() );
+    TEST_CHECK( h.book_subscriptions().total_symbols() == h.replay_db_book().total_symbols() );
 
     std::cout << "[TEST] OK\n";
 }
@@ -584,15 +584,15 @@ void test_saturation_race_overlap() {
     TEST_CHECK( h.session.pending_protocol_symbols() <= h.session.replay_database().total_symbols());
 
     // Trade logical consistency
-    TEST_CHECK( h.session.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
+    TEST_CHECK( h.trade_subscriptions().total_symbols() == h.replay_db_trade().total_symbols() );
 
     // Book logical consistency
-    TEST_CHECK( h.session.book_subscriptions().total_symbols() == h.replay_db_book().total_symbols() );
+    TEST_CHECK( h.book_subscriptions().total_symbols() == h.replay_db_book().total_symbols() );
 
     // No cross-channel contamination
-    TEST_CHECK( h.session.trade_subscriptions().total_symbols() >= 0 );
+    TEST_CHECK( h.trade_subscriptions().total_symbols() >= 0 );
 
-    TEST_CHECK( h.session.book_subscriptions().total_symbols() >= 0 );
+    TEST_CHECK( h.book_subscriptions().total_symbols() >= 0 );
 
 #ifndef NDEBUG
     h.replay_db_trade().assert_consistency();
@@ -658,11 +658,11 @@ void test_hard_limit_enforcement() {
     // ------------------------------------------------------------
 
     TEST_CHECK(
-        h.session.trade_subscriptions().active_symbols() <= MAX_SYMBOLS
+        h.trade_subscriptions().active_symbols() <= MAX_SYMBOLS
     );
 
     TEST_CHECK(
-        h.session.trade_subscriptions().total_symbols() <= MAX_SYMBOLS
+        h.trade_subscriptions().total_symbols() <= MAX_SYMBOLS
     );
 
     TEST_CHECK(
@@ -679,7 +679,7 @@ void test_hard_limit_enforcement() {
     h.drain();
 
     TEST_CHECK(
-        h.session.trade_subscriptions().total_symbols() <= MAX_SYMBOLS
+        h.trade_subscriptions().total_symbols() <= MAX_SYMBOLS
     );
 
     TEST_CHECK(

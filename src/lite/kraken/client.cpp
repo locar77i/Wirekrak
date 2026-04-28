@@ -58,11 +58,6 @@ struct Client::Impl {
     // Lite state
     error_handler error_cb;
 
-    // Reusable temp objects to avoid dynamic allocation in hot paths
-    schema::rejection::Notice rejection_msg;
-    schema::trade::Response trade_msg;
-    schema::book::Response book_msg;
-
     Impl(client_config cfg)
         : cfg(cfg)
         , session(message_ring)
@@ -75,7 +70,13 @@ struct Client::Impl {
 
     void poll() {
         (void)session.poll();
-        while (session.pop_rejection(rejection_msg)) {
+
+        auto& dp = session.data_plane();
+
+        // -------------------------------------------------
+        // Rejections
+        // -------------------------------------------------
+        dp.drain<schema::rejection::Notice>([&](const auto& rejection_msg) {
             // 1) Remove any callbacks associated with this symbol to prevent future invocations
             if (rejection_msg.symbol.has()) {
                 Symbol symbol = rejection_msg.symbol.value().c_str();
@@ -86,28 +87,26 @@ struct Client::Impl {
             if (error_cb) {
                 error_cb(Error{ErrorCode::Rejected, rejection_msg.error});
             }
-        }
+        });
 
         // -------------------------------------------------
-        // Drain trade messages in a loop until empty
-        // to ensure we process all messages received in this poll
+        // Trades
         // -------------------------------------------------
-        while (session.pop_trade_message(trade_msg)) {
+        dp.drain<schema::trade::Response>([&](const auto& trade_msg) {
             trade_partitioner_.reset(trade_msg);
             // NOTE: ResponseView is valid only for the duration of this dispatch loop.
             // Callbacks must not store references to msg beyond the call.
             for (const auto& view : trade_partitioner_.views()) {
                 trade_dispatcher.dispatch(view);
             }
-        }
+        });
 
         // -------------------------------------------------
-        // Drain book messages in a loop until empty
-        // to ensure we process all messages received in this poll
+        // Books
         // -------------------------------------------------
-        while (session.pop_book_message(book_msg)) {
+        dp.drain<schema::book::Response>([&](const auto& book_msg) {
             book_dispatcher.dispatch(book_msg);
-        }
+        });
     }
 
     // -----------------------------------------------------------------------------

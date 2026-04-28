@@ -122,17 +122,19 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Poll for a short, bounded observation window
     // -------------------------------------------------------------------------
-    system::Pong last_pong;
-    status::Update last_status;
+    system::Pong* last_pong;
+    status::Update* last_status;
     while (!pong_received.load(std::memory_order_relaxed)) {
         (void)session.poll();
         // --- Observe latest pong (liveness signal) ---
-        if (session.try_load_pong(last_pong)) {
-            on_pong(last_pong, ping_sent_at);
+        last_pong = session.data_plane().template get<system::Pong>();
+        if (last_pong) {
+            on_pong(*last_pong, ping_sent_at);
         }
         // --- Observe latest status ---
-        if (session.try_load_status(last_status)) {
-            std::cout << " -> " << last_status << std::endl;
+        last_status = session.data_plane().template get<status::Update>();
+        if (last_status) {
+            std::cout << " -> " << *last_status << std::endl;
         }
         std::this_thread::yield();
     }

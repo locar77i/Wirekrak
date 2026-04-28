@@ -51,38 +51,17 @@ inline bool drain_messages(Session& session) {
 
     bool did_work = false;
 
-    // Observe latest pong (liveness signal)
-    system::Pong last_pong;
-    if (session.try_load_pong(last_pong)) {
-        did_work = true;
-    }
-
-    // Observe latest status
-    status::Update last_status;
-    if (session.try_load_status(last_status)) {
-        did_work = true;
-    }
-
-    // Drain protocol errors (required)
-    session.drain_rejection_messages([&](const rejection::Notice&) {
-        did_work = true;
-    });
-
-    // Drain data-plane trade messages (required)
-    session.drain_trade_messages([&](const trade::Response&) {
-        did_work = true;
-    });
-
-    // Drain data-plane book messages (required)
-    session.drain_book_messages([&](const book::Response&) {
-        did_work = true;
-    });
+    auto drained = session.data_plane().drain_all(
+        [&](auto&&) noexcept {
+            did_work = true;
+        }
+    );
 
     return did_work;
 }
 
 // -----------------------------------------------------------------------------
-// Helper to drain all available messages
+// Helper to drain all available messages (DataPlane version)
 // -----------------------------------------------------------------------------
 template<typename Session>
 inline bool drain_and_print_messages(Session& session) {
@@ -90,34 +69,37 @@ inline bool drain_and_print_messages(Session& session) {
 
     bool did_work = false;
 
-    // Observe latest pong (liveness signal)
-    system::Pong last_pong;
-    if (session.try_load_pong(last_pong)) {
-        std::cout << " -> " << last_pong << std::endl;
+    auto& dp = session.data_plane();
+
+    // -------------------------------------------------------------------------
+    // States (latest values)
+    // -------------------------------------------------------------------------
+
+    if (const auto* pong = dp.template get<system::Pong>()) {
+        std::cout << " -> " << *pong << std::endl;
         did_work = true;
     }
 
-    // Observe latest status
-    status::Update last_status;
-    if (session.try_load_status(last_status)) {
-        std::cout << " -> " << last_status << std::endl;
+    if (const auto* status = dp.template get<status::Update>()) {
+        std::cout << " -> " << *status << std::endl;
         did_work = true;
     }
 
-    // Drain protocol errors (required)
-    session.drain_rejection_messages([&](const rejection::Notice& msg) {
+    // -------------------------------------------------------------------------
+    // Messages (streams)
+    // -------------------------------------------------------------------------
+
+    dp.template drain<rejection::Notice>([&](const auto& msg) {
         std::cout << " -> " << msg << std::endl;
         did_work = true;
     });
 
-    // Drain data-plane trade messages (required)
-    session.drain_trade_messages([&](const trade::Response& msg) {
+    dp.template drain<trade::Response>([&](const auto& msg) {
         std::cout << " -> " << msg << std::endl;
         did_work = true;
     });
 
-    // Drain data-plane book messages (required)
-    session.drain_book_messages([&](const book::Response& msg) {
+    dp.template drain<book::Response>([&](const auto& msg) {
         std::cout << " -> " << msg << std::endl;
         did_work = true;
     });

@@ -47,11 +47,11 @@ void test_partial_rejection_before_reconnect() {
     h.wait_for_epoch(2);
 
     // Only BTC/USD should replay
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
     h.confirm_trade_subscription(id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
 
     TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
@@ -79,14 +79,14 @@ void test_reject_after_reconnect_before_ack() {
     h.wait_for_epoch(2);
 
     // Replay pending
-    TEST_CHECK(h.session.trade_subscriptions().has_pending_requests());
+    TEST_CHECK(h.trade_subscriptions().has_pending_requests());
 
     // Server rejects before ACK
     h.reject_trade_subscription(id, "BTC/USD");
 
     h.drain();
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 0);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 0);
     TEST_CHECK(h.replay_db_trade().total_symbols() == 0);
     TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
@@ -123,12 +123,12 @@ void test_mixed_accept_reject_cross_channel() {
     h.wait_for_epoch(2);
 
     // Only book should replay
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
-    TEST_CHECK(h.session.book_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.book_subscriptions().pending_requests() == 1);
 
     h.confirm_book_subscription(b_id, "ETH/USD", 25);
 
-    TEST_CHECK(h.session.book_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.book_subscriptions().active_symbols() == 1);
     TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
     h.drain_rejections(); // Drain rejection to reach protocol-idle state
@@ -169,11 +169,11 @@ void test_reconnect_storm_with_rejections() {
     h.wait_for_epoch(3);
 
     // Only BTC should replay
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
     h.confirm_trade_subscription(id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
     TEST_CHECK(!h.session.is_quiescent()); // because rejection exists
 
     h.drain_rejections(); // Drain rejection to reach protocol-idle state

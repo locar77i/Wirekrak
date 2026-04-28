@@ -54,7 +54,7 @@ void test_initial_subscribe_rejected_removes_intent() {
     h.force_reconnect();
     h.wait_for_epoch(2);
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -88,7 +88,7 @@ void test_replay_rejected_removes_intent() {
     h.force_reconnect();
     h.wait_for_epoch(3);
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -115,12 +115,12 @@ void test_silent_pending_survives_disconnect() {
     h.wait_for_epoch(2);
 
     // Replay should fire
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
     // Now server accepts
     h.confirm_trade_subscription(sub_id, "BTC/USD");
 
-    TEST_CHECK(h.session.trade_subscriptions().active_symbols() == 1);
+    TEST_CHECK(h.trade_subscriptions().active_symbols() == 1);
     TEST_CHECK(h.replay_db_trade().total_symbols() == 1);
 
     std::cout << "[TEST] OK\n";
@@ -151,7 +151,7 @@ void test_unsubscribe_accepted_removes_intent() {
     h.force_reconnect();
     h.wait_for_epoch(2);
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 0);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 0);
 
     std::cout << "[TEST] OK\n";
 }
@@ -184,7 +184,7 @@ void test_unsubscribe_rejected_keeps_intent() {
     h.force_reconnect();
     h.wait_for_epoch(2);
 
-    TEST_CHECK(h.session.trade_subscriptions().pending_requests() == 1);
+    TEST_CHECK(h.trade_subscriptions().pending_requests() == 1);
 
     std::cout << "[TEST] OK\n";
 }

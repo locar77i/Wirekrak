@@ -31,7 +31,8 @@
 #include <atomic>
 #include <csignal>
 
-#include "wirekrak/core/protocol/kraken/session.hpp"
+#include "wirekrak/core/protocol/session.hpp"
+#include "wirekrak/core/protocol/kraken_model.hpp"
 #include "wirekrak/core/preset/message_ring_default.hpp"
 #include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "lcr/memory/block_pool.hpp"
@@ -83,14 +84,16 @@ using ActivePolicies =
     >;
 
 using PassiveSession =
-    Session<
+    protocol::Session<
+        protocol::KrakenModel,
         preset::transport::DefaultWebSocket,
         preset::DefaultMessageRing,
         PassivePolicies
     >;
 
 using ActiveSession =
-    Session<
+    protocol::Session<
+        protocol::KrakenModel,
         preset::transport::DefaultWebSocket,
         preset::DefaultMessageRing,
         ActivePolicies
@@ -136,13 +139,12 @@ int main(int argc, char** argv) {
         }
 
         // Poll-driven execution loop
-        system::Pong last_pong;
         std::uint64_t epoch = session.transport_epoch();
         while (epoch < 2) { // Run until 2 forced reconnects occur (for demonstration purposes)
             epoch = session.poll();
             // Observe latest pong (liveness signal - not relevant in Passive policy)
-            if (session.try_load_pong(last_pong)) {
-                std::cout << " -> " << last_pong << std::endl;
+            if (const auto* pong = session.data_plane().get<system::Pong>()) {
+                std::cout << " -> " << *pong << std::endl;
             }
             std::this_thread::yield();
         }
@@ -169,12 +171,11 @@ int main(int argc, char** argv) {
         }
 
         // Poll-driven execution loop
-        system::Pong last_pong;
         while (running.load(std::memory_order_relaxed)) {
             (void)session.poll();
             // Observe latest pong (liveness signal - only relevant in Active policy)
-            if (session.try_load_pong(last_pong)) {
-                std::cout << " -> " << last_pong << std::endl;
+            if (const auto* pong = session.data_plane().get<system::Pong>()) {
+                std::cout << " -> " << *pong << std::endl;
             }
             std::this_thread::yield();
         }

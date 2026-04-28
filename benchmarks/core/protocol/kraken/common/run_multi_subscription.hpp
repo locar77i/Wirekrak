@@ -108,11 +108,7 @@ int run_multi_subscription(int argc, char** argv, const char* title, lcr::memory
     bool did_work = false;
     while (running.load(std::memory_order_relaxed) && session.is_active()) {
         (void)session.poll();
-        auto drained = session.data_plane().drain_all(
-            [&](auto&&) noexcept {
-                did_work = true;
-            }
-        );
+        did_work = loop::drain_messages(session);
         // Yield to avoid busy-waiting when idle
         loop::manage_idle_spins(did_work, idle_spins);
     }
@@ -150,11 +146,7 @@ int run_multi_subscription(int argc, char** argv, const char* title, lcr::memory
         }
         // Poll and drain messages to make progress towards quiescence
         (void)session.poll();
-        auto drained = session.data_plane().drain_all(
-            [&](auto&&) noexcept {
-                did_work = true;
-            }
-        );
+        did_work = loop::drain_messages(session);
         if (!did_work) {
             std::this_thread::yield();
         }

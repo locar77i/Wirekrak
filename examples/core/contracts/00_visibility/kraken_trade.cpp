@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
         (void)session.poll();   // REQUIRED: drives all Core behavior
         // Drain ALL trade messages produced since the last poll().
         // Messages are never delivered outside poll-driven progress.
-        session.drain_trade_messages([&](const trade::Response& msg) {
+        session.data_plane().drain<trade::Response>([&](const auto& msg) {
             std::cout << " -> " << msg << std::endl;
             ++messages_received;
             did_work = true;

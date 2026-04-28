@@ -114,7 +114,7 @@ public:
         static_assert(meta::type_list_contains_v<State, state_list>, "State type not registered in StateStore");
         // Return pointer to the value if it exists, or nullptr if not set
         auto& s = slot_<State>();
-        return s.has_value() ? &s.value() : nullptr;
+        return s.has() ? &s.value() : nullptr;
     }
 
     template<class State>
@@ -124,7 +124,7 @@ public:
         static_assert(meta::type_list_contains_v<State, state_list>, "State type not registered in StateStore");
         // Return pointer to the value if it exists, or nullptr if not set
         const auto& s = slot_<State>();
-        return s.has_value() ? &s.value() : nullptr;
+        return s.has() ? &s.value() : nullptr;
     }
 
     // =========================================================================
@@ -136,7 +136,7 @@ public:
         // Ensure the state type is registered in the StateStore
         static_assert(meta::type_list_contains_v<State, state_list>, "State type not registered in StateStore");
         // Check if the slot has a value
-        return slot_<State>().has_value();
+        return slot_<State>().has();
     }
 
     // =========================================================================

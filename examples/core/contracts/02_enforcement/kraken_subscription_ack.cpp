@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     int idle_spins = 0;
     bool did_work = false;
-    const auto& mgr = session.trade_subscriptions();
+    const auto& mgr = session.subscription_controller().manager_for<trade::Subscribe>();
     auto observe_until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < observe_until) {
         (void)session.poll();
