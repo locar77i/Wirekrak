@@ -70,7 +70,7 @@ Data-plane model:
 #include "wirekrak/core/protocol/telemetry/session.hpp"
 #include "wirekrak/core/protocol/subscription/controller.hpp"
 #include "wirekrak/core/protocol/replay/database.hpp"
-#include "wirekrak/core/protocol/session_concepts.hpp"
+#include "wirekrak/core/protocol/model_concepts.hpp"
 #include "wirekrak/core/protocol/data/data_plane.hpp"
 #include "wirekrak/core/policy/protocol/session_bundle.hpp"
 #include "wirekrak/core/policy/transport/connection_bundle.hpp"
@@ -267,6 +267,27 @@ public:
             }
         }
         return req.req_id.value();
+    }
+
+    // ============================================================================
+    // Control-plane send (stateless requests)
+    // ============================================================================
+    //
+    // Sends a control-plane request (e.g. ping, auth).
+    //
+    // Characteristics:
+    //   • No subscription tracking
+    //   • No replay integration
+    //   • No symbol management
+    //   • Immediate emission (subject to batching policy)
+    //
+    // This is the ONLY public entry point for control requests.
+    //
+    // ============================================================================
+    template <request::Control RequestT>
+    inline bool send(RequestT req) noexcept {
+        static_assert(request::ValidRequestIntent<RequestT>, "Invalid request type: must define exactly one intent tag");
+        return send_request_(std::move(req));
     }
 
     // -----------------------------------------------------------------------------
@@ -668,11 +689,6 @@ public:
         WS::dump_configuration(os);
     }
 
-    // TODO: DELETEME
-    inline void ping() noexcept{
-        WK_DEBUG("[SESSION] Sending dummy ping message -> TODO: replace with real ping request when control_tag supported");
-    }
-
 #ifdef WK_UNIT_TEST
 public:
         inline ConnectionT& connection() {
@@ -900,8 +916,10 @@ private:
             // Currently no user-defined hook for retry scheduled
             break;
         case transport::connection::Signal::LivenessThreatened:
-            if constexpr (LivenessPolicy::proactive) {
-                //ping(); // TODO: send ping withou know the specific ping schema yet
+            if constexpr (LivenessPolicy::proactive && PingableProtocolConcept<ProtocolModel>) {
+                auto req = ProtocolModel::ping(ctrl::PING_ID);
+                WK_DEBUG("[SESSION] Sending ping message: " << req.to_json());
+                (void)send_request_(req);
             }
             break;
         case transport::connection::Signal::BackpressureDetected:

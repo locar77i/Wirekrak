@@ -120,4 +120,54 @@ requires {
 && MessageHandlerConcept<typename M::message_handler, Context>;
 
 
+
+// ============================================================================
+// PingableProtocolConcept
+// ============================================================================
+//
+// Detects whether a ProtocolModel provides a ping() control request factory
+// with a REQUIRED req_id argument.
+//
+// A PingableProtocolConcept must expose:
+//
+//   • static ping(ctrl::req_id_t)
+//       Returns a control-plane request (request::Control)
+//
+// -----------------------------------------------------------------------------
+// Rationale
+// -----------------------------------------------------------------------------
+//
+// • Enforces a uniform control-plane contract across protocols
+// • Guarantees that ping requests integrate with Session req_id tracking
+// • Avoids ambiguity between overloads or optional signatures
+// • Keeps Session logic simple and deterministic
+//
+// -----------------------------------------------------------------------------
+// Usage
+// -----------------------------------------------------------------------------
+//
+// if constexpr (PingableProtocolConcept<ProtocolModel>) {
+//     session.send(ProtocolModel::ping(ctrl::PING_ID));
+// }
+//
+// -----------------------------------------------------------------------------
+// Notes
+// -----------------------------------------------------------------------------
+//
+// • This is an OPTIONAL capability (not all protocols must implement it)
+// • Only the existence and return type are validated
+// • The returned type must satisfy request::Control
+// • No runtime overhead (pure compile-time detection)
+//
+// ============================================================================
+
+#include "wirekrak/core/protocol/request/concepts.hpp"
+#include "wirekrak/core/protocol/control/req_id.hpp"
+
+template<class M>
+concept PingableProtocolConcept =
+requires {
+    { M::ping(ctrl::req_id_t{}) } -> request::Control;
+};
+
 } // namespace wirekrak::core::protocol

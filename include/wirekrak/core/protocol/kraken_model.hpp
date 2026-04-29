@@ -65,7 +65,8 @@ Notes
 #include "wirekrak/core/meta/type_list.hpp"
 #include "wirekrak/core/protocol/kraken/subscriptions/model.hpp"
 #include "wirekrak/core/protocol/kraken/message_handler.hpp"
-// Schema types (messages + states)
+// Schema types (messages + states + factory functions)
+#include "wirekrak/core/protocol/kraken/schema/system/ping.hpp"
 #include "wirekrak/core/protocol/kraken/schema/system/pong.hpp"
 #include "wirekrak/core/protocol/kraken/schema/status/update.hpp"
 #include "wirekrak/core/protocol/kraken/schema/trade/response.hpp"
@@ -114,6 +115,17 @@ struct KrakenModel {
     // =========================================================================
 
     using message_handler = kraken::MessageHandler;
+
+    // =========================================================================
+    // FACTORY FUNCTIONS
+    // =========================================================================
+
+    [[nodiscard]]
+    static inline kraken::schema::system::Ping ping(ctrl::req_id_t id) noexcept {
+        kraken::schema::system::Ping p;
+        p.req_id = id;
+        return p;
+    }
 };
 
 } // namespace wirekrak::core::protocol

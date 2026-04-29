@@ -34,7 +34,7 @@ This parser layer is intentionally structured into three distinct roles to
 ensure correctness, performance, and long-term maintainability.
 
 -------------------------------------------------------------------------------
-1) Parser RouterT (Message Dispatch)
+1) Parser Router (Message Dispatch)
 -------------------------------------------------------------------------------
 The parser router is responsible for:
   • Inspecting raw WebSocket messages
@@ -109,12 +109,12 @@ correct, while enabling the overall system to scale as Kraken schemas evolve.
 ================================================================================
 */
 
-class RouterT {
+class Router {
 
     constexpr static size_t PARSER_BUFFER_INITIAL_SIZE_ = 16 * 1024; // 16 KB
 
 public:
-    RouterT() = default;
+    Router() = default;
 
     // Main entry point
     template<class Context>

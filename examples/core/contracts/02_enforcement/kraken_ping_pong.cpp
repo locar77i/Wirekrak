@@ -6,7 +6,7 @@
 // CONTRACT DEMONSTRATED:
 //
 // - Control-plane messages (ping, pong, status) are independent of subscriptions
-// - Pong responses are delivered via a dedicated callback
+// - Pong responses are exposed via the data-plane (pull model)
 // - Engine timestamps and local wall-clock time can be correlated
 // - No protocol intent beyond control-plane traffic is required
 // - All progress is driven explicitly via poll()
@@ -27,7 +27,10 @@
 #include <thread>
 #include <atomic>
 
-#include "wirekrak/core/preset/protocol/kraken_default.hpp"
+#include "wirekrak/core/protocol/session.hpp"
+#include "wirekrak/core/protocol/kraken_model.hpp"
+#include "wirekrak/core/preset/message_ring_default.hpp"
+#include "wirekrak/core/preset/transport/websocket_default.hpp"
 #include "lcr/memory/block_pool.hpp"
 #include "common/cli/minimal.hpp"
 
@@ -43,6 +46,16 @@ std::atomic<bool> pong_received{false};
 using namespace wirekrak::core;
 using namespace wirekrak::core::protocol::kraken;
 
+using MyWebSocket = preset::transport::DefaultWebSocket;
+using MyMessageRing = preset::DefaultMessageRing;
+using MyProtocolModel = protocol::KrakenModel;
+using MySession =
+    protocol::Session<
+            MyProtocolModel,
+            MyWebSocket,
+            MyMessageRing
+        >;
+
 // -------------------------------------------------------------------------
 // Global memory block pool
 // -------------------------------------------------------------------------
@@ -53,7 +66,7 @@ static lcr::memory::block_pool memory_pool(BLOCK_SIZE, BLOCK_COUNT);
 // -----------------------------------------------------------------------------
 // Golbal SPSC ring buffer (transport → session)
 // -----------------------------------------------------------------------------
-static preset::DefaultMessageRing message_ring(memory_pool);
+static MyMessageRing message_ring(memory_pool);
 
 
 // -------------------------------------------------------------------------
@@ -102,7 +115,7 @@ int main(int argc, char** argv) {
     // -------------------------------------------------------------------------
     // Session setup
     // -------------------------------------------------------------------------
-    preset::protocol::kraken::DefaultSession session(message_ring);
+    MySession session(message_ring);
 
     // -------------------------------------------------------------------------
     // Connect
@@ -117,7 +130,10 @@ int main(int argc, char** argv) {
     std::cout << "[example] Sending ping...\n";
     // Capture local wall-clock time at ping send
     auto ping_sent_at = std::chrono::steady_clock::now();
-    session.ping(); // req_id is auto-assigned internally (0 is ping-reserved for control-plane)
+    // Construct protocol-specific ping (compile-time safe)
+    auto req = MyProtocolModel::ping(protocol::ctrl::PING_ID);
+    // Send via generic session (no protocol knowledge inside Session)
+    session.send(req);
 
     // -------------------------------------------------------------------------
     // Poll for a short, bounded observation window

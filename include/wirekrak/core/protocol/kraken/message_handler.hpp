@@ -69,7 +69,7 @@ Design Notes
 
 #include "wirekrak/core/protocol/message_result.hpp"
 #include "wirekrak/core/protocol/kraken/enums.hpp"
-#include "wirekrak/core/protocol/kraken/parser/router_t.hpp"
+#include "wirekrak/core/protocol/kraken/parser/router.hpp"
 
 
 namespace wirekrak::core::protocol::kraken {
@@ -98,7 +98,7 @@ public:
     }
 
 private:
-    parser::RouterT router_;
+    parser::Router router_;
 };
 
 } // namespace wirekrak::core::protocol::kraken
